@@ -35,5 +35,14 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 3. Offen/ideen: EPG täglich automatisch veröffentlichen (EPG reicht 36 h); iPad mit Outplayer testen
    (`outplayer://`-Link noch unbestätigt).
 
+## Arbeitsweise über mehrere Macs (MacBook Neo, Büro-Mac, …)
+- **Die SSD ist die einzige Arbeitskopie.** Projekt, `.git`, `editor/data/` liegen darauf; GitHub dient nur zum
+  Veröffentlichen (Pages + App-Bau), nicht zum Abgleich zwischen Macs. Kein Pull nötig, solange niemand auf github.com ändert.
+- Neuer Mac: `Einrichten-neuer-Mac.command` (Command Line Tools, safe.directory, GitHub Desktop, VLC-Check).
+- Git-Identität steht im Repo (`.git/config`): „Max Mustermann <mieten.riffe3y@icloud.com>“ – nicht ändern.
+- **Claude committet lokal** (mit Co-Authored-By), **Thomas pusht** in GitHub Desktop („Push origin“).
+  Claude hat keine GitHub-Zugangsdaten auf der Kommandozeile.
+- Vor dem Abziehen der SSD: Terminal-Fenster von Editor/Webapp und die Claude-Sitzung schließen.
+
 ## Testen lokal
 `Start-Webapp.command` (Port 8765, auch im WLAN), `Start-Editor.command` (Port 8790, beendet alten Editor vorher).

@@ -90,6 +90,8 @@ Im Projektordner per Doppelklick:
 | `Start-Webapp.command` | Webapp (Hauptansicht) zum Testen – zeigt auch die Adresse für iPad/iPhone/Fire TV im WLAN |
 | `Start-Seniorenansicht.command` | Webapp direkt in der Seniorenansicht |
 
+| `Einrichten-neuer-Mac.command` | einmalig auf jedem weiteren Mac: prüft Python/Git, GitHub Desktop, VLC |
+
 Es öffnet sich ein Terminal-Fenster, das offen bleiben muss, solange das Programm
 benutzt wird. Fenster schließen beendet es. Läuft ein Programm schon, öffnet ein
 erneuter Doppelklick nur den Browser. Falls macOS beim ersten Mal den Start verweigert:

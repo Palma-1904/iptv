@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Adresse der Webapp und Versionsnummer kommen beim Bauen aus dem GitHub-Workflow.
+def startUrl = (project.findProperty('startUrl') ?: 'https://example.github.io/iptv/').toString()
+if (!startUrl.endsWith('/')) startUrl += '/'
+
+android {
+    namespace 'de.iptv.firetv'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'de.iptv.firetv'
+        minSdk 22
+        targetSdk 34
+        versionCode((project.findProperty('versionCode') ?: '1').toString().toInteger())
+        versionName '1.' + ((project.findProperty('versionCode') ?: '1').toString())
+        buildConfigField 'String', 'START_URL', "\"${startUrl}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    // Feste Signatur, damit Updates über die installierte App gehen (Einrichtung bleibt erhalten).
+    signingConfigs {
+        release {
+            storeFile file('../signing/iptv.p12')
+            storeType 'pkcs12'
+            storePassword 'iptv-firetv'
+            keyAlias 'iptv'
+            keyPassword 'iptv-firetv'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

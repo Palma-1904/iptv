@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="IPTV">
+  <meta name="theme-color" content="#0e1116">
+  <meta name="format-detection" content="telephone=no">
+  <title>IPTV</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/mode.css">
+  <script src="js/mode.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="bar">
+      <h1><button id="secret" type="button">--:--</button></h1>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-type="live" aria-selected="true">Live TV <span class="count"></span></button>
+      <button class="tab" role="tab" data-type="movie" aria-selected="false">Filme <span class="count"></span></button>
+      <button class="tab" role="tab" data-type="series" aria-selected="false">Serien <span class="count"></span></button>
+      <button class="tab" role="tab" data-type="epg" aria-selected="false">Programm <span class="count"></span></button>
+    </nav>
+    <div class="searchwrap">
+      <input id="search" type="search" placeholder="Alle Sender, Filme und Serien durchsuchen" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+    </div>
+  </header>
+
+  <main id="content">
+    <p class="status">Playlist wird geladen …</p>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="js/m3u.js"></script>
+  <script src="js/tv.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

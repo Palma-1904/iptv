@@ -1,0 +1,95 @@
+:root {
+  --bg: #000;
+  --tile: #1a1d23;
+  --tile-border: #3a404a;
+  --text: #fff;
+  --muted: #c9ced6;
+  --accent: #ffd34d;
+  --accent-text: #000;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 26px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+  padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+header { text-align: center; margin-bottom: 24px; }
+h1 { font-size: 44px; margin: 0; }
+.hint { color: var(--muted); margin: 6px 0 0; font-size: 24px; }
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.channel {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 110px;
+  padding: 16px 24px;
+  background: var(--tile);
+  border: 3px solid var(--tile-border);
+  border-radius: 20px;
+  color: var(--text);
+  text-decoration: none;
+}
+.channel:active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.logo { flex: none; width: 88px; height: 64px; object-fit: contain; }
+.logo.empty { display: none; }
+.text { display: flex; flex-direction: column; min-width: 0; }
+.now { font-size: 22px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now:empty { display: none; }
+.channel:active .now, .tv .channel:focus .now { color: inherit; }
+.name { font-size: 34px; font-weight: 700; overflow-wrap: break-word; hyphens: auto; -webkit-hyphens: auto; }
+
+.status { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 40px 0; margin: 0; }
+.retry {
+  grid-column: 1 / -1;
+  justify-self: center;
+  min-height: 88px;
+  padding: 0 40px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 700;
+}
+
+/* Fernseher: gut sichtbarer gelber Rahmen um den gewählten Sender */
+.tv body { padding: 24px 40px 40px; }
+.tv header { margin-bottom: 20px; }
+.hint .remote, .tv .hint .touch { display: none; }
+.tv .hint .remote { display: inline; }
+.tv main { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+.tv .channel { min-height: 96px; padding: 12px 20px; }
+.tv .name { font-size: 30px; }
+.tv :focus { outline: none; }
+.tv .channel:focus, .tv .retry:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent);
+  background: #2e2a12;
+}
+
+@media (max-width: 480px) {
+  h1 { font-size: 38px; }
+  main { grid-template-columns: 1fr; }
+  .channel { min-height: 96px; }
+  .name { font-size: 30px; }
+}

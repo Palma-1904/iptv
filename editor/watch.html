@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wiedergabe</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { height: 100%; margin: 0; background: #000; color: #fff; font: 13px -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #1c1c1e; }
+    h1 { flex: 1; margin: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    button { height: 26px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .15); border-radius: 6px; background: #2c2c2e; color: #fff; font: inherit; cursor: pointer; }
+    video { flex: 1; min-height: 0; width: 100%; background: #000; }
+    #msg { position: fixed; left: 12px; right: 12px; bottom: 50px; padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, .8); }
+    #msg:empty { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title"></h1>
+    <button id="vlc" type="button">In VLC öffnen</button>
+  </header>
+  <video id="video" controls autoplay playsinline></video>
+  <div id="msg"></div>
+  <script>
+    // Eigenes Player-Fenster des Editors; Stream kommt über den Editor-Server (/api/play).
+    (function () {
+      var p = new URLSearchParams(location.search);
+      var key = p.get('key') || '';
+      var ext = p.get('ext') || 'm3u8';
+      var v = document.getElementById('video');
+      var msg = document.getElementById('msg');
+      var src = '/api/play?key=' + encodeURIComponent(key);
+      document.title = p.get('title') || 'Wiedergabe';
+      document.getElementById('title').textContent = document.title;
+
+      v.addEventListener('error', function () { msg.textContent = 'Stream nicht abspielbar – „In VLC öffnen“ versuchen.'; });
+      v.addEventListener('playing', function () { msg.textContent = ''; });
+      document.getElementById('vlc').onclick = function () {
+        v.removeAttribute('src'); v.load(); // Verbindung freigeben
+        fetch('/api/vlc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: key }) })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { msg.textContent = d.error || 'In VLC geöffnet.'; });
+      };
+
+      if (['m3u8', 'mp4', 'm4v', 'mov', 'webm', ''].indexOf(ext) < 0) {
+        msg.textContent = 'Format „.' + ext + '“ kann der Browser nicht abspielen – „In VLC öffnen“ wählen.';
+      } else if (ext === 'm3u8' && !v.canPlayType('application/vnd.apple.mpegurl')) {
+        var s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js';
+        s.onload = function () {
+          var hls = new Hls();
+          hls.on(Hls.Events.ERROR, function (e, d) { if (d.fatal) msg.textContent = 'Stream nicht abspielbar (' + d.details + ').'; });
+          hls.loadSource(src);
+          hls.attachMedia(v);
+          v.play().catch(function () {});
+        };
+        document.head.appendChild(s);
+      } else {
+        v.src = src;
+        v.play().catch(function () {});
+      }
+    })();
+  </script>
+</body>
+</html>

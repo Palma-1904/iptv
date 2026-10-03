@@ -1,0 +1,53 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      # Nur die Webapp veröffentlichen – der Editor (editor/) bleibt lokal auf dem Mac.
+      - name: Webapp-Dateien sammeln
+        run: |
+          mkdir _site
+          cp -r index.html senioren.html player.html config.js liste.m3u css js .nojekyll _site/
+
+      # Fire-TV-App bauen; sie öffnet genau diese Seite. Download: <seite>/app.apk
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Fire-TV-App bauen
+        working-directory: firetv
+        run: gradle --no-daemon assembleRelease -PstartUrl="${{ steps.pages.outputs.base_url }}/" -PversionCode=${{ github.run_number }}
+      - name: App zur Seite legen
+        run: cp firetv/app/build/outputs/apk/release/app-release.apk _site/app.apk
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

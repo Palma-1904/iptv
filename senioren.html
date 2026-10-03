@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fernsehen">
+  <meta name="theme-color" content="#000000">
+  <meta name="format-detection" content="telephone=no">
+  <title>Fernsehen</title>
+  <link rel="stylesheet" href="css/senioren.css">
+  <link rel="stylesheet" href="css/mode.css">
+  <script src="js/mode.js"></script>
+</head>
+<body>
+  <header>
+    <h1><button id="secret" type="button" data-suffix=" Uhr">--:-- Uhr</button></h1>
+    <p class="hint"><span class="touch">Sender antippen zum Ansehen</span><span class="remote">Sender mit den Pfeiltasten wählen, dann OK drücken</span></p>
+  </header>
+
+  <main id="channels">
+    <p class="status">Sender werden geladen …</p>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="js/m3u.js"></script>
+  <script src="js/tv.js"></script>
+  <script src="js/senioren.js"></script>
+</body>
+</html>

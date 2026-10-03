@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Wiedergabe</title>
+  <link rel="stylesheet" href="css/player.css">
+</head>
+<body>
+  <video id="video" controls autoplay playsinline></video>
+
+  <div class="overlay" id="overlay">
+    <h1 id="title"></h1>
+    <p id="epg" class="epg" hidden></p>
+    <p id="message">Stream wird geladen …</p>
+    <div class="actions">
+      <button id="back" type="button">Zurück</button>
+      <a id="external" class="btn" hidden>In VLC öffnen</a>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="js/m3u.js"></script>
+  <script src="js/tv.js"></script>
+  <script src="js/player.js"></script>
+</body>
+</html>

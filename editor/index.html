@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playlist-Editor</title>
+  <link rel="stylesheet" href="editor.css">
+</head>
+<body>
+  <header class="toolbar">
+    <strong class="brand">Playlist-Editor</strong>
+
+    <div class="tb-group">
+      <label for="source">Quelle</label>
+      <select id="source"></select>
+      <button id="src-add" type="button" title="Quelle hinzufügen">＋</button>
+      <button id="src-edit" type="button" title="Quelle bearbeiten">✎</button>
+      <button id="src-refresh" type="button">Aktualisieren</button>
+    </div>
+
+    <div class="tb-group">
+      <label for="playlist">Playlist</label>
+      <select id="playlist"></select>
+      <button id="pl-add" type="button" title="Neue Playlist">＋</button>
+      <button id="pl-rename" type="button" title="Umbenennen">✎</button>
+      <button id="pl-delete" type="button" title="Löschen">🗑</button>
+      <label class="devices" title="Auf wie vielen Geräten diese Playlist gleichzeitig laufen soll">Geräte
+        <input id="pl-devices" type="number" min="1" max="20" value="1">
+      </label>
+    </div>
+
+    <span class="spacer"></span>
+    <button id="settings" type="button">Einstellungen</button>
+    <button id="publish" type="button" class="primary">Veröffentlichen</button>
+  </header>
+
+  <main class="panes">
+    <!-- Links: Kategorien, Länder, Gruppen der Quelle -->
+    <aside class="pane left">
+      <div id="src-info" class="src-info"></div>
+      <div class="types" role="tablist">
+        <button data-type="live" class="active" type="button">Live</button>
+        <button data-type="movie" type="button">Filme</button>
+        <button data-type="series" type="button">Serien</button>
+      </div>
+      <details class="countries" open>
+        <summary>Länder <span class="hint">(antippen = ausblenden)</span></summary>
+        <div id="countries" class="chips"></div>
+      </details>
+      <div class="pane-title">Gruppen der Quelle</div>
+      <div id="groups" class="scroll"></div>
+    </aside>
+
+    <!-- Mitte: Sender der gewählten Gruppe / Suche -->
+    <section class="pane center">
+      <div class="center-bar">
+        <input id="search" type="search" placeholder="Sender in dieser Quelle suchen …">
+        <label class="check" id="by-title-wrap" hidden title="Gleiche Filme/Serien in mehreren Sprachen als einen Eintrag zeigen"><input id="by-title" type="checkbox" checked> Sprachen zusammenfassen</label>
+        <label class="check"><input id="select-all" type="checkbox"> Alle</label>
+        <button id="invert" type="button">Umkehren</button>
+        <button id="add-selected" type="button" class="primary">Zur Playlist →</button>
+      </div>
+      <div id="channels" class="scroll"></div>
+      <div id="center-status" class="status"></div>
+    </section>
+
+    <!-- Rechts: aktive Playlist mit eigenen Gruppen -->
+    <aside class="pane right">
+      <div class="right-bar">
+        <span id="pl-summary"></span>
+        <button id="group-add" type="button">＋ Gruppe</button>
+      </div>
+      <div id="pl-warning" class="warnbox" hidden></div>
+      <div class="hint pad">Ziehen zum Sortieren · Doppelklick zum Umbenennen · Gruppe anklicken = Ziel für „Zur Playlist“</div>
+      <div id="pl-groups" class="scroll"></div>
+    </aside>
+  </main>
+
+  <!-- Quelle bearbeiten -->
+  <dialog id="dlg-source">
+    <form method="dialog" id="form-source">
+      <h2 id="dlg-source-title">Quelle</h2>
+      <label>Name <input name="name" required placeholder="z. B. Mein Anbieter"></label>
+      <div class="seg">
+        <label><input type="radio" name="type" value="xtream" checked> Xtream Codes</label>
+        <label><input type="radio" name="type" value="m3u"> M3U-Adresse / Datei</label>
+      </div>
+      <fieldset data-for="xtream">
+        <label>Server <input name="server" placeholder="http://server.tld:8080" autocomplete="off"></label>
+        <div class="row">
+          <label>Benutzername <input name="username" autocomplete="off"></label>
+          <label>Passwort <input name="password" type="password" autocomplete="off"></label>
+        </div>
+        <label>Live-Format
+          <select name="liveFormat">
+            <option value="m3u8">HLS (.m3u8) – empfohlen für Browser/Safari</option>
+            <option value="ts">MPEG-TS (.ts)</option>
+          </select>
+        </label>
+      </fieldset>
+      <fieldset data-for="m3u" hidden>
+        <label>M3U-Adresse oder Dateipfad <input name="url" placeholder="https://… oder ~/Downloads/liste.m3u"></label>
+      </fieldset>
+      <label>Eigene EPG-Adresse (XMLTV, optional)
+        <input name="epgUrl" placeholder="leer = EPG des Anbieters bzw. aus der M3U">
+      </label>
+      <p class="hint">Beispiel für deutsche Sender: <button type="button" class="link" data-epg="https://www.open-epg.com/files/germany.xml.gz">open-epg.com Deutschland</button></p>
+      <p class="hint">Zugangsdaten bleiben auf diesem Mac (editor/data/state.json).</p>
+      <div class="actions">
+        <button value="delete" type="submit" id="src-delete" class="danger">Quelle löschen</button>
+        <span class="spacer"></span>
+        <button value="cancel" type="submit" formnovalidate>Abbrechen</button>
+        <button value="save" type="submit" class="primary">Speichern & laden</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Einstellungen -->
+  <dialog id="dlg-settings">
+    <form method="dialog" id="form-settings">
+      <h2>Einstellungen</h2>
+      <p id="token-status" class="hint"></p>
+      <label>GitHub-Token (nur Berechtigung „gist“)
+        <input name="token" type="password" autocomplete="off" placeholder="leer lassen = unverändert">
+      </label>
+      <p class="hint">Token erstellen: <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=IPTV-Editor" target="_blank" rel="noopener">github.com → Token mit Häkchen „gist“</a>. Wird nur lokal gespeichert.</p>
+      <label>Adresse der Webapp (GitHub Pages)
+        <input name="pagesUrl" placeholder="https://BENUTZER.github.io/iptv/">
+      </label>
+      <p class="hint">Wird für die Einrichtungs-Links der Geräte verwendet.</p>
+      <div class="actions">
+        <button value="clear" type="submit" class="danger">Token entfernen</button>
+        <span class="spacer"></span>
+        <button value="cancel" type="submit" formnovalidate>Abbrechen</button>
+        <button value="save" type="submit" class="primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Veröffentlichen -->
+  <dialog id="dlg-publish">
+    <form method="dialog">
+      <h2>Veröffentlichen</h2>
+      <div id="publish-body"></div>
+      <div class="actions"><span class="spacer"></span><button value="close" class="primary">Schließen</button></div>
+    </form>
+  </dialog>
+
+  <!-- Player: verschiebbar (Kopfzeile ziehen), Größe unten rechts ziehen -->
+  <div id="player" class="player" hidden>
+    <div class="player-head" id="player-head">
+      <span id="player-title" class="player-title"></span>
+      <button id="player-pop" type="button" title="In eigenem Fenster öffnen">⧉ Fenster</button>
+      <button id="player-vlc" type="button" title="In VLC öffnen (für alle Formate)">VLC</button>
+      <button id="player-close" type="button" title="Schließen">✕</button>
+    </div>
+    <video id="player-video" controls autoplay playsinline></video>
+    <div id="player-msg" class="player-msg" hidden></div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,465 @@
+// Hauptversion: Tabs, aufklappbare Gruppen, Suche.
+(function () {
+  'use strict';
+
+  var MAX_RESULTS = 300;
+  var TYPE_LABEL = { live: 'Live', movie: 'Film', series: 'Serie' };
+
+  var content = document.getElementById('content');
+  var search = document.getElementById('search');
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+
+  var all = [];
+  var tabCounts = {};
+  var byType = { live: [], movie: [], series: [] };
+  var activeType = 'live';
+
+  function status(text, retry) {
+    content.textContent = '';
+    var p = document.createElement('p');
+    p.className = 'status';
+    p.textContent = text;
+    content.appendChild(p);
+    if (retry) {
+      var b = document.createElement('button');
+      b.className = 'retry';
+      b.textContent = 'Erneut versuchen';
+      b.onclick = start;
+      content.appendChild(b);
+    }
+  }
+
+  function itemEl(e, showMeta) {
+    var a = document.createElement('a');
+    a.className = 'item';
+    a.href = IPTV.playerHref(e);
+    a.appendChild(IPTV.logoEl(e.logo, 'logo'));
+    var text = document.createElement('span');
+    text.className = 'text';
+    var name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = e.name;
+    text.appendChild(name);
+    if (showMeta) {
+      var meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = TYPE_LABEL[e.type] + ' · ' + e.group;
+      text.appendChild(meta);
+    }
+    if (e.tvgId && e.type === 'live') text.appendChild(IPTV.epgEl(e.tvgId, 'meta now'));
+    a.appendChild(text);
+    return a;
+  }
+
+  // ---------- Sprachfassungen (vom Editor: x-work = gleiches Werk, x-lang = Sprache) ----------
+
+  var LANG_NAMES = {
+    DE: 'Deutsch', AT: 'Deutsch (AT)', CH: 'Deutsch (CH)', MULTI: 'Mehrsprachig', EN: 'Englisch',
+    US: 'Englisch (US)', UK: 'Englisch (UK)', FR: 'Französisch', QFR: 'Französisch (CA)', ES: 'Spanisch',
+    LAT: 'Spanisch (Lateinam.)', IT: 'Italienisch', NL: 'Niederländisch', PL: 'Polnisch', TR: 'Türkisch',
+    GR: 'Griechisch', PT: 'Portugiesisch', BR: 'Portugiesisch (BR)', RU: 'Russisch', SE: 'Schwedisch',
+    NO: 'Norwegisch', DK: 'Dänisch', FI: 'Finnisch', AL: 'Albanisch', EX: 'Ex-Jugoslawisch',
+    EXYU: 'Ex-Jugoslawisch', BG: 'Bulgarisch', HU: 'Ungarisch', RO: 'Rumänisch', CZ: 'Tschechisch',
+    IN: 'Indisch', AR: 'Arabisch', IR: 'Persisch', NF: 'Netflix (mehrsprachig)'
+  };
+  var PREFERRED = ['DE', 'AT', 'CH', 'MULTI'];
+
+  function langRank(l) {
+    var i = PREFERRED.indexOf(l);
+    return i < 0 ? PREFERRED.length : i;
+  }
+  function langName(l) { return LANG_NAMES[l] || l || 'Standard'; }
+  function byLang(a, b) { return langRank(a.lang) - langRank(b.lang); }
+
+  // Filme mit gleicher x-work-Kennung werden ein Eintrag; Deutsch ist die Standardfassung.
+  function units(list) {
+    var out = [];
+    var byWork = new Map();
+    list.forEach(function (e) {
+      if (e.type !== 'movie' || !e.work) { out.push({ entry: e }); return; }
+      var u = byWork.get(e.work);
+      if (!u) { u = { entry: e, variants: [] }; byWork.set(e.work, u); out.push(u); }
+      u.variants.push(e);
+    });
+    out.forEach(function (u) {
+      if (u.variants) { u.variants.sort(byLang); u.entry = u.variants[0]; }
+    });
+    return out;
+  }
+
+  function unitEl(u, showMeta) {
+    var a = itemEl(u.entry, showMeta);
+    if (!u.variants || u.variants.length < 2) return a;
+    var langs = document.createElement('span');
+    langs.className = 'meta';
+    langs.textContent = u.variants.map(function (v) { return v.lang || '?'; }).join(' · ');
+    a.querySelector('.text').appendChild(langs);
+    a.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      chooseLang(u.entry.name, u.variants, a);
+    });
+    return a;
+  }
+
+  // Sprachauswahl als Dialog: große Knöpfe, Deutsch oben, Fernbedienung bleibt im Dialog.
+  function chooseLang(title, variants, returnFocus) {
+    var ov = document.createElement('div');
+    ov.className = 'lang-overlay';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    var box = document.createElement('div');
+    box.className = 'lang-box';
+    var h = document.createElement('h2');
+    h.textContent = title;
+    var p = document.createElement('p');
+    p.textContent = 'Sprache wählen';
+    box.appendChild(h);
+    box.appendChild(p);
+    variants.forEach(function (v) {
+      var a = document.createElement('a');
+      a.className = 'lang-btn';
+      a.href = IPTV.playerHref(v);
+      a.textContent = langName(v.lang);
+      box.appendChild(a);
+    });
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'lang-cancel';
+    cancel.textContent = 'Abbrechen';
+    box.appendChild(cancel);
+    ov.appendChild(box);
+
+    function close() {
+      ov.remove();
+      document.removeEventListener('keydown', onKey);
+      if (returnFocus) returnFocus.focus();
+    }
+    function onKey(ev) {
+      if (ev.key === 'Escape' || ev.key === 'Backspace') { ev.preventDefault(); close(); }
+    }
+    cancel.addEventListener('click', close);
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) close(); });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(ov);
+    box.querySelector('.lang-btn').focus();
+  }
+
+  // Serie in mehreren Sprachen: Sprachknöpfe über den Folgen, Deutsch vorausgewählt.
+  function seriesLangs(items) {
+    var langs = [];
+    items.forEach(function (e) { if (e.lang && langs.indexOf(e.lang) < 0) langs.push(e.lang); });
+    return langs.sort(function (a, b) { return langRank(a) - langRank(b); });
+  }
+
+  // Gruppen nach Reihenfolge des ersten Auftretens in der M3U.
+  function groupsOf(list) {
+    var map = new Map();
+    list.forEach(function (e) {
+      if (!map.has(e.group)) map.set(e.group, []);
+      map.get(e.group).push(e);
+    });
+    return map;
+  }
+
+  function renderType(type) {
+    content.textContent = '';
+    var list = byType[type];
+    if (!list.length) return status('Keine Einträge in dieser Kategorie.');
+
+    var frag = document.createDocumentFragment();
+    groupsOf(list).forEach(function (items, group) {
+      // <details>/<summary>: Auf-/Zuklappen erledigt der Browser ohne JS.
+      var d = document.createElement('details');
+      d.className = 'group';
+      var s = document.createElement('summary');
+      var title = document.createElement('span');
+      title.className = 'gname';
+      title.textContent = group;
+      var langs = type === 'series' ? seriesLangs(items) : [];
+      var count = document.createElement('span');
+      count.className = 'gcount';
+      count.textContent = langs.length > 1
+        ? items.filter(function (e) { return e.lang === langs[0]; }).length + ' · ' + langs.length + ' Sprachen'
+        : type === 'movie' ? units(items).length : items.length;
+      s.appendChild(title);
+      s.appendChild(count);
+      d.appendChild(s);
+      var box = document.createElement('div');
+      box.className = 'list';
+      d.appendChild(box);
+      // Einträge erst beim ersten Öffnen erzeugen – hält große Playlists schnell.
+      d.fill = function () {
+        if (box.firstChild) return;
+        if (langs.length > 1) return fillSeries(d, box, items, langs);
+        var f = document.createDocumentFragment();
+        units(items).forEach(function (u) { f.appendChild(unitEl(u, false)); });
+        box.appendChild(f);
+      };
+      d.addEventListener('toggle', function () { if (d.open) d.fill(); });
+      frag.appendChild(d);
+    });
+    content.appendChild(frag);
+  }
+
+  function fillSeries(d, box, items, langs) {
+    var bar = document.createElement('div');
+    bar.className = 'langbar';
+    var current = langs[0];
+    function draw() {
+      box.textContent = '';
+      var f = document.createDocumentFragment();
+      items.forEach(function (e) { if (e.lang === current) f.appendChild(itemEl(e, false)); });
+      box.appendChild(f);
+      Array.prototype.forEach.call(bar.children, function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.lang === current));
+      });
+    }
+    langs.forEach(function (l) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'langsel';
+      b.dataset.lang = l;
+      b.textContent = langName(l);
+      b.addEventListener('click', function () { current = l; draw(); });
+      bar.appendChild(b);
+    });
+    d.insertBefore(bar, box);
+    draw();
+  }
+
+  function renderSearch(q) {
+    content.textContent = '';
+    var terms = IPTV.normalize(q).split(/\s+/).filter(Boolean);
+    var hits = [];
+    var total = 0;
+    for (var i = 0; i < all.length; i++) {
+      var e = all[i];
+      var ok = true;
+      for (var t = 0; t < terms.length; t++) {
+        if (e.search.indexOf(terms[t]) < 0) { ok = false; break; }
+      }
+      if (ok) { total++; if (hits.length < MAX_RESULTS) hits.push(e); }
+    }
+    var info = document.createElement('p');
+    info.className = 'status small';
+    info.textContent = total === 0 ? 'Keine Treffer.'
+      : total > MAX_RESULTS ? total + ' Treffer – die ersten ' + MAX_RESULTS + ' werden angezeigt.'
+      : total + ' Treffer';
+    content.appendChild(info);
+    var box = document.createElement('div');
+    box.className = 'list';
+    units(hits).forEach(function (u) { box.appendChild(unitEl(u, true)); });
+    content.appendChild(box);
+  }
+
+  function render() {
+    var q = search.value.trim();
+    document.body.classList.toggle('searching', q.length > 0);
+    if (q.length >= 2) renderSearch(q);
+    else if (activeType === 'epg') renderEpg();
+    else renderType(activeType);
+  }
+
+  // ---------- Programmübersicht (EPG) ----------
+
+  // Ein Eintrag je Sender mit Programmdaten; bei Dubletten (HEVC/HD) die normale Fassung.
+  function epgChannels() {
+    var best = new Map();
+    var order = [];
+    byType.live.forEach(function (e) {
+      if (!e.tvgId || !IPTV.programmes(e.tvgId).length) return;
+      var cur = best.get(e.tvgId);
+      if (!cur) { best.set(e.tvgId, e); order.push(e.tvgId); }
+      else if (IPTV.isHevc(cur) && !IPTV.isHevc(e)) best.set(e.tvgId, e);
+    });
+    return order.map(function (id) { return best.get(id); });
+  }
+
+  function dayLabel(sec) {
+    var d = new Date(sec * 1000);
+    var today = new Date();
+    var tomorrow = new Date(Date.now() + 86400000);
+    if (d.toDateString() === today.toDateString()) return 'Heute';
+    if (d.toDateString() === tomorrow.toDateString()) return 'Morgen';
+    return d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'numeric' });
+  }
+
+  function progressEl(id) {
+    var bar = document.createElement('span');
+    bar.className = 'prog';
+    bar.setAttribute('data-prog', id);
+    var fill = document.createElement('span');
+    bar.appendChild(fill);
+    updateProgress(bar);
+    return bar;
+  }
+
+  function updateProgress(bar) {
+    var nn = IPTV.nowNext(bar.getAttribute('data-prog'));
+    var pct = 0;
+    if (nn) pct = Math.min(100, Math.max(0, (Date.now() / 1000 - nn.now[0]) / (nn.now[1] - nn.now[0]) * 100));
+    bar.firstChild.style.width = pct.toFixed(1) + '%';
+    bar.hidden = !nn;
+  }
+  setInterval(function () { document.querySelectorAll('[data-prog]').forEach(updateProgress); }, 60000);
+
+  function renderEpg() {
+    content.textContent = '';
+    var chans = epgChannels();
+    if (!chans.length) return status('Für diese Liste gibt es keine Programmdaten.');
+    var frag = document.createDocumentFragment();
+    chans.forEach(function (e) {
+      var d = document.createElement('details');
+      d.className = 'group epgch';
+      var s = document.createElement('summary');
+      s.appendChild(IPTV.logoEl(e.logo, 'logo'));
+      var text = document.createElement('span');
+      text.className = 'gname text';
+      var name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = e.name;
+      text.appendChild(name);
+      text.appendChild(IPTV.epgEl(e.tvgId, 'meta now'));
+      text.appendChild(progressEl(e.tvgId));
+      s.appendChild(text);
+      d.appendChild(s);
+      var box = document.createElement('div');
+      box.className = 'schedule';
+      d.appendChild(box);
+      d.fill = function () {
+        if (box.firstChild) return;
+        var watch = itemEl(e, false);
+        watch.classList.add('watch');
+        watch.querySelector('.name').textContent = '▶ Jetzt ansehen';
+        box.appendChild(watch);
+        var lastDay = '';
+        var now = Date.now() / 1000;
+        IPTV.programmes(e.tvgId).forEach(function (p) {
+          var day = dayLabel(p[0]);
+          if (day !== lastDay) {
+            var h = document.createElement('div');
+            h.className = 'day';
+            h.textContent = day;
+            box.appendChild(h);
+            lastDay = day;
+          }
+          var row = document.createElement('div');
+          row.className = 'prow' + (p[0] <= now && p[1] > now ? ' live' : '');
+          var t = document.createElement('span');
+          t.className = 'ptime';
+          t.textContent = IPTV.hhmm(p[0]);
+          var ti = document.createElement('span');
+          ti.className = 'ptitle';
+          ti.textContent = p[2];
+          row.appendChild(t);
+          row.appendChild(ti);
+          box.appendChild(row);
+        });
+      };
+      d.addEventListener('toggle', function () { if (d.open) d.fill(); });
+      frag.appendChild(d);
+    });
+    content.appendChild(frag);
+  }
+
+  function setTab(type) {
+    activeType = type;
+    tabs.forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.type === type)); });
+    try { localStorage.setItem('iptv-tab', type); } catch (err) { /* privat-Modus */ }
+    if (search.value) search.value = '';
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  tabs.forEach(function (b) {
+    b.addEventListener('click', function () { setTab(b.dataset.type); });
+  });
+
+  var timer;
+  search.addEventListener('input', function () {
+    clearTimeout(timer);
+    timer = setTimeout(render, 180);
+  });
+  search.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') search.blur(); // Tastatur auf dem iPad schließen
+  });
+
+  function apply(entries) {
+    all = entries;
+    byType = { live: [], movie: [], series: [] };
+    entries.forEach(function (e) { byType[e.type].push(e); });
+    // Zählen wie man es erwartet: Filme (nicht Sprachfassungen), Serien (nicht Folgen).
+    var counts = {
+      live: byType.live.length,
+      movie: units(byType.movie).length,
+      series: groupsOf(byType.series).size,
+      epg: epgChannels().length
+    };
+    tabCounts = counts;
+    tabs.forEach(function (b) {
+      b.querySelector('.count').textContent = counts[b.dataset.type];
+      b.hidden = b.dataset.type === 'epg' && !counts.epg; // ohne EPG-Daten kein Programm-Reiter
+    });
+  }
+
+  // Neue Playlist im Hintergrund: Ansicht neu zeichnen, offene Gruppen bleiben offen.
+  function refresh(entries) {
+    var open = new Set();
+    content.querySelectorAll('details[open] .gname').forEach(function (n) { open.add(n.textContent); });
+    var y = window.scrollY;
+    apply(entries);
+    render();
+    content.querySelectorAll('details').forEach(function (d) {
+      if (open.has(d.querySelector('.gname').textContent)) { d.open = true; d.fill(); }
+    });
+    window.scrollTo(0, y);
+  }
+
+  // Zuletzt geöffneten Eintrag merken, damit der Fokus nach "Zurück" aus dem Player dort steht.
+  content.addEventListener('click', function (ev) {
+    var a = ev.target.closest('.item');
+    if (!a) return;
+    var d = a.closest('details');
+    try {
+      sessionStorage.setItem('iptv-last', JSON.stringify({
+        href: a.getAttribute('href'),
+        group: d ? d.querySelector('.gname').textContent : null
+      }));
+    } catch (err) { /* ignorieren */ }
+  });
+
+  function restoreFocus() {
+    if (!IPTV.isTv) return;
+    var last = null;
+    try { last = JSON.parse(sessionStorage.getItem('iptv-last')); } catch (err) { /* ignorieren */ }
+    if (last && last.group) {
+      content.querySelectorAll('details').forEach(function (d) {
+        if (d.querySelector('.gname').textContent === last.group) { d.open = true; d.fill(); }
+      });
+      var hit = Array.prototype.find.call(content.querySelectorAll('.item'), function (a) {
+        return a.getAttribute('href') === last.href;
+      });
+      if (hit) return TV.focusFirst(null, hit);
+    }
+    TV.focusFirst('.tab[aria-selected="true"]');
+  }
+
+  function start() {
+    status('Playlist wird geladen …');
+    IPTV.load().then(function (entries) {
+      apply(entries);
+      var saved = null;
+      try { saved = localStorage.getItem('iptv-tab'); } catch (err) { /* ignorieren */ }
+      // Gespeicherten Tab nehmen, sonst den ersten mit Inhalt.
+      var type = saved && tabCounts[saved] ? saved
+        : ['live', 'movie', 'series'].filter(function (t) { return byType[t].length; })[0] || 'live';
+      setTab(type);
+      restoreFocus();
+    }).catch(function (err) {
+      status('Playlist konnte nicht geladen werden: ' + err.message, true);
+    });
+  }
+
+  IPTV.watch(refresh);
+  start();
+})();

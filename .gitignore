@@ -1,0 +1,16 @@
+# Editor-Daten: Zugangsdaten, GitHub-Token, Caches, erzeugte Listen – niemals einchecken
+editor/data/
+.DS_Store
+__pycache__/
+
+# Lokal erzeugte Playlists zum Testen im WLAN (enthalten Zugangsdaten)
+lokal/
+
+# Android-Build-Ausgaben
+firetv/.gradle/
+firetv/build/
+firetv/app/build/
+firetv/local.properties
+
+# Lokale Einstellungen der Arbeitsumgebung
+.claude/

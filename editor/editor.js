@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 6; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 7; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -808,6 +808,85 @@ function openSettings() {
   dlg.showModal();
 }
 
+// ---------- Reihenfolge im Reiter „Programm“ ----------
+
+// Live-Sender der Playlist mit EPG-Kennung, je Kennung einmal; gespeicherte Reihenfolge zuerst.
+function epgChannelsOf(pl) {
+  const byId = new Map();
+  pl.groups.forEach((g) => g.items.forEach((item) => {
+    if (item.variants) return;
+    const ch = lookup(item.key);
+    if (!ch || ch.type !== 'live' || !ch.tvgId || byId.has(ch.tvgId)) return;
+    byId.set(ch.tvgId, { id: ch.tvgId, name: item.name || ch.name, logo: ch.logo });
+  }));
+  const first = (pl.epgOrder || []).filter((id) => byId.has(id));
+  const rest = [...byId.keys()].filter((id) => !first.includes(id));
+  return first.concat(rest).map((id) => byId.get(id));
+}
+
+async function openEpgOrder() {
+  const pl = playlist();
+  if (!pl) return toast('Zuerst eine Playlist anlegen.', true);
+  try {
+    await busy(() => Promise.all([...playlistSources(pl)].map((sid) => loadCatalog(sid))));
+  } catch (e) { return toast(e.message, true); }
+  const list = epgChannelsOf(pl);
+  if (!list.length) return toast('In dieser Playlist gibt es keine Sender mit Programmdaten (EPG).', true);
+
+  const box = $('#epg-list');
+  let dragIndex = null;
+  const render = () => {
+    box.textContent = '';
+    list.forEach((c, i) => {
+      const row = el('div', 'epg-row');
+      row.draggable = true;
+      row.appendChild(el('span', 'handle', '⠿'));
+      row.appendChild(el('span', 'pos', i + 1));
+      row.appendChild(logo(c.logo));
+      row.appendChild(el('span', 'nm', c.name));
+      [['↑', -1, 'Nach oben'], ['↓', 1, 'Nach unten']].forEach(([t, d, title]) => {
+        const b = el('button', '', t);
+        b.type = 'button';
+        b.title = title;
+        b.disabled = !list[i + d];
+        b.onclick = () => { list.splice(i + d, 0, list.splice(i, 1)[0]); render(); };
+        row.appendChild(b);
+      });
+      row.addEventListener('dragstart', (ev) => {
+        dragIndex = i;
+        row.classList.add('dragging');
+        ev.dataTransfer.effectAllowed = 'move';
+        ev.dataTransfer.setData('text/plain', 'x');
+      });
+      row.addEventListener('dragend', () => { dragIndex = null; row.classList.remove('dragging'); });
+      row.addEventListener('dragover', (ev) => { if (dragIndex !== null) { ev.preventDefault(); row.classList.add('drag-over'); } });
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+      row.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        if (dragIndex === null || dragIndex === i) return render();
+        const [c2] = list.splice(dragIndex, 1);
+        list.splice(dragIndex < i ? i - 1 : i, 0, c2);
+        render();
+      });
+      box.appendChild(row);
+    });
+  };
+  render();
+
+  const dlg = $('#dlg-epg');
+  dlg.onclose = () => {
+    if (dlg.returnValue === 'save') {
+      pl.epgOrder = list.map((c) => c.id);
+      toast('Programm-Reihenfolge gespeichert – wirkt nach dem nächsten Veröffentlichen');
+    } else if (dlg.returnValue === 'reset') {
+      delete pl.epgOrder;
+      toast('Programm wieder wie die Playlist sortiert – wirkt nach dem nächsten Veröffentlichen');
+    } else return;
+    save();
+  };
+  dlg.showModal();
+}
+
 // ---------- Zugang, Verbindungen, Qualität ----------
 
 const sourceInfos = {}; // sourceId -> Antwort von /api/source-info (oder {error})
@@ -1206,6 +1285,7 @@ function bind() {
   $('#publish').onclick = publish;
   $('#links').onclick = showLinks;
   $('#settings').onclick = openSettings;
+  $('#epg-order').onclick = openEpgOrder;
 }
 
 async function start() {

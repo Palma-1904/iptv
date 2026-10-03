@@ -26,7 +26,8 @@ body {
 }
 
 header { text-align: center; margin-bottom: 24px; }
-h1 { font-size: 44px; margin: 0; }
+h1 { font-size: 44px; margin: 0; display: flex; align-items: center; justify-content: center; gap: 16px; }
+.brand { flex: none; width: 56px; height: 56px; border-radius: 12px; }
 .hint { color: var(--muted); margin: 6px 0 0; font-size: 24px; }
 
 main {
@@ -77,9 +78,14 @@ main {
 .tv header { margin-bottom: 20px; }
 .hint .remote, .tv .hint .touch { display: none; }
 .tv .hint .remote { display: inline; }
-.tv main { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
-.tv .channel { min-height: 96px; padding: 12px 20px; }
-.tv .name { font-size: 30px; }
+/* Fernseher: mindestens 5 Sender je Reihe, Logo oben, Name darunter */
+.tv main { max-width: none; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.tv .channel { flex-direction: column; justify-content: center; gap: 8px; min-height: 150px; padding: 12px 8px; text-align: center; }
+.tv .logo { width: 100px; height: 60px; }
+.tv .text { align-items: center; width: 100%; }
+.tv .name { font-size: 22px; line-height: 1.2; }
+.tv .now { max-width: 100%; font-size: 15px; }
+@media (min-width: 1400px) { .tv main { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 .tv :focus { outline: none; }
 .tv .channel:focus, .tv .retry:focus {
   border-color: var(--accent);

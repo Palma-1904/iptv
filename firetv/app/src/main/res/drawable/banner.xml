@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Banner „ipTV“ für den Fire-TV-Startbildschirm, erzeugt aus icons/logo.svg -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="320dp" android:height="180dp"
     android:viewportWidth="320" android:viewportHeight="180">
-    <path android:fillColor="#0E1116" android:pathData="M0,0h320v180h-320z"/>
-    <path android:fillColor="#4DA3FF" android:pathData="M100,40h120a10,10 0,0 1,10 10v68a10,10 0,0 1,-10 10h-120a10,10 0,0 1,-10 -10v-68a10,10 0,0 1,10 -10z"/>
-    <path android:fillColor="#0E1116" android:pathData="M146,62l32,22l-32,22z"/>
-    <path android:fillColor="#4DA3FF" android:pathData="M135,140h50v6h-50z"/>
+    <path android:fillColor="#1D4ED8" android:pathData="M0,0h320v180h-320z"/>
+    <group android:translateX="80.0" android:translateY="10.0" android:scaleX="0.3125" android:scaleY="0.3125">
+        <path android:fillColor="#FFFFFF" android:pathData="M100,140h312a60,60 0 0 1 60,60v176a60,60 0 0 1 -60,60h-312a60,60 0 0 1 -60,-60v-176a60,60 0 0 1 60,-60z"/>
+        <path android:fillColor="#FFFFFF" android:pathData="M206,452h100a10,10 0 0 1 10,10v0a10,10 0 0 1 -10,10h-100a10,10 0 0 1 -10,-10v0a10,10 0 0 1 10,-10z"/>
+        <path android:fillColor="#FFFFFF" android:pathData="M175,66a15,15 0 1,0 30,0a15,15 0 1,0 -30,0z"/>
+        <path android:fillColor="#FFFFFF" android:pathData="M307,66a15,15 0 1,0 30,0a15,15 0 1,0 -30,0z"/>
+        <path android:fillColor="#1D4ED8" android:pathData="M70,204a18,18 0 1,0 36,0a18,18 0 1,0 -36,0z"/>
+        <path android:strokeColor="#FFFFFF" android:strokeWidth="20" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M190,66L256,140M322,66L256,140"/>
+        <path android:strokeColor="#1D4ED8" android:strokeWidth="30" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M88,250V348"/>
+        <path android:strokeColor="#1D4ED8" android:strokeWidth="30" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M134,250V390"/>
+        <path android:strokeColor="#1D4ED8" android:strokeWidth="30" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M134,299a38,38 0 1,0 76,0a38,38 0 1,0 -76,0z"/>
+        <path android:strokeColor="#1D4ED8" android:strokeWidth="30" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M252,204H328M290,204V348"/>
+        <path android:strokeColor="#1D4ED8" android:strokeWidth="30" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M372,204L401,348L430,204"/>
+    </group>
 </vector>

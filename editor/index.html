@@ -69,6 +69,7 @@
     <aside class="pane right">
       <div class="right-bar">
         <span id="pl-summary"></span>
+        <button id="epg-order" type="button" title="Reihenfolge der Sender im Reiter „Programm“ der Webapp">Programm-Reihenfolge</button>
         <button id="group-add" type="button">＋ Gruppe</button>
       </div>
       <div id="pl-warning" class="warnbox" hidden></div>
@@ -131,6 +132,21 @@
       <p class="hint">Wird für die Einrichtungs-Links der Geräte verwendet.</p>
       <div class="actions">
         <button value="clear" type="submit" class="danger">Token entfernen</button>
+        <span class="spacer"></span>
+        <button value="cancel" type="submit" formnovalidate>Abbrechen</button>
+        <button value="save" type="submit" class="primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Reihenfolge im Reiter „Programm“ (EPG) -->
+  <dialog id="dlg-epg">
+    <form method="dialog" id="form-epg">
+      <h2>Programm-Reihenfolge</h2>
+      <p class="hint">Reihenfolge der Sender im Reiter „Programm“ der Webapp. Ziehen oder mit ↑ ↓ verschieben. Gilt ab dem nächsten Veröffentlichen.</p>
+      <div id="epg-list" class="epg-list"></div>
+      <div class="actions">
+        <button value="reset" type="submit" title="Wieder wie in der Playlist sortieren">Wie Playlist</button>
         <span class="spacer"></span>
         <button value="cancel" type="submit" formnovalidate>Abbrechen</button>
         <button value="save" type="submit" class="primary">Speichern</button>

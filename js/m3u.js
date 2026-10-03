@@ -154,6 +154,7 @@
   // ---------- EPG (vom Editor erzeugt: <liste>.epg.json neben <liste>.m3u) ----------
 
   var epg = null;
+  var epgOrder = []; // Senderreihenfolge im Reiter „Programm“ (aus dem Editor)
 
   function loadEpg() {
     var u = playlistUrl();
@@ -161,7 +162,11 @@
     if (!hasDeviceList() || !/\.m3u8?(\?|$)/i.test(u)) return Promise.resolve(null);
     return fetch(u.replace(/\.m3u8?(?=\?|$)/i, '.epg.json'), { cache: 'no-cache' })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { epg = d && d.channels ? d.channels : null; return epg; })
+      .then(function (d) {
+        epg = d && d.channels ? d.channels : null;
+        epgOrder = d && d.order ? d.order : [];
+        return epg;
+      })
       .catch(function () { return null; });
   }
 
@@ -324,6 +329,7 @@
     loadEpg: loadEpg,
     nowNext: nowNext,
     programmes: programmes,
+    epgOrder: function () { return epgOrder; },
     isHevc: function (e) { return HEVC.test(e.name || ''); },
     hhmm: hhmm,
     epgEl: epgEl,

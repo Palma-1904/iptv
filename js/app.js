@@ -263,6 +263,7 @@
   // ---------- Programmübersicht (EPG) ----------
 
   // Ein Eintrag je Sender mit Programmdaten; bei Dubletten (HEVC/HD) die normale Fassung.
+  // Reihenfolge wie im Editor festgelegt, übrige Sender danach wie in der Playlist.
   function epgChannels() {
     var best = new Map();
     var order = [];
@@ -272,6 +273,12 @@
       if (!cur) { best.set(e.tvgId, e); order.push(e.tvgId); }
       else if (IPTV.isHevc(cur) && !IPTV.isHevc(e)) best.set(e.tvgId, e);
     });
+    var rank = new Map();
+    IPTV.epgOrder().forEach(function (id, i) { rank.set(id, i); });
+    var pos = function (id, i) { return rank.has(id) ? rank.get(id) : rank.size + i; };
+    order = order.map(function (id, i) { return { id: id, p: pos(id, i) }; })
+      .sort(function (a, b) { return a.p - b.p; })
+      .map(function (x) { return x.id; });
     return order.map(function (id) { return best.get(id); });
   }
 

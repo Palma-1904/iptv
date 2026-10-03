@@ -290,3 +290,14 @@ dialog#dlg-publish { width: min(680px, 94vw); }
 .qrrow { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
 .qr { text-align: center; font-size: 12px; color: var(--muted); }
 .qr img { display: block; width: 150px; height: 150px; margin: 0 auto 4px; background: #fff; padding: 6px; border-radius: 8px; image-rendering: pixelated; }
+
+/* Programm-Reihenfolge */
+dialog#dlg-epg { width: min(560px, 94vw); }
+.epg-list { max-height: 60vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; }
+.epg-row { display: grid; grid-template-columns: 14px 26px 28px 1fr 28px 28px; align-items: center; gap: 6px; height: 34px; padding: 0 8px; border-top: 1px solid var(--border); background: var(--pane); }
+.epg-row:first-child { border-top: 0; }
+.epg-row .pos { color: var(--muted); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.epg-row img { width: 28px; height: 22px; object-fit: contain; }
+.epg-row img.empty { visibility: hidden; }
+.epg-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.epg-row button { height: 24px; padding: 0; }

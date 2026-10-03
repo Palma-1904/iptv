@@ -34,7 +34,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 6   # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 7   # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -670,7 +670,9 @@ def publish(ids):
         epg = {}
         for sid, wanted in epg_ids.items():
             epg.update(epg_for_source(sid, catalogs.get(sid, {}).get('epg'), wanted, warnings))
-        epg_json = json.dumps({'v': 1, 'generated': int(time.time()), 'channels': epg},
+        # Eigene Reihenfolge für den Reiter „Programm“ (sonst wie in der Playlist)
+        order = [i for i in pl.get('epgOrder') or [] if i in epg]
+        epg_json = json.dumps({'v': 1, 'generated': int(time.time()), 'channels': epg, 'order': order},
                               ensure_ascii=False, separators=(',', ':'))
         for folder in (OUT, LOCAL_OUT):
             with open(os.path.join(folder, slug + '.m3u'), 'w', encoding='utf-8') as f:

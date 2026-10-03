@@ -1,0 +1,39 @@
+# Projekt: IPTV für Familie (Webapp, Playlist-Editor, Fire-TV-App)
+
+Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen, Schritt für Schritt.
+
+## Aufbau
+- **Webapp** (statisch, `index.html`, `senioren.html`, `player.html`, `js/`, `css/`, `config.js`):
+  online unter https://palma-1904.github.io/iptv/ (GitHub Pages, Workflow `.github/workflows/deploy.yml`).
+  - Uhr oben: 5× tippen → Code `1904` = Hauptansicht, `04` = Seniorenansicht (`config.js` → `codes`).
+  - Geräteerkennung in `js/m3u.js` (ios → Outplayer, tv/web → `player.html`, app → VLC-Intent).
+  - Einrichtungs-Link `#liste=BENUTZER/GIST/name` bzw. `#m3u=…` + `&ansicht=komplett|senioren`, wird im localStorage gespeichert.
+  - Reiter Live/Filme/Serien/Programm (EPG aus `<liste>.epg.json`), Sprachfassungen über `x-work`/`x-lang`,
+    HEVC → automatisch HD-Fassung im Browser-Player.
+- **Playlist-Editor** (`editor/`, Python-Standardbibliothek, Start: `Start-Editor.command`, Port 8790):
+  Quellen (Xtream/M3U), Länderfilter, Playlists mit Gruppen, Sprach-Zusammenfassung, Qualitätstest,
+  Verbindungs-Anzeige, Player (▶, Durchleitung über `/api/play`), „Streams beenden“.
+  Veröffentlichen → `editor/data/out/` + `lokal/` (WLAN-Test) + **Secret Gist** (Token in Editor-Einstellungen).
+  `VERSION` in `server.py` und `SERVER_VERSION` in `editor.js` bei Änderungen an beiden erhöhen.
+- **Fire-TV-App** (`firetv/`, Java/WebView, ohne AndroidX): lädt die Webapp, gibt Streams per Intent an VLC,
+  Menü-Taste = Einrichtung, Autostart nach Boot. Wird im GitHub-Workflow gebaut → https://palma-1904.github.io/iptv/app.apk
+  Signatur: `firetv/signing/iptv.p12` (fest, damit Updates drüber installieren).
+
+## Geheimnisse – nie ins Repo
+`editor/data/` (Zugangsdaten, GitHub-Token, Caches) und `lokal/` (Listen mit Zugangsdaten) sind in `.gitignore`.
+Vor jedem Commit prüfen, dass keine Stream-Adressen/Zugangsdaten in versionierten Dateien stehen.
+Alte öffentliche Repos `tv`/`tv2` wurden gelöscht; deren Zugänge existieren nicht mehr.
+
+## Anbieter
+TRX (Xtream, Server `http://line.trxdnscloud.ru`): **nur 1 gleichzeitige Verbindung**. Abo bis 26.10.2026.
+Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
+
+## Stand / nächste Schritte (3.10.2026)
+1. GitHub-Token (nur „gist“) im Editor eintragen, Webapp-Adresse `https://palma-1904.github.io/iptv/`, Playlist „ASW“ veröffentlichen.
+2. Fire TV: VLC + Downloader installieren, `palma-1904.github.io/iptv/app.apk` laden, Einrichtungs-Link eingeben.
+   App wurde gebaut und geprüft, aber **noch nie auf echtem Stick getestet** → gemeinsam testen.
+3. Offen/ideen: EPG täglich automatisch veröffentlichen (EPG reicht 36 h); iPad mit Outplayer testen
+   (`outplayer://`-Link noch unbestätigt).
+
+## Testen lokal
+`Start-Webapp.command` (Port 8765, auch im WLAN), `Start-Editor.command` (Port 8790, beendet alten Editor vorher).

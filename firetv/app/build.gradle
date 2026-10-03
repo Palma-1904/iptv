@@ -46,3 +46,10 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
+
+// Eingebauter Player (ExoPlayer) für Live-TV, Filme und Serien
+dependencies {
+    def media3 = '1.4.1'
+    implementation "androidx.media3:media3-exoplayer:$media3"
+    implementation "androidx.media3:media3-exoplayer-hls:$media3"
+}

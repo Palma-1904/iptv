@@ -14,3 +14,6 @@ firetv/local.properties
 
 # Lokale Einstellungen der Arbeitsumgebung
 .claude/
+
+# Bauwerkzeuge für die Fire-TV-App (Java, Android-SDK, Gradle) – lokal, nicht ins Repo
+werkzeuge/

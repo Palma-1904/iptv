@@ -76,10 +76,13 @@
 
     box.textContent = '';
     var frag = document.createDocumentFragment();
-    found.forEach(function (x) {
+    // Für den Player der App: Sender mit dem hier angezeigten Namen
+    var entries = found.map(function (x) { return Object.assign({}, x.entry, { name: x.label }); });
+    found.forEach(function (x, i) {
       var a = document.createElement('a');
       a.className = 'channel';
       a.href = IPTV.playerHref(x.entry);
+      IPTV.bindPlay(a, entries[i], entries);
       a.appendChild(IPTV.logoEl(x.entry.logo, 'logo'));
       var text = document.createElement('span');
       text.className = 'text';

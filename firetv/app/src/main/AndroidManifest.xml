@@ -27,6 +27,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Eingebauter Player: Live-TV umschalten, Filme/Serien spulen -->
+        <activity
+            android:name=".PlayerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation" />
+
         <!-- Startet die App nach dem Einschalten des Sticks -->
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>

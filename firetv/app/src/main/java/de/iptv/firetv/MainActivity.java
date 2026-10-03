@@ -13,17 +13,21 @@ import android.os.Looper;
 import android.text.InputType;
 import android.view.KeyEvent;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
 import java.net.URISyntaxException;
 
 /**
- * Zeigt die IPTV-Webapp im Vollbild und übergibt Streams an VLC.
- * Die Webapp erkennt die App am User-Agent "IPTVApp" und erzeugt dann intent://-Links für VLC.
+ * Zeigt die IPTV-Webapp im Vollbild. Streams spielt der eingebaute Player (PlayerActivity):
+ * Die Webapp erkennt die App am User-Agent "IPTVApp" und ruft IPTVNative.play(...) mit der
+ * Senderliste der Gruppe auf. intent://-Links (VLC) funktionieren weiterhin.
  * Menü-Taste (☰) der Fernbedienung: Einrichtung (Playlist und Ansicht) erneut öffnen.
  */
 public class MainActivity extends Activity {
@@ -50,6 +54,7 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE); // http-Logos auf https-Seite
         s.setUserAgentString(s.getUserAgentString() + " IPTVApp/1");
+        web.addJavascriptInterface(new Bridge(), "IPTVNative");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -107,6 +112,20 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Ungültiger Link.", Toast.LENGTH_SHORT).show();
         }
         return true;
+    }
+
+    /** Schnittstelle für die Webapp: Wiedergabe im eingebauten Player. */
+    private class Bridge {
+        @JavascriptInterface
+        public void play(String json) {
+            runOnUiThread(() -> {
+                // Nur für die eigene Webapp, nicht für fremde Seiten
+                String url = web.getUrl();
+                if (url == null || !url.startsWith(BuildConfig.START_URL)) return;
+                PlayerActivity.pending = json;
+                startActivity(new Intent(MainActivity.this, PlayerActivity.class));
+            });
+        }
     }
 
     /** Einrichtung: Einrichtungs-Link aus dem Editor eingeben, Ansicht wählen. */
@@ -178,6 +197,13 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        // Zurück aus dem Player: Fokus auf den zuletzt gesehenen Sender setzen
+        String last = PlayerActivity.lastUrl;
+        if (last != null) {
+            PlayerActivity.lastUrl = null;
+            web.evaluateJavascript("window.IPTV&&IPTV.nativeReturned&&IPTV.nativeReturned("
+                    + JSONObject.quote(last) + ")", null);
+        }
     }
 
     @Override

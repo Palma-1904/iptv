@@ -15,9 +15,15 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Verbindungs-Anzeige, Player (▶, Durchleitung über `/api/play`), „Streams beenden“.
   Veröffentlichen → `editor/data/out/` + `lokal/` (WLAN-Test) + **Secret Gist** (Token in Editor-Einstellungen).
   `VERSION` in `server.py` und `SERVER_VERSION` in `editor.js` bei Änderungen an beiden erhöhen.
-- **Fire-TV-App** (`firetv/`, Java/WebView, ohne AndroidX): lädt die Webapp, gibt Streams per Intent an VLC,
+- **Fire-TV-App** (`firetv/`, Java/WebView): lädt die Webapp; Streams spielt der eingebaute Player
+  `PlayerActivity` (Media3/ExoPlayer; Webapp ruft `IPTVNative.play(json)` mit der Liste der Gruppe auf).
+  Live: ▲▼ Sender, ◀▶ Senderliste, OK Info. Filme/Serien: ◀▶ spulen, OK Pause, ▲▼ Folge. Fehler → OK = VLC.
   Menü-Taste = Einrichtung, Autostart nach Boot. Wird im GitHub-Workflow gebaut → https://palma-1904.github.io/iptv/app.apk
   Signatur: `firetv/signing/iptv.p12` (fest, damit Updates drüber installieren).
+  **Lokal bauen** (Werkzeuge in `werkzeuge/`, gitignored; `firetv/local.properties` zeigt aufs SDK):
+  `cd firetv && JAVA_HOME=../werkzeuge/jdk/Contents/Home GRADLE_USER_HOME=../werkzeuge/gradle-home ../werkzeuge/gradle-8.7/bin/gradle --no-daemon assembleRelease -PstartUrl=https://palma-1904.github.io/iptv/`
+  (sdkmanager-Skript scheitert am Leerzeichen im SSD-Namen → Java direkt mit `SdkManagerCli` aufrufen).
+- **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.
 
 ## Geheimnisse – nie ins Repo
 `editor/data/` (Zugangsdaten, GitHub-Token, Caches) und `lokal/` (Listen mit Zugangsdaten) sind in `.gitignore`.

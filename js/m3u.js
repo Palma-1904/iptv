@@ -319,6 +319,53 @@
     return img;
   }
 
+  // ---------- Eigene Fire-TV-App: Wiedergabe im eingebauten Player der App ----------
+  // Die App stellt window.IPTVNative bereit. Links merken sich Eintrag und Liste (bindPlay),
+  // damit der Player innerhalb der Gruppe umschalten kann.
+  var NATIVE = platform === 'app' && !!window.IPTVNative && typeof window.IPTVNative.play === 'function';
+
+  function absUrl(u) {
+    try { return u ? new URL(u, location.href).href : ''; } catch (err) { return ''; }
+  }
+
+  function nativeItem(e) {
+    return {
+      name: e.name, url: e.url, logo: absUrl(e.logo), tvgId: e.tvgId || '', type: e.type, group: e.group,
+      epg: e.tvgId ? programmes(e.tvgId).slice(0, 12) : []
+    };
+  }
+
+  function playNative(entry, list) {
+    if (!list || list.indexOf(entry) < 0) list = [entry];
+    window.IPTVNative.play(JSON.stringify({
+      index: list.indexOf(entry),
+      items: list.map(nativeItem),
+      view: /senioren/.test(location.pathname) ? 'senioren' : 'komplett'
+    }));
+  }
+
+  function bindPlay(a, entry, list) {
+    a._play = { entry: entry, list: list || [entry] };
+    return a;
+  }
+
+  if (NATIVE) {
+    document.addEventListener('click', function (ev) {
+      var a = ev.target.closest ? ev.target.closest('a') : null;
+      if (!a || !a._play || ev.target.closest('.fav')) return;
+      ev.preventDefault();
+      playNative(a._play.entry, a._play.list);
+    }, true);
+  }
+
+  // Die App meldet beim Schließen des Players den zuletzt gesehenen Sender -> Fokus dorthin.
+  function nativeReturned(url) {
+    var hit = Array.prototype.find.call(document.querySelectorAll('a'), function (a) {
+      return a._play && a._play.entry.url === url;
+    });
+    if (hit && window.TV) window.TV.focusFirst(null, hit);
+  }
+
   window.IPTV = {
     config: CFG,
     normalize: normalize,
@@ -333,6 +380,8 @@
     isHevc: function (e) { return HEVC.test(e.name || ''); },
     hhmm: hhmm,
     epgEl: epgEl,
+    bindPlay: bindPlay,
+    nativeReturned: nativeReturned,
     platform: platform,
     isTv: isTv,
     playerHref: playerHref,

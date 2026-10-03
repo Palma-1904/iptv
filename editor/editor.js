@@ -1182,12 +1182,16 @@ async function start() {
   } catch (e) {
     toast(e.message, true);
   }
-  // Sprachkürzel bestehender Einträge an die aktuelle Erkennung anpassen
+  // Bestehende Einträge an die aktuelle Erkennung anpassen: Sprachkürzel und Titel ("-DE - Titel" -> "Titel")
   let langFixed = 0;
-  state.playlists.forEach((pl) => pl.groups.forEach((g) => g.items.forEach((i) => (i.variants || []).forEach((v) => {
-    const it = lookup(v.key);
-    if (it && it.lang && it.lang !== v.lang) { v.lang = it.lang; langFixed++; }
-  }))));
+  state.playlists.forEach((pl) => pl.groups.forEach((g) => g.items.forEach((i) => {
+    if (!i.variants) return;
+    i.variants.forEach((v) => {
+      const it = lookup(v.key);
+      if (it && it.lang && it.lang !== v.lang) { v.lang = it.lang; langFixed++; }
+    });
+    if (i.label && LANG_PRE.test(i.label)) { i.label = parseTitle(i.label).title; langFixed++; }
+  })));
   if (langFixed) save();
   renderAll();
   state.sources.forEach((s) => loadSourceInfo(s.id));

@@ -136,7 +136,22 @@
       else localStorage.removeItem(STORE);
     } catch (err) { /* privat-Modus: gilt nur für diesen Aufruf */ }
     window.__setupUrl = url;
-    history.replaceState(null, '', location.pathname + location.search);
+  })();
+
+  // Einrichtungs-Link in der Adresse stehen lassen: Ein Symbol auf dem iPhone-/iPad-Home-Bildschirm
+  // hat eigenen Speicher und kennt nur die Adresse, mit der es angelegt wurde.
+  (function keepSetupInAddress() {
+    var url = window.__setupUrl;
+    if (url === undefined) {
+      try { url = localStorage.getItem(STORE); } catch (err) { url = null; }
+    }
+    var hash = '';
+    if (url) {
+      var g = /^https:\/\/gist\.githubusercontent\.com\/([\w.-]+)\/([\w.-]+)\/raw\/([\w.-]+)\.m3u$/.exec(url);
+      hash = g ? 'liste=' + g[1] + '/' + g[2] + '/' + g[3] : 'm3u=' + encodeURIComponent(url);
+      hash = '#' + hash + '&ansicht=' + (/senioren\.html$/.test(location.pathname) ? 'senioren' : 'komplett');
+    }
+    if (location.hash !== hash) history.replaceState(null, '', location.pathname + location.search + hash);
   })();
 
   function playlistUrl() {

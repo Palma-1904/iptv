@@ -54,7 +54,13 @@
     if (!sticky) hideTimer = setTimeout(function () { overlay.classList.add('hidden'); }, 4000);
   }
 
+  var mixed = false;
+
   function fail(text) {
+    if (mixed) {
+      text = 'Dieser Sender nutzt eine unverschlüsselte Adresse (http), die der Browser auf dieser Seite sperrt. ' +
+        (external.hidden ? 'Bitte auf iPad/iPhone (Outplayer), Fire TV (App) oder am Mac im Editor ansehen.' : 'Bitte „In VLC öffnen“ wählen.');
+    }
     showOverlay(text, true);
     TV.focusFirst(external.hidden ? '#back' : '#external');
   }
@@ -84,11 +90,9 @@
   function start() {
     if (!/^https?:\/\//i.test(url)) return fail('Ungültige Stream-Adresse.');
 
-    // https-Seite darf keine http-Streams abspielen (Mixed Content).
-    if (location.protocol === 'https:' && /^http:/i.test(url)) {
-      return fail('Dieser Sender nutzt eine unverschlüsselte Adresse (http) und kann im Browser nicht abgespielt werden.' +
-        (external.hidden ? '' : ' Bitte „In VLC öffnen“ wählen.'));
-    }
+    // http-Stream auf https-Seite: manche Browser sperren das (Mixed Content) – trotzdem versuchen,
+    // bei Fehler erklärt fail() den Grund.
+    mixed = location.protocol === 'https:' && /^http:/i.test(url);
 
     var path = url.split('?')[0].toLowerCase();
     var p;

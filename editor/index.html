@@ -30,6 +30,7 @@
     </div>
 
     <span class="spacer"></span>
+    <button id="links" type="button" title="Einrichtungs-Links und QR-Codes für Geräte">Geräte-Links</button>
     <button id="settings" type="button">Einstellungen</button>
     <button id="publish" type="button" class="primary">Veröffentlichen</button>
   </header>
@@ -137,10 +138,10 @@
     </form>
   </dialog>
 
-  <!-- Veröffentlichen -->
+  <!-- Veröffentlichen / Geräte-Links -->
   <dialog id="dlg-publish">
     <form method="dialog">
-      <h2>Veröffentlichen</h2>
+      <h2 id="publish-title">Veröffentlichen</h2>
       <div id="publish-body"></div>
       <div class="actions"><span class="spacer"></span><button value="close" class="primary">Schließen</button></div>
     </form>
@@ -160,6 +161,7 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <script src="editor.js"></script>
 </body>
 </html>

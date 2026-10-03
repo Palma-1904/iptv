@@ -34,7 +34,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 5   # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 6   # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -689,21 +689,38 @@ def publish(ids):
         except UserError as e:
             for r in results:
                 r['warnings'].append(f'Hochladen fehlgeschlagen: {e}')
-    pages = (settings.get('pagesUrl') or '').strip()
-    ip = lan_ip()
     for r in results:
-        # Lokal: Liste liegt im Webapp-Ordner -> gleiche Adresse wie die Webapp, kein Editor nötig.
-        rel = f'm3u=lokal/{r["slug"]}.m3u'   # kurz, damit man es auf dem Fire TV abtippen kann
-        r['macLinks'] = setup_links(f'http://localhost:{WEBAPP_PORT}/', rel)
-        if ip:
-            r['lanLinks'] = setup_links(f'http://{ip}:{WEBAPP_PORT}/', rel)
-        if uploaded:
-            ref = f'{uploaded["login"]}/{uploaded["gistId"]}/{r["slug"]}'
-            r['gistM3u'] = f'https://gist.githubusercontent.com/{uploaded["login"]}/{uploaded["gistId"]}/raw/{r["slug"]}.m3u'
-            r['setupRef'] = ref
-            if pages:
-                r['webLinks'] = setup_links(pages.rstrip('/') + '/index.html', 'liste=' + ref)
+        r.update(device_links(r['slug'], uploaded or {}))
     return {'results': results, 'uploaded': bool(uploaded)}
+
+
+def device_links(slug, settings):
+    """Einrichtungs-Links einer Playlist – ändern sich nicht, solange Gist und Name gleich bleiben."""
+    out = {}
+    pages = (settings.get('pagesUrl') or load_settings().get('pagesUrl') or '').strip()
+    rel = f'm3u=lokal/{slug}.m3u'   # kurz, damit man es auf dem Fire TV abtippen kann
+    out['macLinks'] = setup_links(f'http://localhost:{WEBAPP_PORT}/', rel)
+    ip = lan_ip()
+    if ip:
+        out['lanLinks'] = setup_links(f'http://{ip}:{WEBAPP_PORT}/', rel)
+    if settings.get('gistId') and settings.get('login'):
+        ref = f'{settings["login"]}/{settings["gistId"]}/{slug}'
+        out['setupRef'] = ref
+        if pages:
+            out['webLinks'] = setup_links(pages.rstrip('/') + '/index.html', 'liste=' + ref)
+    return out
+
+
+def all_device_links():
+    settings = load_settings()
+    res = []
+    for pl in load_state()['playlists']:
+        slug = slugify(pl.get('slug') or pl.get('name') or pl['id'])
+        r = {'id': pl['id'], 'name': pl.get('name'), 'slug': slug,
+             'published': os.path.exists(os.path.join(OUT, slug + '.m3u'))}
+        r.update(device_links(slug, settings))
+        res.append(r)
+    return res
 
 
 # ---------- Abspielen im Editor (Durchleitung, Zugangsdaten bleiben im Server) ----------
@@ -905,7 +922,8 @@ class Handler(SimpleHTTPRequestHandler):
             if method == 'GET' and path == '/api/state':
                 s = load_settings()
                 return self.send_json({'version': VERSION, 'state': load_state(), 'settings': {
-                    'hasToken': bool(s.get('token')), 'login': s.get('login'), 'gistId': s.get('gistId'),
+                    'hasToken': bool(s.get('token')), 'tokenEnd': (s.get('token') or '')[-4:],
+                    'login': s.get('login'), 'gistId': s.get('gistId'),
                     'pagesUrl': s.get('pagesUrl', '')}})
             if method == 'POST' and path == '/api/state':
                 state = self.body()
@@ -948,6 +966,8 @@ class Handler(SimpleHTTPRequestHandler):
                 b = self.body()
                 src = find(load_state()['sources'], b.get('id'), 'Quelle')
                 return self.send_json(quality_test(src, b.get('keys') or []))
+            if method == 'GET' and path == '/api/links':
+                return self.send_json({'results': all_device_links()})
             if method == 'POST' and path == '/api/stop-streams':
                 return self.send_json(stop_all_streams())
             if method == 'POST' and path == '/api/vlc':

@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 5; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 6; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -689,6 +689,7 @@ async function publish() {
   if (!state.playlists.length) return toast('Noch keine Playlist angelegt.', true);
   const dlg = $('#dlg-publish');
   const body = $('#publish-body');
+  $('#publish-title').textContent = 'Veröffentlichen';
   body.textContent = '';
   body.appendChild(el('p', '', 'Erzeuge Playlists und EPG … (das erste Mal kann das EPG-Laden einige Minuten dauern)'));
   dlg.showModal();
@@ -707,13 +708,40 @@ async function publish() {
       ? 'Hochladen fehlgeschlagen – Details bei den Playlists.'
       : 'Nur lokal erzeugt. Zum Hochladen in den Einstellungen ein GitHub-Token eintragen.'));
   }
-  res.results.forEach((r) => {
+  res.results.forEach((r) => body.appendChild(linksBox(r)));
+  await loadSettings();
+}
+
+function qrEl(text, label) {
+  const wrap = el('div', 'qr');
+  if (window.qrcode) {
+    const q = qrcode(0, 'M');
+    q.addData(text);
+    q.make();
+    const img = el('img');
+    img.src = q.createDataURL(4, 0);
+    img.alt = 'QR-Code ' + label;
+    wrap.appendChild(img);
+  }
+  wrap.appendChild(document.createTextNode(label));
+  return wrap;
+}
+
+// Links einer Playlist (nach Veröffentlichen oder über "Geräte-Links")
+function linksBox(r) {
     const box = el('div', 'result');
-    box.appendChild(el('h3', '', `${r.name} – ${r.entries} Einträge, EPG für ${r.epgChannels} Sender, ${r.sizeKb} KB`));
+    box.appendChild(el('h3', '', r.entries !== undefined
+      ? `${r.name} – ${r.entries} Einträge, EPG für ${r.epgChannels} Sender, ${r.sizeKb} KB`
+      : r.name + (r.published ? '' : ' – noch nicht veröffentlicht')));
     if (r.webLinks) {
       box.appendChild(el('h4', '', 'Für alle Geräte (über GitHub) – Link einmal auf dem Gerät öffnen'));
       box.appendChild(linkRow('Komplett:', r.webLinks.komplett));
       box.appendChild(linkRow('Senioren:', r.webLinks.senioren));
+      const qrs = el('div', 'qrrow');
+      qrs.appendChild(qrEl(r.webLinks.komplett, 'Komplett – mit iPhone-Kamera scannen'));
+      qrs.appendChild(qrEl(r.webLinks.senioren, 'Senioren – mit iPhone-Kamera scannen'));
+      box.appendChild(qrs);
+      box.appendChild(linkRow('Kurzform für die Fire-TV-App (Einrichtung):', r.setupRef));
     } else if (r.setupRef) {
       box.appendChild(linkRow('Gerätekennung (Webapp-Adresse in den Einstellungen fehlt):', '#liste=' + r.setupRef));
     }
@@ -725,14 +753,26 @@ async function publish() {
     box.appendChild(el('h4', '', 'Test auf diesem Mac'));
     box.appendChild(linkRow('Komplett:', r.macLinks.komplett));
     box.appendChild(linkRow('Senioren:', r.macLinks.senioren));
-    if (r.warnings.length) {
+    if (r.warnings && r.warnings.length) {
       const ul = el('ul', 'warn');
       r.warnings.forEach((w) => ul.appendChild(el('li', '', w)));
       box.appendChild(ul);
     }
-    body.appendChild(box);
-  });
-  await loadSettings();
+    return box;
+}
+
+async function showLinks() {
+  const dlg = $('#dlg-publish');
+  const body = $('#publish-body');
+  $('#publish-title').textContent = 'Geräte-Links';
+  body.textContent = '';
+  let res;
+  try { res = await api('/api/links'); } catch (e) { return toast(e.message, true); }
+  if (!res.results.length) body.appendChild(el('p', '', 'Noch keine Playlist angelegt.'));
+  if (!settings.hasToken) body.appendChild(el('p', 'hint', 'Für Links „über GitHub“ in den Einstellungen ein Token eintragen und einmal veröffentlichen.'));
+  res.results.forEach((r) => body.appendChild(linksBox(r)));
+  body.appendChild(el('p', 'hint', 'Die Links bleiben gleich. Nach Änderungen an einer Playlist nur „Veröffentlichen“ – die Geräte holen sich die neue Fassung selbst.'));
+  dlg.showModal();
 }
 
 async function loadSettings() {
@@ -745,6 +785,9 @@ function openSettings() {
   const f = $('#form-settings');
   f.reset();
   f.elements.pagesUrl.value = settings.pagesUrl || '';
+  f.elements.token.placeholder = settings.hasToken
+    ? `ghp_••••••••${settings.tokenEnd || ''} (gespeichert – leer lassen = behalten)`
+    : 'Token hier einfügen';
   $('#token-status').textContent = settings.hasToken
     ? `Token gespeichert${settings.login ? ' · GitHub-Konto: ' + settings.login : ''}${settings.gistId ? ' · Gist vorhanden' : ''}`
     : 'Noch kein Token – Playlists werden nur lokal erzeugt.';
@@ -1161,6 +1204,7 @@ function bind() {
   };
   $('#by-title').onchange = () => { ui.selected.clear(); renderChannels(); };
   $('#publish').onclick = publish;
+  $('#links').onclick = showLinks;
   $('#settings').onclick = openSettings;
 }
 

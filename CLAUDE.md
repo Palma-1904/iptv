@@ -19,7 +19,7 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
 - **Fire-TV-App** (`firetv/`, Java/WebView): lädt die Webapp; Streams spielt der eingebaute Player
   `PlayerActivity` (**libVLC 3.6.5** – ExoPlayer konnte MP2/AC3/E-AC3 der Sender nicht; 3.7.x braucht compileSdk 36;
   APK ~44 MB, nur armeabi-v7a/arm64. Webapp ruft `IPTVNative.play(json)` mit allen Live-Gruppen auf).
-  Liste = Baum der ganzen Playlist (`js/tree.js`, gemeinsam für beide Ansichten; Senioren: oben „Meine Sender“)
+  Liste = Baum der ganzen Playlist (`js/tree.js`, gemeinsam für beide Ansichten; Senioren: gleiche Ebenen; „Meine Sender“ nur bei Auswahl aus config.js; gleiche Schriftgröße)
   (Übersicht › Live TV/Filme/Serien/🔍 Suche › Gruppe › Eintrag), von der Webapp
   über `IPTVNative.setTree(version, json)` nur bei Änderung/stündlich übertragen, Start über `playPath`.
   Live: ▲▼ Sender, ◀▶ Liste (links, Bild verkleinert rechts + Programmvorschau; in der Liste ◀ = eine Ebene hoch),

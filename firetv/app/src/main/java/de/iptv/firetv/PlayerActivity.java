@@ -321,10 +321,7 @@ public class PlayerActivity extends Activity {
             }
             if (n == null || n.item == null) return false;
             rootNode = treeRoot;
-            if ("senioren".equals(o.optString("view"))) {
-                textScale = 1.25f;
-                senior = true;
-            }
+            if ("senioren".equals(o.optString("view"))) senior = true;   // gleiche Schriftgröße wie Komplett
             setContext(n);
             return true;
         } catch (Exception e) {
@@ -362,10 +359,7 @@ public class PlayerActivity extends Activity {
             Node grp = area.children.get(g);
             if (grp.children.isEmpty()) return false;
             int i = Math.max(0, Math.min(grp.children.size() - 1, o.optInt("index")));
-            if ("senioren".equals(o.optString("view"))) {
-                textScale = 1.25f;
-                senior = true;
-            }
+            if ("senioren".equals(o.optString("view"))) senior = true;   // gleiche Schriftgröße wie Komplett
             setContext(grp.children.get(i));
             return true;
         } catch (Exception e) {

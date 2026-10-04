@@ -89,10 +89,15 @@
       if (!IPTV.buildTree) return null;   // alte senioren.html ohne js/tree.js: ältere Übergabe
       var version = base + ':' + Math.floor(Date.now() / 3600000);
       if (cache && cache.version === version) return cache;
-      var t = IPTV.buildTree(allEntries, {
-        first: [{ n: 'Meine Sender', c: entries.map(function (e) { return IPTV.nativeLeaf(e); }) }]
+      // Eigene Playlist des Geräts (alle Live-Sender): gleiche Ebenen wie die Hauptansicht
+      // (Gruppe › Live TV › Übersicht). Nur bei einer Auswahl aus config.js oben „Meine Sender“.
+      var own = !IPTV.hasDeviceList();
+      var t = IPTV.buildTree(allEntries, own
+        ? { first: [{ n: 'Meine Sender', c: entries.map(function (e) { return IPTV.nativeLeaf(e); }) }] }
+        : {});
+      entries.forEach(function (e, i) {
+        t.paths.set(e, own ? [0, i] : t.paths.get(found[i].entry));
       });
-      entries.forEach(function (e, i) { t.paths.set(e, [0, i]); });
       cache = {
         version: version,
         build: function () { return { n: 'Übersicht', c: t.root }; },

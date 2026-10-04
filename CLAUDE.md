@@ -105,8 +105,9 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   Küche 192.168.6.110 = „Thomas' FireTVStick“, Stick 3. Gen. 2020 (AFTSSS, Fire OS 7.7, Liste asw, Senioren,
   **Wächter getestet: läuft**, Home → nach ~1 s Abdeckung, nach ~5 s App zurück); Schlafzimmer .47 = AFTSSS
   Fire OS 7 (AirReceiver, ohne unsere App, nicht freigegeben). Kein Gerät mit Fire OS 8 zu Hause.
-- Auf Küche und Wohnzimmer läuft eine lokal gebaute Test-App mit versionCode 36 (Wächter, sparsame Fernwartung,
-  Fernseher-aus); nach dem Push (Workflow-Lauf 37) testen: Küche bekommt das Update automatisch (Wächter klickt).
+- Version 37 (Wächter, sparsame Fernwartung, Fernseher-aus) veröffentlicht. **Generalprobe Küche bestanden:** App-Start →
+  nach 20 s Update geladen, Wächter drückt „Installieren“, nach ~45 s läuft Version 37 mit Player und Wächter wieder.
+  Wohnzimmer (Fire OS 6) fragt wie bisher. „Fernseher aus“ noch am echten TV zu bestätigen.
 - Fire-TV-App Version 34 läuft auf Thomas' Stick: Player (libVLC), Senioren-Player mit Autostart,
   Home-Rückkehr, Fernwartung, Auto-Update, 50-Hz-Anpassung – laut Thomas funktioniert alles.
 - Zugänge: TKH, ASW, KMH (je 1 Verbindung). Playlist ASW nutzt noch Zugang TKH → im Editor „Zugang“ auf ASW

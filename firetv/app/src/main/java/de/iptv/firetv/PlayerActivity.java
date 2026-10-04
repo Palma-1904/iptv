@@ -205,6 +205,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
     private MediaPlayer player;
     private FrameLayout root;
     private VLCVideoLayout surface;
+    private View curtain;           // schwarz über dem Bild, bis die Bildrate feststeht (kein Bild–schwarz–Bild)
     private long position, length;   // Filme/Serien: Stand und Länge in ms
     private ProgressBar spinner;
     private TextView status;
@@ -344,8 +345,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
                         position = pendingSeek;
                         pendingSeek = -1;
                     }
-                    handler.removeCallbacks(matchRate);
-                    handler.postDelayed(matchRate, 1500);   // Bildrate erst nach dem Start bekannt
+                    rateTries = 0;
+                    handler.removeCallbacks(rateCheck);
+                    handler.post(rateCheck);              // Bildrate wird kurz nach dem Start bekannt
                     break;
                 case MediaPlayer.Event.TimeChanged:
                     position = event.getTimeChanged();
@@ -555,20 +557,88 @@ public class PlayerActivity extends Activity implements Remote.Target {
     // ---------- Bildwiederholrate an die Sendung anpassen ----------
     // Deutsches Fernsehen: 25/50 Bilder/s. Der Stick gibt sonst 60 Hz aus -> Bilder werden ungleichmäßig
     // wiederholt, das Bild „hakt“ regelmäßig. Daher Fernseher auf 50 Hz (bzw. passende Rate) schalten.
+    // Ablauf beim Umschalten: Ist die Bildrate des Senders schon bekannt (gemerkt), wird der Fernseher schon
+    // vor dem Start umgestellt. Sonst bleibt das Bild schwarz (curtain), bis die Rate feststeht; muss der
+    // Fernseher umstellen (HDMI kurz schwarz), kommt das Bild erst danach – statt Bild, schwarz, Bild.
     private float appliedFps;
+    private int rateTries;
+    private static org.json.JSONObject fpsSeen;   // Adresse (ohne Zugangsdaten) -> Bildrate
 
-    private final Runnable matchRate = this::matchFrameRate;
-
-    private void matchFrameRate() {
-        if (Build.VERSION.SDK_INT < 23 || player == null) return;
-        float fps = 0;
+    private float videoFps() {
         try {
             org.videolan.libvlc.Media.VideoTrack vt = player.getCurrentVideoTrack();
-            if (vt != null && vt.frameRateDen > 0) fps = (float) vt.frameRateNum / vt.frameRateDen;
+            if (vt != null && vt.frameRateDen > 0) {
+                float fps = (float) vt.frameRateNum / vt.frameRateDen;
+                if (fps >= 10 && fps <= 120) return fps;
+            }
         } catch (Exception ignored) {
             // keine Angabe
         }
-        if (fps < 10 || fps > 120 || Math.abs(fps - appliedFps) < 0.01f) return;
+        return 0;
+    }
+
+    private org.json.JSONObject fpsSeen() {
+        if (fpsSeen == null) {
+            try {
+                fpsSeen = new org.json.JSONObject(getSharedPreferences("iptv", MODE_PRIVATE).getString("fps", "{}"));
+            } catch (Exception e) {
+                fpsSeen = new org.json.JSONObject();
+            }
+        }
+        return fpsSeen;
+    }
+
+    private void rememberFps(String url, float fps) {
+        String key = Memory.norm(url);
+        try {
+            org.json.JSONObject m = fpsSeen();
+            if (Math.abs(m.optDouble(key, 0) - fps) < 0.01) return;
+            if (m.length() > 1500) m = fpsSeen = new org.json.JSONObject();   // selten: neu anfangen
+            m.put(key, Math.round(fps * 1000) / 1000.0);
+            getSharedPreferences("iptv", MODE_PRIVATE).edit().putString("fps", m.toString()).apply();
+        } catch (Exception ignored) {
+            // nicht wichtig
+        }
+    }
+
+    /** Vor dem Start: bekannte Bildrate gleich einstellen, sonst Bild bis zur Klärung abdecken. */
+    private void prepareRate(Item it) {
+        handler.removeCallbacks(rateCheck);
+        handler.removeCallbacks(reveal);
+        double known = fpsSeen().optDouble(Memory.norm(it.url), 0);
+        if (known > 0) {
+            matchFrameRate((float) known);
+            curtain.setVisibility(View.GONE);
+        } else {
+            curtain.setVisibility(View.VISIBLE);
+            handler.postDelayed(reveal, 6000);   // spätestens dann Bild zeigen
+        }
+    }
+
+    private final Runnable reveal = () -> curtain.setVisibility(View.GONE);
+
+    private final Runnable rateCheck = new Runnable() {
+        @Override
+        public void run() {
+            if (player == null) return;
+            float fps = videoFps();
+            if (fps == 0 && ++rateTries < 20) {      // bis zu 3 s auf die Angabe warten
+                handler.postDelayed(this, 150);
+                return;
+            }
+            Item it = current();
+            if (fps > 0 && it != null) rememberFps(it.url, fps);
+            boolean switched = fps > 0 && matchFrameRate(fps);
+            if (curtain.getVisibility() == View.VISIBLE) {
+                handler.removeCallbacks(reveal);
+                handler.postDelayed(reveal, switched ? 1800 : 0);   // Fernseher braucht nach dem Umstellen einen Moment
+            }
+        }
+    };
+
+    /** Fernseher auf eine passende Bildwiederholrate stellen; true = es wurde umgestellt. */
+    private boolean matchFrameRate(float fps) {
+        if (Build.VERSION.SDK_INT < 23 || fps < 10 || fps > 120 || Math.abs(fps - appliedFps) < 0.01f) return false;
         android.view.Display d = getWindowManager().getDefaultDisplay();
         android.view.Display.Mode cur = d.getMode();
         android.view.Display.Mode best = null;
@@ -586,10 +656,11 @@ public class PlayerActivity extends Activity implements Remote.Target {
             }
         }
         appliedFps = fps;
-        if (best == null || best.getModeId() == cur.getModeId()) return;
+        if (best == null || best.getModeId() == cur.getModeId()) return false;
         WindowManager.LayoutParams lp = getWindow().getAttributes();
         lp.preferredDisplayModeId = best.getModeId();
         getWindow().setAttributes(lp);
+        return true;
     }
 
     private void reportPlaying() {
@@ -668,6 +739,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
     }
 
     private void start(Item it) {
+        prepareRate(it);
         Media media = new Media(vlc, Uri.parse(it.url));
         media.setHWDecoderEnabled(true, false);
         media.addOption(":http-user-agent=" + USER_AGENT);
@@ -1086,6 +1158,11 @@ public class PlayerActivity extends Activity implements Remote.Target {
         root.addView(surface, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> layoutVideo());
+        curtain = new View(this);
+        curtain.setBackgroundColor(Color.BLACK);
+        curtain.setVisibility(View.GONE);
+        root.addView(curtain, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
 
         spinner = new ProgressBar(this, null, android.R.attr.progressBarStyleLarge);
         root.addView(spinner, new FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER));

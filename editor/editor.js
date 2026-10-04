@@ -1062,7 +1062,8 @@ async function followJob(body, cancelable) {
   cancel.textContent = 'Abbrechen';
   for (;;) {
     let j;
-    try { j = await api('/api/job'); } catch (e) { await new Promise((r) => setTimeout(r, 2000)); continue; }
+    // nicht über api(): ein mit Fehler beendeter Auftrag hat selbst ein Feld „error“ (das ist kein Abruffehler)
+    try { j = await (await fetch('/api/job')).json(); } catch (e) { await new Promise((r) => setTimeout(r, 2000)); continue; }
     step.textContent = (j.pl ? `„${j.pl}“: ` : '') + (j.step || '');
     const known = j.total > 0 && j.done !== null && j.done !== undefined;
     bar.classList.toggle('indet', !known);

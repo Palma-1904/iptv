@@ -92,6 +92,15 @@ final class Remote {
         }
     }
 
+    /** Name der eingerichteten Liste (z. B. „asw“) – leer, solange die Webapp nichts gemeldet hat. */
+    static String currentList() {
+        return list;
+    }
+
+    static String deviceName() {
+        return deviceName == null ? Build.MODEL : deviceName;
+    }
+
     /** Was läuft gerade? state: playing, paused, stopped, error, sleep, overview */
     static void status(String s, String t, String ty) {
         state = s;

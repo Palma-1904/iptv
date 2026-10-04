@@ -191,77 +191,107 @@ public class MainActivity extends Activity implements Remote.Target {
         }
     }
 
-    /** Einrichtung: Einrichtungs-Link aus dem Editor eingeben, Ansicht wählen. */
+    /** Einrichtung: Liste (Einrichtungs-Link) und Ansicht – sonst nichts. */
     private void showSetup() {
         final EditText input = new EditText(this);
         input.setSingleLine(true);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        input.setHint("Einrichtungs-Link oder BENUTZER/GIST/name");
+        input.setHint("Neuer Einrichtungs-Link (leer = Liste behalten)");
         android.widget.LinearLayout box = new android.widget.LinearLayout(this);
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
         box.setPadding(48, 8, 48, 0);
         box.addView(input);
-        // Autostart beim Einschalten: an/aus und (ab Fire OS 8) einmalig erlauben
-        final boolean auto = AutostartService.enabled(this);
-        android.widget.Button autoBtn = new android.widget.Button(this);
-        autoBtn.setText(auto ? "Autostart beim Einschalten: AN (ausschalten)" : "Autostart beim Einschalten: AUS (einschalten)");
-        autoBtn.setOnClickListener(v -> {
-            prefs.edit().putBoolean("autostart", !auto).apply();
-            if (!auto) AutostartService.start(this);
-            else stopService(new Intent(this, AutostartService.class));
-            Toast.makeText(this, !auto ? "Autostart eingeschaltet" : "Autostart ausgeschaltet", Toast.LENGTH_SHORT).show();
-            autoBtn.setText(!auto ? "Autostart beim Einschalten: AN" : "Autostart beim Einschalten: AUS");
-            autoBtn.setEnabled(false);
-        });
-        box.addView(autoBtn);
-        if (auto && android.os.Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(this)) {
-            android.widget.Button allowAuto = new android.widget.Button(this);
-            allowAuto.setText("Autostart erlauben (einmalig: „Über anderen Apps einblenden“)");
-            allowAuto.setOnClickListener(v -> {
-                AutostartService.suppress(5 * 60 * 1000L);
-                try {
-                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:" + getPackageName())));
-                } catch (Exception e) {
-                    Toast.makeText(this, "Diese Einstellung gibt es auf diesem Stick nicht – Autostart funktioniert dann nur nach dem Hochfahren.",
-                            Toast.LENGTH_LONG).show();
-                }
-            });
-            box.addView(allowAuto);
-        }
-        // Home-Taste: App kommt gleich zurück (gegen versehentliches Hinausfallen)
-        final boolean home = AutostartService.homeReturns(this);
-        android.widget.Button homeBtn = new android.widget.Button(this);
-        homeBtn.setText(home ? "Home-Taste: App kommt zurück – AN (ausschalten)" : "Home-Taste: App kommt zurück – AUS (einschalten)");
-        homeBtn.setOnClickListener(v -> {
-            prefs.edit().putBoolean("homeReturns", !home).apply();
-            homeBtn.setText(!home ? "Home-Taste: App kommt zurück – AN" : "Home-Taste: App kommt zurück – AUS");
-            homeBtn.setEnabled(false);
-        });
-        box.addView(homeBtn);
-        // Einmalig erlauben, damit Updates (auch per Fernwartung) nur noch „Installieren“ brauchen
-        if (!Updater.installAllowed(this)) {
-            android.widget.Button allow = new android.widget.Button(this);
-            allow.setText("Automatische Updates erlauben (einmalig)");
-            allow.setOnClickListener(v -> Updater.openInstallPermission(this));
-            box.addView(allow);
-        }
+        android.widget.Button more = new android.widget.Button(this);
+        more.setText("Weitere Einstellungen ›");
+        box.addView(more);
+
+        boolean configured = prefs.getBoolean(PREF_CONFIGURED, false);
+        String list = Remote.currentList();
+        String view = "senioren".equals(prefs.getString("view", "")) ? "Senioren" : "Komplett";
+        String msg = configured
+                ? "Eingerichtet: Liste „" + (list.isEmpty() ? "?" : list) + "“ · Ansicht " + view + "\n\n"
+                  + "Ansicht wechseln: unten wählen. Andere Liste: Einrichtungs-Link eingeben."
+                : "Einrichtungs-Link aus dem Playlist-Editor eingeben und Ansicht wählen.\n"
+                  + "Tipp: Mit der Fire-TV-App auf dem Handy lässt sich bequem tippen.";
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Einrichtung")
-                .setMessage("Einrichtungs-Link aus dem Playlist-Editor eingeben und Ansicht wählen.\n\n"
-                        + "Tipp: Mit der Amazon-Fire-TV-App auf dem Handy kann man bequem tippen oder einfügen.\n"
-                        + "Später erneut: Menü-Taste (☰) auf der Fernbedienung 3 Sekunden gedrückt halten.")
+                .setMessage(msg)
                 .setView(scroll(box))
                 .setPositiveButton("Komplett", (d, w) -> applySetup(input.getText().toString(), "komplett"))
                 .setNegativeButton("Senioren", (d, w) -> applySetup(input.getText().toString(), "senioren"))
-                .setNeutralButton("Abbrechen", (d, w) -> {
-                    if (web.getUrl() == null) load(null);
-                    else web.evaluateJavascript("window.IPTV&&IPTV.onAppResume&&IPTV.onAppResume()", null);
-                })
+                .setNeutralButton("Abbrechen", (d, w) -> closeSetup())
                 .setCancelable(false)
                 .create();
+        more.setOnClickListener(v -> {
+            dialog.dismiss();
+            showSettings();
+        });
         dialog.show();
+    }
+
+    private void closeSetup() {
+        if (web.getUrl() == null) load(null);
+        else web.evaluateJavascript("window.IPTV&&IPTV.onAppResume&&IPTV.onAppResume()", null);
+    }
+
+    /** Weitere Einstellungen: schlichte Liste, ein Klick schaltet um. */
+    private void showSettings() {
+        final boolean auto = AutostartService.enabled(this);
+        final boolean home = AutostartService.homeReturns(this);
+        final boolean overlay = android.os.Build.VERSION.SDK_INT < 23 || android.provider.Settings.canDrawOverlays(this);
+        final boolean install = Updater.installAllowed(this);
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        java.util.List<Runnable> actions = new java.util.ArrayList<>();
+        labels.add("Autostart beim Einschalten:  " + (auto ? "AN" : "AUS"));
+        actions.add(() -> {
+            prefs.edit().putBoolean("autostart", !auto).apply();
+            if (!auto) AutostartService.start(this);
+            else stopService(new Intent(this, AutostartService.class));
+            showSettings();
+        });
+        labels.add("Home-Taste holt die App zurück:  " + (home ? "AN" : "AUS"));
+        actions.add(() -> {
+            prefs.edit().putBoolean("homeReturns", !home).apply();
+            showSettings();
+        });
+        if (!overlay) {
+            labels.add("⚠ Erlaubnis für Autostart fehlt – was tun?");
+            actions.add(this::explainOverlay);
+        }
+        if (!install) {
+            labels.add("⚠ Erlaubnis für Updates fehlt – jetzt erlauben");
+            actions.add(() -> Updater.openInstallPermission(this));
+        }
+        labels.add("Fertig");
+        actions.add(this::closeSetup);
+        new AlertDialog.Builder(this)
+                .setTitle("Weitere Einstellungen  ·  Version " + BuildConfig.VERSION_CODE)
+                .setItems(labels.toArray(new String[0]), (d, i) -> actions.get(i).run())
+                .setOnCancelListener(d -> closeSetup())
+                .show();
+    }
+
+    /** Fire OS 8 versteckt die Einstellung „Über anderen Apps einblenden“ oft. */
+    private void explainOverlay() {
+        new AlertDialog.Builder(this)
+                .setTitle("Erlaubnis für Autostart")
+                .setMessage("Damit die App sich beim Einschalten und nach der Home-Taste selbst öffnen darf, "
+                        + "braucht sie die Erlaubnis „Über anderen Apps einblenden“.\n\n"
+                        + "Auf vielen Fire-TV-Sticks zeigt Amazon diese Einstellung nicht an. Dann wird sie einmalig "
+                        + "vom Computer aus gesetzt (ADB) – Thomas fragen.")
+                .setPositiveButton("Einstellung öffnen", (d, w) -> {
+                    AutostartService.suppress(5 * 60 * 1000L);
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName())));
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Diese Einstellung gibt es auf diesem Stick nicht.", Toast.LENGTH_LONG).show();
+                        showSettings();
+                    }
+                })
+                .setNegativeButton("Zurück", (d, w) -> showSettings())
+                .show();
     }
 
     private void applySetup(String raw, String view) {

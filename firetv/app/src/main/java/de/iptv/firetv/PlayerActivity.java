@@ -577,9 +577,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
         media.addOption(":live-caching=5000");
         if (it.url.split("\\?")[0].toLowerCase(Locale.ROOT).endsWith(".m3u8")) {
             // HLS: Anbieter liefert ~10-s-Stücke und ist zeitweise langsamer als Echtzeit (gemessen
-            // bei RTL Crime: 12 s für 10 s Film) -> 20 s hinter live bleiben, bis 40 s Vorrat halten
-            media.addOption(":adaptive-livedelay=20000");
-            media.addOption(":adaptive-maxbuffer=40000");
+            // bei RTL Crime: 12 s für 10 s Film) -> 30 s hinter live (wie Samsung), bis 60 s Vorrat; Stabilität vor Aktualität
+            media.addOption(":adaptive-livedelay=30000");
+            media.addOption(":adaptive-maxbuffer=60000");
         }
         player.setMedia(media);
         media.release();

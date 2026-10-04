@@ -53,7 +53,7 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Kanal (`remoteTopic` in settings.json) und legt `fernwartung.json` in den Gist. App (`Remote.java`) meldet Status an
   `<kanal>-status` (Start, Wechsel, alle 5 min), holt Befehle von `<kanal>-cmd` (alle 15 s): play (norm-Adresse),
   message, stop, reload, update, view. Senderliste fürs Umschalten aus `data/out/<liste>.m3u`.
-- Player-Puffer: Live 5 s, Filme 8 s; HLS live 20 s hinter live, bis 40 s Vorrat (Anbieter liefert 10-s-Stücke teils langsamer als Echtzeit).
+- Player-Puffer: Live 5 s, Filme 8 s; HLS live 30 s hinter live, bis 60 s Vorrat (Anbieter liefert 10-s-Stücke teils langsamer als Echtzeit).
 - **Auffrischen im Player**: alle 2 h ruft der Player `MainActivity.requestRefresh()` → Webapp `IPTV.nativeRefresh()`
   lädt Liste+EPG neu und schickt einen neuen Baum; der Player übernimmt ihn ohne Unterbrechung (`adopt`).
 - **Zugang je Playlist**: Auswahlfeld „Zugang“ in der Toolbar stellt alle Einträge einer Playlist auf eine andere

@@ -74,6 +74,7 @@
     <aside class="pane right">
       <div class="right-bar">
         <span id="pl-summary"></span>
+        <button id="dupes" type="button" title="Doppelte Sender der Playlist zeigen und entfernen">Doppelte</button>
         <button id="check" type="button" title="Alle Live-Sender dieser Playlist kurz anspielen und defekte markieren">Sender prüfen</button>
         <button id="epg-order" type="button" title="Reihenfolge der Sender im Reiter „Programm“ der Webapp">Programm-Reihenfolge</button>
         <button id="group-add" type="button">＋ Gruppe</button>
@@ -162,6 +163,20 @@
       <h2>Fernwartung</h2>
       <div id="remote-body"></div>
       <div class="actions"><button type="button" id="remote-off" class="link" hidden>Fernwartung ausschalten</button><span class="spacer"></span><button value="close" class="primary">Schließen</button></div>
+    </form>
+  </dialog>
+
+  <!-- Doppelte Sender -->
+  <dialog id="dlg-dupes">
+    <form method="dialog">
+      <h2 id="dupes-title">Doppelte Sender</h2>
+      <p class="hint">Gleicher Sender mehrfach in der Playlist (auch in anderen Gruppen oder Qualitäten). Vorgewählt: die beste Fassung bleibt (☆), die anderen werden entfernt (☑). Häkchen nach Wunsch ändern.</p>
+      <div id="dupes-list" class="dupes-list"></div>
+      <div class="actions">
+        <span class="spacer"></span>
+        <button value="cancel" type="submit" formnovalidate>Abbrechen</button>
+        <button value="ok" type="submit" class="danger" id="dupes-ok">Markierte entfernen</button>
+      </div>
     </form>
   </dialog>
 

@@ -782,6 +782,68 @@ function openSort(g) {
   dlg.showModal();
 }
 
+// ---------- Doppelte Sender (ganze Playlist) ----------
+
+function findDupes(pl) {
+  const byKey = new Map();
+  pl.groups.forEach((g) => g.items.forEach((item, i) => {
+    if (item.variants) return;                      // Filme mit Fassungen: eigene Logik
+    const live = item.key.split(':')[1] === 'live';
+    const name = itemName(item);
+    // Live: gleicher Sender (Name ohne Land/Qualität); sonst: exakt gleicher Eintrag
+    const k = live ? 'live|' + sortKey(name) : 'key|' + item.key.split(':').slice(1).join(':');
+    if (!k.replace(/^\w+\|/, '')) return;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push({ g, item, i, name, q: qualityRank(name) });
+  }));
+  return [...byKey.values()].filter((list) => list.length > 1)
+    .map((list) => list.sort((a, b) => a.q - b.q || pl.groups.indexOf(a.g) - pl.groups.indexOf(b.g) || a.i - b.i));
+}
+
+function openDupes() {
+  const pl = playlist();
+  if (!pl) return toast('Bitte eine Playlist wählen.', true);
+  const dupes = findDupes(pl);
+  if (!dupes.length) return toast('Keine doppelten Sender in „' + pl.name + '“.');
+  const box = $('#dupes-list');
+  box.textContent = '';
+  const checks = [];
+  dupes.forEach((list) => {
+    const d = el('div', 'dupe');
+    d.appendChild(el('h4', '', `${list[0].name.replace(/^\s*[A-Z]{2,4}\s*[|:]\s*/, '')}  –  ${list.length}×`));
+    list.forEach((e, n) => {
+      const lab = el('label');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = n > 0;                            // beste Fassung bleibt
+      checks.push({ cb, e });
+      lab.appendChild(cb);
+      lab.appendChild(el('span', '', e.name));
+      lab.appendChild(el('span', 'grp', '· ' + e.g.name));
+      if (n === 0) lab.appendChild(el('span', 'keep', '☆ beste Fassung'));
+      d.appendChild(lab);
+    });
+    box.appendChild(d);
+  });
+  const total = () => checks.filter((c) => c.cb.checked).length;
+  $('#dupes-title').textContent = `Doppelte Sender in „${pl.name}“ – ${dupes.length} Sender mehrfach`;
+  $('#dupes-ok').textContent = `${total()} markierte entfernen`;
+  box.onchange = () => { $('#dupes-ok').textContent = `${total()} markierte entfernen`; };
+  const dlg = $('#dlg-dupes');
+  dlg.returnValue = '';
+  dlg.onclose = () => {
+    if (dlg.returnValue !== 'ok') return;
+    const rm = new Set(checks.filter((c) => c.cb.checked).map((c) => c.e.item));
+    if (!rm.size) return;
+    pl.groups.forEach((g) => { g.items = g.items.filter((i) => !rm.has(i)); });
+    save();
+    renderPlaylist();
+    renderChannels();
+    toast(`${rm.size} doppelte Einträge entfernt – zum Übernehmen „Veröffentlichen“`);
+  };
+  dlg.showModal();
+}
+
 // ---------- Auswahl in der Playlist: mehrere Einträge verschieben ----------
 
 function selectItem(pl, g, item, ev) {
@@ -1884,6 +1946,7 @@ function bind() {
   $('#publish').onclick = () => publish(false);
   $('#publish-all').onclick = () => publish(true);
   $('#check').onclick = checkPlaylist;
+  $('#dupes').onclick = openDupes;
   $('#remote').onclick = openRemote;
   $('#remote-off').onclick = async () => {
     if (!confirm('Fernwartung ausschalten? Die Geräte melden sich dann nicht mehr.')) return;

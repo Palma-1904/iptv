@@ -367,3 +367,14 @@ dialog#dlg-remote { width: min(900px, 96vw); }
 .dev-cfg button.on { background: var(--accent-soft); border-color: var(--accent); }
 .dev-cfg .ok { color: var(--ok); }
 .dev-cfg .warn { color: var(--danger); }
+
+/* Doppelte Sender */
+dialog#dlg-dupes { width: min(720px, 94vw); }
+.dupes-list { max-height: 60vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.dupe { padding: 8px 12px; border-top: 1px solid var(--border); }
+.dupe:first-child { border-top: 0; }
+.dupe h4 { margin: 0 0 4px; font-size: 13px; }
+.dupe label { display: flex; align-items: center; gap: 8px; margin: 2px 0; font-weight: 400; font-size: 13px; flex-direction: row; }
+.dupe label input { width: auto; }
+.dupe .grp { color: var(--muted); }
+.dupe .keep { color: var(--ok); font-size: 11px; }

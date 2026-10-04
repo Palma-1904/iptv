@@ -79,6 +79,8 @@
         e.url = line;
         e.group = e.group || 'Sonstige';
         e.type = classify(e);
+        // Playlist schreibt „S01 E01“ (erkennen andere IPTV-Apps besser), angezeigt wird „S01E01“
+        if (e.type === 'series') e.name = e.name.replace(/\b(S\d{1,3}) (E\d{1,4})\b/, '$1$2');
         e.search = normalize(e.name + ' ' + e.group);
         out.push(e);
         cur = null;

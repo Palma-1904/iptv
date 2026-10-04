@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 11  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 12  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -721,7 +721,7 @@ def build_playlist(pl, state, warnings):
                     if vch['type'] == 'series' and not vch.get('episode'):
                         src = next((s for s in state['sources'] if s['id'] == sid), None)
                         for e in (xtream_episodes(src, v['key'].rsplit(':', 1)[1]) if src else []):
-                            t = f'{title} S{e["season"]:02d}E{e["episode"]:02d}'
+                            t = f'{title} S{e["season"]:02d} E{e["episode"]:02d}'
                             if e['title'] and e['title'] not in t:
                                 t += f' – {e["title"]}'
                             lines.append(f'#EXTINF:-1 tvg-type="series" tvg-logo="{logo}" x-work="{work}" '
@@ -739,7 +739,7 @@ def build_playlist(pl, state, warnings):
                 if not src:
                     continue
                 for e in xtream_episodes(src, item['key'].rsplit(':', 1)[1]):
-                    t = f'{name} S{e["season"]:02d}E{e["episode"]:02d}'
+                    t = f'{name} S{e["season"]:02d} E{e["episode"]:02d}'
                     if e['title'] and e['title'] not in t:
                         t += f' – {e["title"]}'
                     lines.append(f'#EXTINF:-1 tvg-type="series" tvg-logo="{attr(ch["logo"])}" '

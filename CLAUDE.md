@@ -32,6 +32,9 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   (sdkmanager-Skript scheitert am Leerzeichen im SSD-Namen → Java direkt mit `SdkManagerCli` aufrufen).
 - **Fassungen im Editor**: je Sprache UND Qualität eine Fassung ("DE", "DE 4K", "DE 4K HDR"; normale zuerst),
   beim Start werden bestehende Playlist-Einträge neu ermittelt. Webapp zeigt "Deutsch 4K".
+- **Seniorenansicht in der App** = nur Player: startet beim Öffnen mit dem letzten Sender (`lastSeniorUrl` in
+  SharedPreferences, sonst erster), Zurück verlässt den Player nicht, ☰ kurz = Senderliste, ☰ 3 s = Einrichtung
+  (in beiden Ansichten). Im Browser bleibt die Kachelansicht.
 - **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.
 
 ## Geheimnisse – nie ins Repo

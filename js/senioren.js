@@ -83,8 +83,8 @@
     IPTV.setTreeProvider(function () {
       return {
         version: version + ':' + Math.floor(Date.now() / 3600000),
-        build: function () { return { n: 'Übersicht', c: [{ n: 'Sender', c: entries.map(function (e) { return IPTV.nativeLeaf(e); }) }] }; },
-        pathOf: function (e) { var i = entries.indexOf(e); return i < 0 ? null : [0, i]; }
+        build: function () { return { n: 'Sender', c: entries.map(function (e) { return IPTV.nativeLeaf(e); }) }; },
+        pathOf: function (e) { var i = entries.indexOf(e); return i < 0 ? null : [i]; }
       };
     });
     found.forEach(function (x, i) {
@@ -112,6 +112,7 @@
       return a.getAttribute('href') === last;
     });
     TV.focusFirst('.channel', hit);
+    if (appPlayer && !lastAuto) setTimeout(autoStart, 300);
   }
 
   box.addEventListener('click', function (ev) {
@@ -119,6 +120,33 @@
     if (!a) return;
     try { sessionStorage.setItem('iptv-senior-last', a.getAttribute('href')); } catch (err) { /* ignorieren */ }
   });
+
+  // ---------- Fire-TV-App: Seniorenansicht nur als Player ----------
+  // Die App startet sofort mit dem zuletzt gesehenen Sender (beim ersten Mal mit dem ersten).
+  // Die Kacheln bleiben als Rückfall, falls der Start nicht klappt.
+  var N = window.IPTVNative;
+  var appPlayer = IPTV.platform === 'app' && N && typeof N.lastSeniorUrl === 'function' && typeof N.playPath === 'function';
+  var lastAuto = 0;
+
+  function autoStart() {
+    var tiles = box.querySelectorAll('.channel');
+    if (!tiles.length) return;
+    // Schutz gegen Endlosschleife, wenn der Player sofort wieder zugeht
+    if (Date.now() - lastAuto < 15000) {
+      document.documentElement.classList.remove('appplayer');
+      return;
+    }
+    lastAuto = Date.now();
+    var last = N.lastSeniorUrl();
+    var hit = Array.prototype.find.call(tiles, function (a) { return a._play && a._play.entry.url === last; });
+    (hit || tiles[0]).click();
+  }
+
+  if (appPlayer) {
+    document.documentElement.classList.add('appplayer');
+    // Die App ruft das beim erneuten Öffnen auf (z. B. nach der Home-Taste)
+    IPTV.onAppResume = autoStart;
+  }
 
   IPTV.watch(show);
   start();

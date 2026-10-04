@@ -65,6 +65,8 @@ public class PlayerActivity extends Activity {
     static volatile String treeVersion;
     static String pendingPath;
     /** Im Player geänderte Favoriten (Art -> Schlüssel -> an/aus); MainActivity gibt sie an die Webapp. */
+    /** ☰ 3 Sekunden gehalten: MainActivity soll die Einrichtung öffnen. */
+    static boolean openSetup;
     static final java.util.Map<String, java.util.Map<String, Boolean>> favChanges = new java.util.HashMap<>();
     /** Zuletzt gesehener Eintrag – die Webapp setzt dort den Fokus. */
     static String lastUrl;
@@ -182,6 +184,15 @@ public class PlayerActivity extends Activity {
     private int retries;
     private boolean failed;
     private float textScale = 1f;
+    private boolean senior;         // Seniorenansicht: nur Player, Zurück verlässt ihn nicht
+    private boolean menuHeld;       // ☰ wurde lange gehalten (Einrichtung) – kurzer Druck entfällt
+    private final Runnable menuHint = () -> Toast.makeText(this,
+            "Für die Einrichtung ☰ weiter gedrückt halten …", Toast.LENGTH_SHORT).show();
+    private final Runnable menuSetup = () -> {
+        menuHeld = true;
+        openSetup = true;
+        finish();
+    };
 
     private LibVLC vlc;
     private MediaPlayer player;
@@ -310,7 +321,10 @@ public class PlayerActivity extends Activity {
             }
             if (n == null || n.item == null) return false;
             rootNode = treeRoot;
-            if ("senioren".equals(o.optString("view"))) textScale = 1.25f;
+            if ("senioren".equals(o.optString("view"))) {
+                textScale = 1.25f;
+                senior = true;
+            }
             setContext(n);
             return true;
         } catch (Exception e) {
@@ -348,7 +362,10 @@ public class PlayerActivity extends Activity {
             Node grp = area.children.get(g);
             if (grp.children.isEmpty()) return false;
             int i = Math.max(0, Math.min(grp.children.size() - 1, o.optInt("index")));
-            if ("senioren".equals(o.optString("view"))) textScale = 1.25f;
+            if ("senioren".equals(o.optString("view"))) {
+                textScale = 1.25f;
+                senior = true;
+            }
             setContext(grp.children.get(i));
             return true;
         } catch (Exception e) {
@@ -378,6 +395,7 @@ public class PlayerActivity extends Activity {
     private void play() {
         Item it = items().get(index);
         lastUrl = it.url;
+        if (senior) getSharedPreferences("iptv", MODE_PRIVATE).edit().putString("lastSeniorUrl", it.url).apply();
         failed = false;
         status.setVisibility(View.GONE);
         spinner.setVisibility(View.VISIBLE);
@@ -509,6 +527,14 @@ public class PlayerActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.getRepeatCount() == 0) {
+                menuHeld = false;
+                handler.postDelayed(menuHint, 1200);
+                handler.postDelayed(menuSetup, 3000);
+            }
+            return true;
+        }
         if (listOpen()) {
             handler.removeCallbacks(hideList);
             handler.postDelayed(hideList, LIST_MS);
@@ -523,9 +549,6 @@ public class PlayerActivity extends Activity {
                     else closeList();
                     return true;
                 }
-                case KeyEvent.KEYCODE_MENU:
-                    closeList();
-                    return true;
                 case KeyEvent.KEYCODE_DPAD_UP:
                 case KeyEvent.KEYCODE_DPAD_DOWN:
                     return true;           // Listenende: nicht umschalten
@@ -556,9 +579,6 @@ public class PlayerActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 if (live) openList(); else seek(fast ? 60000 : 30000);
                 return true;
-            case KeyEvent.KEYCODE_MENU:
-                openList();
-                return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_NUMPAD_ENTER:
@@ -584,12 +604,29 @@ public class PlayerActivity extends Activity {
     }
 
     @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            handler.removeCallbacks(menuHint);
+            handler.removeCallbacks(menuSetup);
+            if (!menuHeld) {
+                if (listOpen()) closeList();
+                else openList();
+            }
+            menuHeld = false;
+            return true;
+        }
+        return super.onKeyUp(keyCode, event);
+    }
+
+    @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
         if (listOpen()) {
             closeList();
         } else if (info.getVisibility() == View.VISIBLE && !failed) {
             info.setVisibility(View.GONE);
+        } else if (senior) {
+            showInfo();                   // Seniorenansicht: nicht versehentlich hinausfallen
         } else {
             finish();
         }
@@ -784,7 +821,9 @@ public class PlayerActivity extends Activity {
                 infoProgress.setVisibility(View.GONE);
                 infoNext.setText("");
             }
-            infoHint.setText(size > 1
+            infoHint.setText(senior
+                    ? "▲ ▼  Sender wechseln     ◀ ▶  Senderliste     OK  Info"
+                    : size > 1
                     ? "▲ ▼  Sender wechseln     ◀ ▶  Senderliste     OK  Info     ↩  Übersicht"
                     : "◀ ▶  Liste     OK  Info     ↩  Übersicht");
         } else {
@@ -924,7 +963,7 @@ public class PlayerActivity extends Activity {
     /** Liste zeigt die Einträge von n; Auswahl auf select (oder dem ersten). */
     private void showNode(Node n, Node select) {
         browse = n;
-        listTitle.setText(n.parent == null ? "Übersicht" : n.name);
+        listTitle.setText(n.name);
         boolean leaves = !n.children.isEmpty() && n.children.get(0).item != null;
         String up = n.parent != null ? "   ◀ zurück" : "";
         boolean favs = hasFav(n);

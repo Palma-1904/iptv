@@ -116,6 +116,12 @@ public class MainActivity extends Activity {
 
     /** Schnittstelle für die Webapp: Wiedergabe im eingebauten Player. */
     private class Bridge {
+        /** Seniorenansicht: zuletzt gesehener Sender (Start beim Öffnen der App). */
+        @JavascriptInterface
+        public String lastSeniorUrl() {
+            return prefs.getString("lastSeniorUrl", "");
+        }
+
         /** Hat der Player den Playlist-Baum in dieser Fassung schon? */
         @JavascriptInterface
         public boolean hasTree(String version) {
@@ -171,12 +177,13 @@ public class MainActivity extends Activity {
                 .setTitle("Einrichtung")
                 .setMessage("Einrichtungs-Link aus dem Playlist-Editor eingeben und Ansicht wählen.\n\n"
                         + "Tipp: Mit der Amazon-Fire-TV-App auf dem Handy kann man bequem tippen oder einfügen.\n"
-                        + "Später erneut: Menü-Taste (☰) auf der Fernbedienung.")
+                        + "Später erneut: Menü-Taste (☰) auf der Fernbedienung – im Fernsehbild 3 Sekunden gedrückt halten.")
                 .setView(input)
                 .setPositiveButton("Komplett", (d, w) -> applySetup(input.getText().toString(), "komplett"))
                 .setNegativeButton("Senioren", (d, w) -> applySetup(input.getText().toString(), "senioren"))
                 .setNeutralButton("Abbrechen", (d, w) -> {
                     if (web.getUrl() == null) load(null);
+                    else web.evaluateJavascript("window.IPTV&&IPTV.onAppResume&&IPTV.onAppResume()", null);
                 })
                 .setCancelable(false)
                 .create();
@@ -249,6 +256,13 @@ public class MainActivity extends Activity {
             PlayerActivity.favChanges.clear();
             web.evaluateJavascript("window.IPTV&&IPTV.applyNativeFavs&&IPTV.applyNativeFavs(" + changes + ")", null);
         }
+        // ☰ im Player 3 Sekunden gehalten: Einrichtung statt automatischem Start
+        if (PlayerActivity.openSetup) {
+            PlayerActivity.openSetup = false;
+            PlayerActivity.lastUrl = null;
+            showSetup();
+            return;
+        }
         // Fokus auf den zuletzt gesehenen Sender setzen
         String last = PlayerActivity.lastUrl;
         if (last != null) {
@@ -256,6 +270,8 @@ public class MainActivity extends Activity {
             web.evaluateJavascript("window.IPTV&&IPTV.nativeReturned&&IPTV.nativeReturned("
                     + JSONObject.quote(last) + ")", null);
         }
+        // Seniorenansicht: beim (erneuten) Öffnen der App gleich wieder den letzten Sender starten
+        web.evaluateJavascript("window.IPTV&&IPTV.onAppResume&&IPTV.onAppResume()", null);
     }
 
     @Override

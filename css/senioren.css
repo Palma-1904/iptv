@@ -99,3 +99,8 @@ main {
   .channel { min-height: 96px; }
   .name { font-size: 30px; }
 }
+
+/* Fire-TV-App: Seniorenansicht startet direkt im Player – statt Kacheln nur Logo und Hinweis */
+.appplayer main, .appplayer .hint { display: none; }
+.appplayer header { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; }
+.appplayer header::after { content: "Sender werden geladen …"; margin-top: 24px; font-size: 30px; color: var(--muted); }

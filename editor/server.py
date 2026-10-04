@@ -491,6 +491,36 @@ def load_catalog(source_id):
 
 # ---------- Veröffentlichen ----------
 
+def prefetch_episodes(pl, state, lookup):
+    """Folgenlisten aller Serien der Playlist parallel laden (nur Datenabfragen, keine Streams) –
+    nacheinander dauerte das bei vielen Serien sehr lange. Danach liegen sie im Zwischenspeicher."""
+    from concurrent.futures import ThreadPoolExecutor
+    sources = {s['id']: s for s in state['sources']}
+    todo = set()
+    for g in pl.get('groups', []):
+        for item in g.get('items', []):
+            for key in [v['key'] for v in item.get('variants') or []] or [item['key']]:
+                ch = lookup(key)
+                if not ch or ch['type'] != 'series' or ch.get('episode'):
+                    continue
+                sid, sser = key.split(':', 1)[0], key.rsplit(':', 1)[1]
+                src = sources.get(sid)
+                if src and src.get('type') == 'xtream' and \
+                        not fresh(os.path.join(CACHE, 'series', f'{sid}_{sser}.json'), SERIES_TTL):
+                    todo.add((sid, sser))
+    if not todo:
+        return
+
+    def load(job):
+        try:
+            xtream_episodes(sources[job[0]], job[1])
+        except Exception:
+            pass   # Fehler zeigt der normale Durchlauf
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        list(pool.map(load, sorted(todo)))
+
+
 def build_playlist(pl, state, warnings):
     """Erzeugt M3U-Text; liefert außerdem benötigte EPG-IDs je Quelle."""
     catalogs, index = {}, {}
@@ -503,6 +533,7 @@ def build_playlist(pl, state, warnings):
                 index[it['key']] = it
         return index.get(key)
 
+    prefetch_episodes(pl, state, lookup)
     lines = ['#EXTM3U']
     epg_ids = {}  # source_id -> set(tvgId)
     live = []     # Live-Sender: Zeile, tvg-id, Namen (für Zusatz-EPG)

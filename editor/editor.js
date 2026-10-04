@@ -376,14 +376,20 @@ function renderGroups() {
 
 // ---------- Mitte: Sender ----------
 
+// Suchtext vergleichbar machen: klein, ohne Akzente und Satzzeichen ("Chicago P.D." -> "chicago pd")
+function searchNorm(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}\s]+/gu, '').replace(/\s+/g, ' ');
+}
+
 function channelList() {
-  const q = ui.search.trim().toLowerCase();
+  const q = searchNorm(ui.search).trim();
   const items = visibleItems();
   if (q) {
-    const terms = q.split(/\s+/);
+    const terms = q.split(' ');
     return items.filter((it) => {
-      const s = (it.name + ' ' + it.group).toLowerCase();
-      return terms.every((t) => s.includes(t));
+      if (it._s === undefined) it._s = searchNorm(it.name + ' ' + it.group);
+      return terms.every((t) => it._s.includes(t));
     });
   }
   return ui.group ? items.filter((it) => it.group === ui.group) : [];
@@ -481,6 +487,52 @@ function newPlaylist() {
   ui.targetGroupId = null;
   save();
   renderAll();
+}
+
+// Vorauswahl „Deutsch“: neue Playlist mit allen deutschen Live-Gruppen und Film-Gruppen der Quelle
+// (Gruppen der Länder DE/AT/CH). Filme nur in deutschen Fassungen (auch 4K), jeder Film einmal.
+// Serien wählt man selbst aus – alle wären zu viele Folgen.
+const GERMAN = new Set(['DE', 'AT', 'CH']);
+async function germanPackage() {
+  const src = source();
+  if (!src) return toast('Bitte zuerst eine Quelle wählen.', true);
+  const c = await busy(() => loadCatalog(src.id)).catch((e) => { toast(e.message, true); return null; });
+  if (!c) return;
+  const name = prompt('Name der neuen Playlist (alle deutschen Live-Sender und Filme aus „' + src.name + '“):', 'Deutsch');
+  if (!name || !name.trim()) return;
+  const pl = { id: 'p' + uid(), name: name.trim(), groups: [] };
+  const groups = new Map();   // Gruppenname -> Playlist-Gruppe (Reihenfolge wie in der Quelle)
+  const seenWorks = new Set();
+  let live = 0, movies = 0;
+  ['live', 'movie'].forEach((type) => c.items.forEach((it) => {
+    if (it.type !== type || !GERMAN.has(it.cc)) return;
+    let item;
+    if (type === 'live') {
+      item = { key: it.key, label: it.name, sg: it.group };
+      live++;
+    } else {
+      if (it.wk && seenWorks.has(it.wk)) return;
+      if (it.wk) seenWorks.add(it.wk);
+      const vs = (it.wk ? variantsOf(it) : [it]).filter((v) => GERMAN.has(v.lang));
+      if (!vs.length) vs.push(Object.assign({}, it, { lang: it.cc }));   // z. B. Film „IT“ in deutscher Gruppe
+      item = { key: vs[0].key, label: it.title || it.name, variants: vs.map((v) => ({ key: v.key, lang: variantLabel(v) })) };
+      movies++;
+    }
+    let g = groups.get(type + '|' + it.group);
+    if (!g) {
+      g = { id: 'g' + uid(), name: it.group, items: [] };
+      groups.set(type + '|' + it.group, g);
+      pl.groups.push(g);
+    }
+    g.items.push(item);
+  }));
+  if (!pl.groups.length) return toast('In dieser Quelle gibt es keine deutschen Gruppen.', true);
+  state.playlists.push(pl);
+  ui.playlistId = pl.id;
+  ui.targetGroupId = null;
+  save();
+  renderAll();
+  toast(`Playlist „${pl.name}“: ${live} Live-Sender und ${movies} Filme in ${pl.groups.length} Gruppen. Serien bitte selbst hinzufügen.`);
 }
 
 // Fügt Sender in die Ziel-Gruppe ein; ohne Ziel in eine Gruppe mit dem Namen der Quell-Gruppe.
@@ -1284,6 +1336,7 @@ function renderAll() {
   renderPlaylistSelect();
   document.querySelectorAll('.types button').forEach((b) => b.classList.toggle('active', b.dataset.type === ui.type));
   $('#by-title-wrap').hidden = ui.type === 'live';
+  $('#search').placeholder = { live: 'Sender suchen …', movie: 'Filme suchen (z. B. Dune) …', series: 'Serien suchen (z. B. Chicago PD) …' }[ui.type];
   renderCountries();
   renderGroups();
   renderChannels();
@@ -1322,6 +1375,7 @@ function bind() {
     renderDeviceWarning();
   };
   $('#pl-add').onclick = newPlaylist;
+  $('#pl-de').onclick = germanPackage;
   $('#pl-rename').onclick = () => {
     const pl = playlist();
     if (!pl) return;

@@ -9,6 +9,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -314,7 +315,10 @@ public class PlayerActivity extends Activity implements Remote.Target {
         vlc = new LibVLC(this, new ArrayList<>(Arrays.asList(
                 "--http-reconnect",
                 "--audio-language=de,deu,ger",
-                "--audio-time-stretch")));
+                "--audio-time-stretch",
+                // Zeitsteuerung bei Live-Sendern nicht ständig nachregeln (verursacht kleine Ruckler)
+                "--clock-jitter=0",
+                "--clock-synchro=0")));
         player = new MediaPlayer(vlc);
         player.attachViews(surface, null, false, false);
         player.setEventListener(event -> {
@@ -333,6 +337,8 @@ public class PlayerActivity extends Activity implements Remote.Target {
                         position = pendingSeek;
                         pendingSeek = -1;
                     }
+                    handler.removeCallbacks(matchRate);
+                    handler.postDelayed(matchRate, 1500);   // Bildrate erst nach dem Start bekannt
                     break;
                 case MediaPlayer.Event.TimeChanged:
                     position = event.getTimeChanged();
@@ -491,6 +497,46 @@ public class PlayerActivity extends Activity implements Remote.Target {
         else start(it);
         if (!listOpen()) showInfo();
         if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    // ---------- Bildwiederholrate an die Sendung anpassen ----------
+    // Deutsches Fernsehen: 25/50 Bilder/s. Der Stick gibt sonst 60 Hz aus -> Bilder werden ungleichmäßig
+    // wiederholt, das Bild „hakt“ regelmäßig. Daher Fernseher auf 50 Hz (bzw. passende Rate) schalten.
+    private float appliedFps;
+
+    private final Runnable matchRate = this::matchFrameRate;
+
+    private void matchFrameRate() {
+        if (Build.VERSION.SDK_INT < 23 || player == null) return;
+        float fps = 0;
+        try {
+            org.videolan.libvlc.Media.VideoTrack vt = player.getCurrentVideoTrack();
+            if (vt != null && vt.frameRateDen > 0) fps = (float) vt.frameRateNum / vt.frameRateDen;
+        } catch (Exception ignored) {
+            // keine Angabe
+        }
+        if (fps < 10 || fps > 120 || Math.abs(fps - appliedFps) < 0.01f) return;
+        android.view.Display d = getWindowManager().getDefaultDisplay();
+        android.view.Display.Mode cur = d.getMode();
+        android.view.Display.Mode best = null;
+        float bestScore = Float.MAX_VALUE;
+        for (android.view.Display.Mode m : d.getSupportedModes()) {
+            if (m.getPhysicalWidth() != cur.getPhysicalWidth() || m.getPhysicalHeight() != cur.getPhysicalHeight()) continue;
+            float r = m.getRefreshRate();
+            float ratio = r / fps;
+            float off = Math.abs(ratio - Math.round(ratio));   // ganzes Vielfaches der Bildrate?
+            if (Math.round(ratio) < 1 || off > 0.01f) continue;
+            float score = off * 1000 + Math.abs(r - 50);         // bevorzugt 50/60 statt 25/24
+            if (score < bestScore) {
+                bestScore = score;
+                best = m;
+            }
+        }
+        appliedFps = fps;
+        if (best == null || best.getModeId() == cur.getModeId()) return;
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.preferredDisplayModeId = best.getModeId();
+        getWindow().setAttributes(lp);
     }
 
     private void reportPlaying() {

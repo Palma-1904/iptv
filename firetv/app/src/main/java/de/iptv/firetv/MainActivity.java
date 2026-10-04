@@ -160,6 +160,7 @@ public class MainActivity extends Activity implements Remote.Target {
             try {
                 JSONObject o = new JSONObject(json);
                 Remote.setPlaylist(o.optString("playlist"), o.optString("view"));
+                prefs.edit().putString("view", o.optString("view")).apply();
             } catch (Exception ignored) {
                 // nicht wichtig
             }
@@ -217,6 +218,7 @@ public class MainActivity extends Activity implements Remote.Target {
             android.widget.Button allowAuto = new android.widget.Button(this);
             allowAuto.setText("Autostart erlauben (einmalig: „Über anderen Apps einblenden“)");
             allowAuto.setOnClickListener(v -> {
+                AutostartService.suppress(5 * 60 * 1000L);
                 try {
                     startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:" + getPackageName())));
@@ -227,6 +229,16 @@ public class MainActivity extends Activity implements Remote.Target {
             });
             box.addView(allowAuto);
         }
+        // Home-Taste: App kommt gleich zurück (gegen versehentliches Hinausfallen)
+        final boolean home = AutostartService.homeReturns(this);
+        android.widget.Button homeBtn = new android.widget.Button(this);
+        homeBtn.setText(home ? "Home-Taste: App kommt zurück – AN (ausschalten)" : "Home-Taste: App kommt zurück – AUS (einschalten)");
+        homeBtn.setOnClickListener(v -> {
+            prefs.edit().putBoolean("homeReturns", !home).apply();
+            homeBtn.setText(!home ? "Home-Taste: App kommt zurück – AN" : "Home-Taste: App kommt zurück – AUS");
+            homeBtn.setEnabled(false);
+        });
+        box.addView(homeBtn);
         // Einmalig erlauben, damit Updates (auch per Fernwartung) nur noch „Installieren“ brauchen
         if (!Updater.installAllowed(this)) {
             android.widget.Button allow = new android.widget.Button(this);
@@ -329,6 +341,7 @@ public class MainActivity extends Activity implements Remote.Target {
     @Override
     protected void onResume() {
         super.onResume();
+        AutostartService.shown();
         web.onResume();
         // Zurück aus dem Player: im Player geänderte Favoriten an die Webapp geben
         if (!PlayerActivity.favChanges.isEmpty()) {
@@ -416,8 +429,16 @@ public class MainActivity extends Activity implements Remote.Target {
         super.onDestroy();
     }
 
+    /** Home-Taste (nur echtes Verlassen durch den Nutzer, nicht Update-Fenster o. ä.). */
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        AutostartService.bounceBack(this);
+    }
+
     @Override
     protected void onPause() {
+        AutostartService.hidden();
         web.onPause();
         super.onPause();
     }

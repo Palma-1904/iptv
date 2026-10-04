@@ -728,6 +728,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
     private void openInVlc() {
         Item it = items().get(index);
         player.stop();
+        AutostartService.suppress(6 * 3600 * 1000L);   // in VLC weiterschauen
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.setDataAndType(Uri.parse(it.url), "video/*");
         intent.setPackage(VLC);
@@ -937,6 +938,25 @@ public class PlayerActivity extends Activity implements Remote.Target {
         } else {
             finish();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        AutostartService.shown();
+    }
+
+    @Override
+    protected void onPause() {
+        AutostartService.hidden();
+        super.onPause();
+    }
+
+    /** Home-Taste: Player schließt (Verbindung frei), die App kommt auf Wunsch gleich zurück. */
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        AutostartService.bounceBack(this);
     }
 
     // ---------- Lebenszyklus: Verbindung immer freigeben ----------

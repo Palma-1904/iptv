@@ -50,6 +50,7 @@ final class Updater {
 
     /** Einstellung „Unbekannte Apps installieren“ für diese App öffnen. */
     static void openInstallPermission(Activity a) {
+        AutostartService.suppress(5 * 60 * 1000L);
         try {
             a.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                     Uri.parse("package:" + a.getPackageName())));
@@ -233,6 +234,7 @@ final class Updater {
     /** Fire-OS-Installer öffnen; nach dem Update startet die App von selbst wieder (UpdateReceiver). */
     private static void install(Activity a, File apk) {
         a.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit().putBoolean("restartAfterUpdate", true).apply();
+        AutostartService.suppress(10 * 60 * 1000L);   // Installieren-Fenster nicht verdrängen
         Uri uri = FileProvider.getUriForFile(a, a.getPackageName() + ".files", apk);
         Intent i = new Intent(Intent.ACTION_VIEW);
         i.setDataAndType(uri, "application/vnd.android.package-archive");

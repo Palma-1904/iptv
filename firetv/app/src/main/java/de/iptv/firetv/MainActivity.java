@@ -195,13 +195,24 @@ public class MainActivity extends Activity implements Remote.Target {
         input.setSingleLine(true);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         input.setHint("Einrichtungs-Link oder BENUTZER/GIST/name");
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding(48, 8, 48, 0);
+        box.addView(input);
+        // Einmalig erlauben, damit Updates (auch per Fernwartung) nur noch „Installieren“ brauchen
+        if (!Updater.installAllowed(this)) {
+            android.widget.Button allow = new android.widget.Button(this);
+            allow.setText("Automatische Updates erlauben (einmalig)");
+            allow.setOnClickListener(v -> Updater.openInstallPermission(this));
+            box.addView(allow);
+        }
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Einrichtung")
                 .setMessage("Einrichtungs-Link aus dem Playlist-Editor eingeben und Ansicht wählen.\n\n"
                         + "Tipp: Mit der Amazon-Fire-TV-App auf dem Handy kann man bequem tippen oder einfügen.\n"
                         + "Später erneut: Menü-Taste (☰) auf der Fernbedienung 3 Sekunden gedrückt halten.")
-                .setView(input)
+                .setView(box)
                 .setPositiveButton("Komplett", (d, w) -> applySetup(input.getText().toString(), "komplett"))
                 .setNegativeButton("Senioren", (d, w) -> applySetup(input.getText().toString(), "senioren"))
                 .setNeutralButton("Abbrechen", (d, w) -> {
@@ -334,9 +345,7 @@ public class MainActivity extends Activity implements Remote.Target {
                 Remote.report("Neu geladen");
                 break;
             case "update":
-                prefs.edit().remove("updateSnooze").apply();
-                Updater.check(this, true);
-                Remote.report("Update-Prüfung gestartet (vor Ort mit OK bestätigen)");
+                Updater.remoteUpdate(this);   // still laden, dann nur „Installieren“ am Gerät
                 break;
             case "view":
                 if (player != null) player.remote("close", arg);

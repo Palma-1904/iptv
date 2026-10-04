@@ -26,14 +26,41 @@ import java.net.URL;
  * Ist sie höher als die eigene, wird gefragt, geladen und der Android-Installer geöffnet.
  * Prüft bei jedem Start der App, im laufenden Betrieb höchstens alle 6 Stunden;
  * „Später“ fragt einen Tag lang nicht mehr.
+ * Per Fernwartung: still im Hintergrund laden, dann direkt das „Installieren“-Fenster von Fire OS
+ * (das schreibt Fire OS vor); danach startet die App von selbst wieder (UpdateReceiver).
  */
 final class Updater {
 
     private static final long CHECK_EVERY = 6 * 3600 * 1000L;
     private static final long SNOOZE = 24 * 3600 * 1000L;
+    private static final Handler main = new Handler(Looper.getMainLooper());
     private static boolean running;
 
+    interface Progress {
+        void percent(int p);
+    }
+
     private Updater() {
+    }
+
+    /** Darf die App neue Versionen installieren? (Ab Android 8 einmalig in den Einstellungen erlauben.) */
+    static boolean installAllowed(Context c) {
+        return Build.VERSION.SDK_INT < 26 || c.getPackageManager().canRequestPackageInstalls();
+    }
+
+    /** Einstellung „Unbekannte Apps installieren“ für diese App öffnen. */
+    static void openInstallPermission(Activity a) {
+        try {
+            a.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + a.getPackageName())));
+        } catch (Exception e) {
+            try {
+                a.startActivity(new Intent(Settings.ACTION_SECURITY_SETTINGS));
+            } catch (Exception ignored) {
+                Toast.makeText(a, "Einstellung nicht gefunden: Einstellungen → Mein Fire TV → Entwickleroptionen.",
+                        Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     /** atStart: beim Öffnen der App immer prüfen (sonst höchstens alle 6 Stunden). */
@@ -45,29 +72,45 @@ final class Updater {
         if (now < prefs.getLong("updateSnooze", 0)) return;
         running = true;
         prefs.edit().putLong("updateChecked", now).apply();
-        Handler main = new Handler(Looper.getMainLooper());
         new Thread(() -> {
-            int latest = 0;
-            try {
-                HttpURLConnection c = (HttpURLConnection) new URL(BuildConfig.START_URL + "app-version.txt").openConnection();
-                c.setConnectTimeout(10000);
-                c.setReadTimeout(10000);
-                c.setUseCaches(false);
-                if (c.getResponseCode() == 200) {
-                    try (InputStream in = c.getInputStream()) {
-                        byte[] b = new byte[32];
-                        int n = in.read(b);
-                        latest = Integer.parseInt(new String(b, 0, Math.max(0, n)).trim());
-                    }
-                }
-                c.disconnect();
-            } catch (Exception ignored) {
-                // offline o. ä.: nächstes Mal
-            }
-            final int v = latest;
+            int v = latestVersion();
             main.post(() -> {
                 running = false;
                 if (v > BuildConfig.VERSION_CODE && !a.isFinishing()) ask(a, prefs);
+            });
+        }).start();
+    }
+
+    /** Fernwartung: ohne Rückfragen laden, dann nur noch „Installieren“ am Gerät. */
+    static void remoteUpdate(Activity a) {
+        if (running) {
+            Remote.report("Update läuft bereits");
+            return;
+        }
+        running = true;
+        new Thread(() -> {
+            int v = latestVersion();
+            if (v == 0 || v <= BuildConfig.VERSION_CODE) {
+                main.post(() -> running = false);
+                Remote.report(v == 0 ? "Versionsprüfung fehlgeschlagen (Internet?)"
+                        : "Schon aktuell (Version " + BuildConfig.VERSION_CODE + ")");
+                return;
+            }
+            if (!installAllowed(a)) {
+                main.post(() -> running = false);
+                Remote.report("Installieren noch nicht erlaubt – einmalig vor Ort: ☰ 3 s halten → „Updates erlauben“");
+                return;
+            }
+            Remote.report("Version " + v + " wird im Hintergrund geladen …");
+            File apk = downloadApk(a, null);
+            main.post(() -> {
+                running = false;
+                if (apk == null) {
+                    Remote.report("Laden fehlgeschlagen – später erneut versuchen");
+                    return;
+                }
+                Remote.report("Version " + v + " geladen – wartet am Gerät auf „Installieren“");
+                install(a, apk);
             });
         }).start();
     }
@@ -83,18 +126,13 @@ final class Updater {
                 .show();
     }
 
+    /** Mit Fortschrittsanzeige laden (Update beim Start der App). */
     private static void download(Activity a) {
-        // Ab Android 8 muss die App einmal „unbekannte Apps installieren“ dürfen
-        if (Build.VERSION.SDK_INT >= 26 && !a.getPackageManager().canRequestPackageInstalls()) {
+        if (!installAllowed(a)) {
             Toast.makeText(a, "Bitte „Fernsehen“ erlauben, Apps zu installieren – danach erneut „Installieren“.",
                     Toast.LENGTH_LONG).show();
             a.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit().remove("updateChecked").apply();
-            try {
-                a.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:" + a.getPackageName())));
-            } catch (Exception ignored) {
-                // Einstellung nicht vorhanden
-            }
+            openInstallPermission(a);
             return;
         }
         ProgressBar bar = new ProgressBar(a, null, android.R.attr.progressBarStyleHorizontal);
@@ -105,55 +143,88 @@ final class Updater {
                 .setView(bar)
                 .setCancelable(false)
                 .show();
-        Handler main = new Handler(Looper.getMainLooper());
         new Thread(() -> {
-            File dir = new File(a.getCacheDir(), "update");
-            File apk = new File(dir, "app.apk");
-            boolean ok = false;
-            try {
-                if (!dir.exists() && !dir.mkdirs()) throw new Exception("Ordner");
-                HttpURLConnection c = (HttpURLConnection) new URL(BuildConfig.START_URL + "app.apk").openConnection();
-                c.setConnectTimeout(15000);
-                c.setReadTimeout(30000);
-                c.setUseCaches(false);
-                int total = c.getContentLength();
-                try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(apk)) {
-                    byte[] buf = new byte[64 * 1024];
-                    long done = 0;
-                    int n, last = -1;
-                    while ((n = in.read(buf)) > 0) {
-                        out.write(buf, 0, n);
-                        done += n;
-                        int pct = total > 0 ? (int) (100 * done / total) : 0;
-                        if (pct != last) {
-                            last = pct;
-                            main.post(() -> bar.setProgress(pct));
-                        }
-                    }
-                }
-                c.disconnect();
-                ok = apk.length() > 1024 * 1024;
-            } catch (Exception ignored) {
-                ok = false;
-            }
-            final boolean success = ok;
+            File apk = downloadApk(a, p -> main.post(() -> bar.setProgress(p)));
             main.post(() -> {
                 dlg.dismiss();
-                if (!success) {
+                if (apk == null) {
                     Toast.makeText(a, "Die neue Version konnte nicht geladen werden. Später erneut versuchen.",
                             Toast.LENGTH_LONG).show();
                     return;
                 }
-                Uri uri = FileProvider.getUriForFile(a, a.getPackageName() + ".files", apk);
-                Intent i = new Intent(Intent.ACTION_VIEW);
-                i.setDataAndType(uri, "application/vnd.android.package-archive");
-                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-                try {
-                    a.startActivity(i);
-                } catch (Exception e) {
-                    Toast.makeText(a, "Installation konnte nicht gestartet werden.", Toast.LENGTH_LONG).show();
-                }
+                install(a, apk);
             });
         }).start();
+    }
+
+    /** Build-Nummer der veröffentlichten App (0 = unbekannt). */
+    private static int latestVersion() {
+        try {
+            HttpURLConnection c = (HttpURLConnection) new URL(BuildConfig.START_URL + "app-version.txt?t="
+                    + System.currentTimeMillis()).openConnection();
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(10000);
+            c.setUseCaches(false);
+            int v = 0;
+            if (c.getResponseCode() == 200) {
+                try (InputStream in = c.getInputStream()) {
+                    byte[] b = new byte[32];
+                    int n = in.read(b);
+                    v = Integer.parseInt(new String(b, 0, Math.max(0, n)).trim());
+                }
+            }
+            c.disconnect();
+            return v;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** app.apk in den Cache laden; null bei Fehler. Läuft im Hintergrund-Thread. */
+    private static File downloadApk(Context a, Progress progress) {
+        File dir = new File(a.getCacheDir(), "update");
+        File apk = new File(dir, "app.apk");
+        try {
+            if (!dir.exists() && !dir.mkdirs()) return null;
+            HttpURLConnection c = (HttpURLConnection) new URL(BuildConfig.START_URL + "app.apk?t="
+                    + System.currentTimeMillis()).openConnection();
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(30000);
+            c.setUseCaches(false);
+            int total = c.getContentLength();
+            try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(apk)) {
+                byte[] buf = new byte[64 * 1024];
+                long done = 0;
+                int n, last = -1;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                    done += n;
+                    int pct = total > 0 ? (int) (100 * done / total) : 0;
+                    if (pct != last && progress != null) {
+                        last = pct;
+                        progress.percent(pct);
+                    }
+                }
+            }
+            c.disconnect();
+            return apk.length() > 1024 * 1024 ? apk : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Fire-OS-Installer öffnen; nach dem Update startet die App von selbst wieder (UpdateReceiver). */
+    private static void install(Activity a, File apk) {
+        a.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit().putBoolean("restartAfterUpdate", true).apply();
+        Uri uri = FileProvider.getUriForFile(a, a.getPackageName() + ".files", apk);
+        Intent i = new Intent(Intent.ACTION_VIEW);
+        i.setDataAndType(uri, "application/vnd.android.package-archive");
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            a.startActivity(i);
+        } catch (Exception e) {
+            Toast.makeText(a, "Installation konnte nicht gestartet werden.", Toast.LENGTH_LONG).show();
+            Remote.report("Installer konnte nicht geöffnet werden");
+        }
     }
 }

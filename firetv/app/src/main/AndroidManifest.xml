@@ -49,6 +49,13 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Nach einem Update über die App: gleich wieder öffnen -->
+        <receiver android:name=".UpdateReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Startet die App nach dem Einschalten des Sticks -->
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>

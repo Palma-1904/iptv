@@ -1114,7 +1114,7 @@ async function renderRemote() {
     box.appendChild(acts);
     body.appendChild(box);
   }
-  body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. „Update“ fragt am Gerät nach – dort muss jemand mit OK bestätigen.'));
+  body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. „Update“ lädt die neue App still im Hintergrund; danach muss vor Ort einmal „Installieren“ gedrückt werden (Vorgabe von Fire OS), dann startet die App von selbst wieder. Rückmeldungen erscheinen unter „Letzte Rückmeldung“.'));
 }
 
 function openRemote() {

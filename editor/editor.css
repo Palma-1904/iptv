@@ -378,3 +378,6 @@ dialog#dlg-dupes { width: min(720px, 94vw); }
 .dupe label input { width: auto; }
 .dupe .grp { color: var(--muted); }
 .dupe .keep { color: var(--ok); font-size: 11px; }
+.dupe .okmark, .checklist .okmark { color: var(--ok); font-size: 12px; }
+.dupe .deadmark { color: var(--danger); font-size: 12px; }
+.checklist li button { margin-left: 8px; height: 22px; padding: 0 8px; font-size: 12px; }

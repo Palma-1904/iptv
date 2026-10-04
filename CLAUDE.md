@@ -20,6 +20,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Zusätzlich `<liste>.xml` (XMLTV) im Gist + `url-tvg` in der M3U → für andere Apps (IPTV Smarters, TiviMate).
   Aufgaben laufen im Hintergrund (`start_job`, `/api/job` mit Fortschritt): „Veröffentlichen“ (gewählte Playlist),
   „Alle“, „Sender prüfen“ (nacheinander, Verbindungslimit, Ergebnis `data/check_<id>.json`, ✕ in der Playlist).
+  Für Sender ohne Bild sucht die Prüfung andere Fassungen desselben Senders im Katalog (`channel_key` wie
+  `sortKey`/TV_ALIAS, oder gleiche tvg-id; gleiches Länderkürzel zuerst, HEVC/4K zuletzt), spielt bis zu 4 an und
+  bietet „Ersetzen“ / „Alle ersetzen“ an (Platz, Gruppe, eigener Name bleiben). „Doppelte“ zeigt ✓/✕ der letzten
+  Prüfung, behält die beste funktionierende Fassung und kann nur die doppelten Sender prüfen (`/api/check` mit `keys`,
+  Ergebnis wird zusammengeführt). Test: Test-Editor mit Kopie der Daten (DATA/STATE_FILE umbiegen), nie echte state.json.
   Nachts automatisch veröffentlichen: Einstellungen (läuft nur, solange der Editor läuft).
   Testen ohne Hochladen/Streams: Test-Editor auf Port 8791 mit gestubbtem `gist_upload`/`measure_stream`.
   `VERSION` in `server.py` und `SERVER_VERSION` in `editor.js` bei Änderungen an beiden erhöhen.

@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 13; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 14; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -657,6 +657,8 @@ function renderPlaylist() {
       row.appendChild(logo(ch && ch.logo));
       const nm = el('span', 'nm', item.name || (item.variants ? item.label : ch && ch.name) || item.label);
       nm.title = ch ? `${ch.name} · ${ch.group}` : (item.label + ' (Quelle nicht geladen)');
+      const chk = checks[pl.id] && checks[pl.id].results && checks[pl.id].results[item.key];
+      if (chk && !chk.ok && !chk.event) nm.title += chk.alt ? `\n✕ kein Bild – Ersatz: ${chk.alt.name} (Sender prüfen → Ersetzen)` : '\n✕ kein Bild bei der letzten Prüfung';
       row.appendChild(nm);
       if (item.variants) {
         const langs = el('span', 'meta');
@@ -807,25 +809,40 @@ function openDupes() {
   if (!dupes.length) return toast('Keine doppelten Sender in „' + pl.name + '“.');
   const box = $('#dupes-list');
   box.textContent = '';
-  const checks = [];
+  const marks = [];
+  const res = (checks[pl.id] && checks[pl.id].results) || {};
+  const okOf = (e) => { const r = res[e.item.key]; return r ? (r.ok ? 1 : r.event ? 0 : -1) : 0; };   // 1 läuft, -1 kein Bild
   dupes.forEach((list) => {
+    // beste Fassung, die läuft (sonst die beste ungeprüfte, sonst die beste)
+    const keep = list.find((e) => okOf(e) === 1) || list.find((e) => okOf(e) === 0) || list[0];
     const d = el('div', 'dupe');
     d.appendChild(el('h4', '', `${list[0].name.replace(/^\s*[A-Z]{2,4}\s*[|:]\s*/, '')}  –  ${list.length}×`));
-    list.forEach((e, n) => {
+    list.forEach((e) => {
       const lab = el('label');
       const cb = el('input');
       cb.type = 'checkbox';
-      cb.checked = n > 0;                            // beste Fassung bleibt
-      checks.push({ cb, e });
+      cb.checked = e !== keep;                       // beste (funktionierende) Fassung bleibt
+      marks.push({ cb, e });
       lab.appendChild(cb);
       lab.appendChild(el('span', '', e.name));
       lab.appendChild(el('span', 'grp', '· ' + e.g.name));
-      if (n === 0) lab.appendChild(el('span', 'keep', '☆ beste Fassung'));
+      const st = okOf(e);
+      if (res[e.item.key]) lab.appendChild(el('span', st === 1 ? 'okmark' : 'deadmark', st === 1 ? '✓ läuft' : st === -1 ? '✕ kein Bild' : 'Event'));
+      if (e === keep) lab.appendChild(el('span', 'keep', '☆ bleibt'));
       d.appendChild(lab);
     });
     box.appendChild(d);
   });
-  const total = () => checks.filter((c) => c.cb.checked).length;
+  const untested = dupes.flat().filter((e) => !res[e.item.key]).length;
+  const chk = $('#dupes-check');
+  chk.textContent = untested ? `Diese ${dupes.flat().length} Sender prüfen (${untested} ungeprüft)` : 'Erneut prüfen';
+  chk.onclick = () => {
+    const keys = dupes.flat().map((e) => e.item.key);
+    $('#dlg-dupes').close('check');
+    runCheck(pl, keys, () => openDupes());
+  };
+  const checks_ = marks;
+  const total = () => checks_.filter((c) => c.cb.checked).length;
   $('#dupes-title').textContent = `Doppelte Sender in „${pl.name}“ – ${dupes.length} Sender mehrfach`;
   $('#dupes-ok').textContent = `${total()} markierte entfernen`;
   box.onchange = () => { $('#dupes-ok').textContent = `${total()} markierte entfernen`; };
@@ -833,7 +850,7 @@ function openDupes() {
   dlg.returnValue = '';
   dlg.onclose = () => {
     if (dlg.returnValue !== 'ok') return;
-    const rm = new Set(checks.filter((c) => c.cb.checked).map((c) => c.e.item));
+    const rm = new Set(checks_.filter((c) => c.cb.checked).map((c) => c.e.item));
     if (!rm.size) return;
     pl.groups.forEach((g) => { g.items = g.items.filter((i) => !rm.has(i)); });
     save();
@@ -1259,13 +1276,18 @@ async function checkPlaylist() {
   if (!n) return toast('In dieser Playlist gibt es keine Live-Sender.', true);
   if (!confirm(`${n} Live-Sender nacheinander kurz anspielen – dauert etwa ${Math.max(1, Math.round(n * 2.5 / 60))} Minuten.\n\n`
     + 'Der Anbieter erlaubt nur eine Verbindung: währenddessen bitte nicht fernsehen (am besten abends oder nachts).')) return;
+  runCheck(pl, null, null);
+}
+
+// Prüfen (ganze Playlist oder nur keys), danach Ergebnis zeigen bzw. then() aufrufen
+async function runCheck(pl, keys, then) {
   const dlg = $('#dlg-publish');
   const body = $('#publish-body');
   $('#publish-title').textContent = `Sender prüfen „${pl.name}“`;
   dlg.showModal();
   let res;
   try {
-    await api('/api/check', { id: pl.id });
+    await api('/api/check', keys ? { id: pl.id, keys } : { id: pl.id });
     res = await followJob(body, true);
   } catch (e) {
     body.textContent = '';
@@ -1273,33 +1295,89 @@ async function checkPlaylist() {
     return;
   }
   await loadCheck(pl.id);
+  if (then) {
+    dlg.close();
+    then();
+    return;
+  }
   showCheckResult(pl, res, body);
+}
+
+// Defekten Eintrag durch eine funktionierende Fassung ersetzen (Platz, Gruppe und eigener Name bleiben)
+function replaceDead(pl, oldKey, alt) {
+  let n = 0;
+  pl.groups.forEach((g) => g.items.forEach((item) => {
+    if (item.key !== oldKey) return;
+    item.key = alt.key;
+    item.label = alt.name;
+    n++;
+  }));
+  const r = checks[pl.id] && checks[pl.id].results;
+  if (r) {
+    delete r[oldKey];
+    r[alt.key] = { ok: true, name: alt.name };
+  }
+  return n;
 }
 
 function showCheckResult(pl, res, body) {
   body.textContent = '';
   const c = checks[pl.id] || {};
-  const dead = Object.entries(c.results || {}).filter(([, v]) => !v.ok && !v.event);
+  const inPl = new Set(pl.groups.flatMap((g) => g.items.map((i) => i.key)));
+  const dead = Object.entries(c.results || {}).filter(([k, v]) => !v.ok && !v.event && inPl.has(k));
   body.appendChild(el('p', '', `${res.checked} von ${res.total} Sendern geprüft${res.cancelled ? ' (abgebrochen)' : ''}: `
-    + (dead.length ? `${dead.length} ohne Bild.` : 'alle laufen.')
+    + (dead.length ? `${dead.length} ohne Bild` + (res.withAlt ? `, für ${res.withAlt} gibt es eine funktionierende andere Fassung.` : '.') : 'alle laufen.')
     + (res.events ? ` ${res.events} Event-/PPV-Kanäle senden gerade nichts (normal außerhalb von Events).` : '')));
   if (!dead.length) return;
   const ul = el('ul', 'checklist');
-  dead.forEach(([, v]) => ul.appendChild(el('li', '', v.name + (v.err ? ` – ${v.err}` : ''))));
+  const swappable = dead.filter(([, v]) => v.alt && !v.alt.inPlaylist);
+  dead.forEach(([k, v]) => {
+    const li = el('li', '', v.name + (v.err ? ` – ${v.err}` : ''));
+    if (v.alt && !v.alt.inPlaylist) {
+      li.appendChild(el('span', 'okmark', `  → Ersatz: ${v.alt.name}` + (v.alt.mbit ? ` (läuft, ${v.alt.mbit} Mbit/s)` : ' (läuft)')));
+      const b = el('button', '', 'Ersetzen');
+      b.type = 'button';
+      b.onclick = () => { replaceDead(pl, k, v.alt); save(); renderPlaylist(); b.disabled = true; b.textContent = 'Ersetzt'; };
+      li.appendChild(b);
+    } else if (v.alt) {
+      li.appendChild(el('span', 'hint', `  → „${v.alt.name}“ läuft und ist schon in der Liste – den defekten einfach entfernen`));
+    } else if (v.altTried) {
+      li.appendChild(el('span', 'hint', `  → ${v.altTried} andere Fassung${v.altTried > 1 ? 'en' : ''} probiert, keine läuft`));
+    } else {
+      li.appendChild(el('span', 'hint', '  → keine andere Fassung im Angebot'));
+    }
+    ul.appendChild(li);
+  });
   body.appendChild(ul);
-  body.appendChild(el('p', 'hint', 'In der Playlist sind sie rot mit ✕ markiert. Manchmal ist ein Sender nur kurz gestört – dann später erneut prüfen.'));
-  const rm = el('button', 'danger', `${dead.length} defekte aus der Playlist entfernen`);
-  rm.type = 'button';
-  rm.onclick = () => {
-    if (!confirm(`${dead.length} Sender aus „${pl.name}“ entfernen?`)) return;
-    const keys = new Set(dead.map(([k]) => k));
-    pl.groups.forEach((g) => { g.items = g.items.filter((i) => !keys.has(i.key)); });
-    save();
-    renderPlaylist();
-    rm.disabled = true;
-    rm.textContent = 'Entfernt – zum Übernehmen „Veröffentlichen“';
-  };
-  body.appendChild(rm);
+  body.appendChild(el('p', 'hint', 'In der Playlist sind sie rot mit ✕ markiert. Ersetzen behält Platz, Gruppe und Programm (EPG). Manchmal ist ein Sender nur kurz gestört – dann später erneut prüfen.'));
+  if (swappable.length) {
+    const all = el('button', 'primary', `Alle ${swappable.length} ersetzen`);
+    all.type = 'button';
+    all.onclick = () => {
+      swappable.forEach(([k, v]) => replaceDead(pl, k, v.alt));
+      save();
+      renderPlaylist();
+      all.disabled = true;
+      all.textContent = 'Ersetzt – zum Übernehmen „Veröffentlichen“';
+      body.querySelectorAll('.checklist button').forEach((b) => { b.disabled = true; });
+    };
+    body.appendChild(all);
+  }
+  const rest = dead.filter(([, v]) => !(v.alt && !v.alt.inPlaylist));
+  if (rest.length) {
+    const rm = el('button', 'danger', `${rest.length} ohne Ersatz aus der Playlist entfernen`);
+    rm.type = 'button';
+    rm.onclick = () => {
+      if (!confirm(`${rest.length} Sender aus „${pl.name}“ entfernen?`)) return;
+      const keys = new Set(rest.map(([k]) => k));
+      pl.groups.forEach((g) => { g.items = g.items.filter((i) => !keys.has(i.key)); });
+      save();
+      renderPlaylist();
+      rm.disabled = true;
+      rm.textContent = 'Entfernt – zum Übernehmen „Veröffentlichen“';
+    };
+    body.appendChild(rm);
+  }
 }
 
 function qrEl(text, label) {

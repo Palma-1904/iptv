@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 13  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 14  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -486,23 +486,90 @@ def quality_test(src, keys):
     return {'summary': summary, 'results': results, 'history': history[-30:]}
 
 
-def check_playlist(pl_id):
-    """Alle Live-Sender einer Playlist kurz anspielen (nacheinander, wegen Verbindungslimit).
+# Gleicher Sender in anderer Fassung: Name ohne Land, Qualität und Satzzeichen (wie sortKey in editor.js)
+TV_ALIAS = {
+    'ard': 'daserste', 'pro7': 'prosieben', 'kabel1': 'kabeleins', 'rtl2': 'rtlzwei', 'rtlii': 'rtlzwei',
+    'rtlnitro': 'nitro', 'brfernsehen': 'br', 'bayerischesfernsehen': 'br', 'hrfernsehen': 'hr', 'swrbw': 'swr',
+    'swrrp': 'swr', 'swrfernsehen': 'swr', 'srfernsehen': 'sr', 'ndrfernsehen': 'ndr', 'wdrfernsehen': 'wdr',
+    'mdrfernsehen': 'mdr', 'rbbfernsehen': 'rbb', 'kabel1doku': 'kabeleinsdoku', 'welttv': 'welt',
+    'eurosport': 'eurosport1', 'disney': 'disneychannel',
+}
+CHANNEL_PREFIX = re.compile(r'^\s*([A-Za-z]{2,6})\s*[|:]\s*')
+CHANNEL_QUALITY = re.compile(r'(^|[^a-z0-9])(4k|uhd|fhd|hd|sd|hevc|h\.?265|raw|50fps|60fps|backup|[ᴴᴰᴿᴬᵂᴳᴼᴸ⁶⁰ᶠᵖˢ]+)(?=[^a-z0-9]|$)')
+EVENT_NAME = re.compile(r'EVENT|PPV|NUR W[ÄA]HREND|NO EVENT|REPLAY|ᴴᴰ ◉|\b8K\b', re.I)
+
+
+def channel_key(name):
+    k = CHANNEL_PREFIX.sub('', (name or '').lower())
+    k = re.sub(r'\(.*?\)|\[.*?\]', ' ', k)
+    k = CHANNEL_QUALITY.sub(' ', k)
+    k = re.sub(r'[^a-z0-9äöüß]+', '', k)
+    return TV_ALIAS.get(k, k)
+
+
+def channel_prefix(name):
+    m = CHANNEL_PREFIX.match(name or '')
+    return m.group(1).upper() if m else ''
+
+
+def quality_rank(name):
+    """Kleiner = besser geeignet: HD/FHD vor SD, 4K und HEVC zuletzt (Datenrate, Browser)."""
+    n = (name or '').upper()
+    if re.search(r'HEVC|H\.?265', n):
+        return 3
+    if re.search(r'4K|UHD|2160', n):
+        return 4
+    if re.search(r'\bSD\b', n):
+        return 2
+    return 0 if re.search(r'FHD|1080', n) else 1
+
+
+def find_alternatives(dead, index, used):
+    """Andere Fassungen desselben Senders aus dem Katalog, beste zuerst."""
+    k = channel_key(dead['name'])
+    cands = {it['key']: it for it in index['by_name'].get(k, [])}
+    if dead.get('tvgId'):
+        cands.update({it['key']: it for it in index['by_tvg'].get(dead['tvgId'], [])})
+    cands.pop(dead['key'], None)
+    pre = channel_prefix(dead['name'])
+    out = [it for it in cands.values() if not EVENT_NAME.search(it['name'] + ' ' + (it.get('group') or ''))]
+    out.sort(key=lambda it: (channel_prefix(it['name']) != pre, it['key'] in used,
+                             bool(re.search(r'RAW|ᴿᴬᵂ', it['name'])), quality_rank(it['name'])))
+    return out
+
+
+def catalog_index(sid):
+    items = [x for x in (load_catalog(sid) or {'items': []})['items'] if x['type'] == 'live']
+    by_name, by_tvg = {}, {}
+    for it in items:
+        by_name.setdefault(channel_key(it['name']), []).append(it)
+        if it.get('tvgId'):
+            by_tvg.setdefault(it['tvgId'], []).append(it)
+    return {'keys': {it['key']: it for it in items}, 'by_name': by_name, 'by_tvg': by_tvg}
+
+
+def check_playlist(pl_id, keys=None):
+    """Live-Sender einer Playlist kurz anspielen (nacheinander, wegen Verbindungslimit); für Sender ohne Bild
+    andere Fassungen desselben Senders suchen und anspielen (Ersatz). keys: nur diese Einträge prüfen
+    (z. B. aus „Doppelte“), das Ergebnis wird mit dem bisherigen zusammengeführt.
     Ergebnis in data/check_<id>.json; Event-/PPV-Kanäle werden gesondert markiert."""
     state = load_state()
     pl = find(state['playlists'], pl_id, 'Playlist')
     sources = {s['id']: s for s in state['sources']}
-    catalogs, items = {}, []
+    indexes, items, used = {}, [], set()
     for g in pl.get('groups', []):
         for it in g.get('items', []):
             if it.get('variants'):
                 continue
+            used.add(it['key'])
+            if keys is not None and it['key'] not in keys:
+                continue
             sid = it['key'].split(':', 1)[0]
-            if sid not in catalogs:
-                catalogs[sid] = {x['key']: x for x in (load_catalog(sid) or {'items': []})['items']}
-            ch = catalogs[sid].get(it['key'])
-            if ch and ch['type'] == 'live':
-                items.append((it['key'], it.get('name') or ch['name'], ch['url'], sid))
+            if sid not in indexes:
+                indexes[sid] = catalog_index(sid)
+            ch = indexes[sid]['keys'].get(it['key'])
+            if ch:
+                items.append((it['key'], it.get('name') or ch['name'], ch, sid))
     if not items:
         raise UserError('In dieser Playlist gibt es keine Live-Sender zum Prüfen.')
     for sid in {x[3] for x in items}:
@@ -513,29 +580,56 @@ def check_playlist(pl_id):
             if mx and act is not None and act >= mx:
                 raise UserError(f'Gerade laufen {act} von {mx} erlaubten Verbindungen (es wird ferngesehen). '
                                 'Bitte später prüfen, z. B. nachts.')
-    event = re.compile(r'EVENT|PPV|NUR W[ÄA]HREND|NO EVENT|REPLAY|ᴴᴰ ◉|\b8K\b', re.I)
     busy = re.compile(r'HTTP (403|429|458|503|509)\b')
-    results = {}
-    for i, (key, name, url, sid) in enumerate(items):
-        if JOB.get('cancel'):
-            break
-        job_progress(f'Prüfe {name}', i, len(items))
+
+    def test(url, label, i):
         r = measure_stream(url, seconds=1.0, max_bytes=192 * 1024)
         tries = 0
         # Verbindungslimit: der Anbieter gibt die letzte Verbindung erst nach einigen Sekunden frei
         while not r.get('ok') and busy.search(r.get('error') or '') and tries < 3 and not JOB.get('cancel'):
             tries += 1
-            job_progress(f'Prüfe {name} (warte auf freie Verbindung …)', i, len(items))
+            job_progress(f'{label} (warte auf freie Verbindung …)', i, len(items))
             time.sleep(20)
             r = measure_stream(url, seconds=1.0, max_bytes=192 * 1024)
-        results[key] = {'ok': bool(r.get('ok')), 'err': (r.get('error') or '')[:120],
-                        'event': bool(event.search(name)), 'name': name}
         time.sleep(0.5)
+        return r
+
+    results = {}
+    for i, (key, name, ch, sid) in enumerate(items):
+        if JOB.get('cancel'):
+            break
+        job_progress(f'Prüfe {name}', i, len(items))
+        r = test(ch['url'], f'Prüfe {name}', i)
+        res = {'ok': bool(r.get('ok')), 'err': (r.get('error') or '')[:120],
+               'event': bool(EVENT_NAME.search(name)), 'name': name}
+        if not res['ok'] and not res['event']:
+            # Ersatz: andere Fassungen desselben Senders, bis zu 4 anspielen, die erste mit Bild nehmen
+            tried = 0
+            for alt in find_alternatives({**ch, 'name': ch['name']}, indexes[sid], used)[:4]:
+                if JOB.get('cancel'):
+                    break
+                tried += 1
+                job_progress(f'Suche Ersatz für {name}: {alt["name"]}', i, len(items))
+                ra = test(alt['url'], f'Ersatz {alt["name"]}', i)
+                if ra.get('ok'):
+                    res['alt'] = {'key': alt['key'], 'name': alt['name'], 'mbit': ra.get('mbit'),
+                                  'inPlaylist': alt['key'] in used}
+                    break
+            res['altTried'] = tried
+        results[key] = res
+    path = os.path.join(DATA, f'check_{pl_id}.json')
+    if keys is not None:                       # Teilprüfung: bisherige Ergebnisse behalten
+        old = read_json(path, {}).get('results', {})
+        old.update(results)
+        results_all = old
+    else:
+        results_all = results
     out = {'t': int(time.time()), 'checked': len(results), 'total': len(items),
-           'cancelled': bool(JOB.get('cancel')), 'results': results}
-    write_json(os.path.join(DATA, f'check_{pl_id}.json'), out)
-    bad = [v['name'] for v in results.values() if not v['ok'] and not v['event']]
+           'cancelled': bool(JOB.get('cancel')), 'results': results_all}
+    write_json(path, out)
+    bad = [v for v in results.values() if not v['ok'] and not v['event']]
     return {'checked': len(results), 'total': len(items), 'bad': len(bad), 'cancelled': out['cancelled'],
+            'withAlt': sum(1 for v in bad if v.get('alt')),
             'events': sum(1 for v in results.values() if not v['ok'] and v['event'])}
 
 
@@ -1452,9 +1546,11 @@ class Handler(SimpleHTTPRequestHandler):
                 JOB['cancel'] = True
                 return self.send_json({'ok': True})
             if method == 'POST' and path == '/api/check':
-                pid = self.body().get('id')
+                b = self.body()
+                pid, keys = b.get('id'), b.get('keys')
+                keys = set(keys) if isinstance(keys, list) else None
                 name = find(load_state()['playlists'], pid, 'Playlist').get('name')
-                return self.send_json(start_job('check', f'Sender prüfen „{name}“', lambda: check_playlist(pid)))
+                return self.send_json(start_job('check', f'Sender prüfen „{name}“', lambda: check_playlist(pid, keys)))
             if method == 'GET' and path == '/api/check':
                 return self.send_json(read_json(os.path.join(DATA, f'check_{q.get("id", "")}.json'), {}))
             self.send_error(404)

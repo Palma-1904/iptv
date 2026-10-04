@@ -170,9 +170,10 @@
   <dialog id="dlg-dupes">
     <form method="dialog">
       <h2 id="dupes-title">Doppelte Sender</h2>
-      <p class="hint">Gleicher Sender mehrfach in der Playlist (auch in anderen Gruppen oder Qualitäten). Vorgewählt: die beste Fassung bleibt (☆), die anderen werden entfernt (☑). Häkchen nach Wunsch ändern.</p>
+      <p class="hint">Gleicher Sender mehrfach in der Playlist (auch in anderen Gruppen oder Qualitäten). Vorgewählt: die beste Fassung, die läuft, bleibt (☆), die anderen werden entfernt (☑). „Prüfen“ spielt nur diese Sender kurz an (Anbieter erlaubt eine Verbindung: währenddessen nicht fernsehen). Häkchen nach Wunsch ändern.</p>
       <div id="dupes-list" class="dupes-list"></div>
       <div class="actions">
+        <button type="button" id="dupes-check">Diese Sender prüfen</button>
         <span class="spacer"></span>
         <button value="cancel" type="submit" formnovalidate>Abbrechen</button>
         <button value="ok" type="submit" class="danger" id="dupes-ok">Markierte entfernen</button>

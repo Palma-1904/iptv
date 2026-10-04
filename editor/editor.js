@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 8; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 9; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -574,7 +574,8 @@ function renderPlaylist() {
     const itemsBox = el('div', 'pg-items');
     g.items.forEach((item, ii) => {
       const ch = lookup(item.key);
-      const row = el('div', 'it' + (catalogs[item.key.split(':', 1)[0]] && !ch ? ' missing' : ''));
+      const row = el('div', 'it' + (catalogs[item.key.split(':', 1)[0]] && !ch ? ' missing' : '')
+        + (isDead(pl.id, item.key) ? ' dead' : ''));
       row.draggable = true;
       row.appendChild(el('span', 'handle', '⠿'));
       row.appendChild(logo(ch && ch.logo));
@@ -713,18 +714,54 @@ function linkRow(label, value) {
   return wrap;
 }
 
-async function publish() {
+// ---------- Hintergrund-Aufgaben: Fortschritt anzeigen ----------
+
+// Fragt /api/job ab, bis die Aufgabe fertig ist; zeigt Schritt, Balken und Dauer im Dialog.
+async function followJob(body, cancelable) {
+  const step = el('p', 'jobstep', 'Start …');
+  const bar = el('div', 'jobbar indet');
+  bar.appendChild(el('span'));
+  const meta = el('p', 'hint', '');
+  body.textContent = '';
+  body.append(step, bar, meta);
+  const cancel = $('#job-cancel');
+  cancel.hidden = !cancelable;
+  cancel.onclick = () => { api('/api/job/cancel', {}).catch(() => {}); cancel.disabled = true; cancel.textContent = 'Wird abgebrochen …'; };
+  cancel.disabled = false;
+  cancel.textContent = 'Abbrechen';
+  for (;;) {
+    let j;
+    try { j = await api('/api/job'); } catch (e) { await new Promise((r) => setTimeout(r, 2000)); continue; }
+    step.textContent = (j.pl ? `„${j.pl}“: ` : '') + (j.step || '');
+    const known = j.total > 0 && j.done !== null && j.done !== undefined;
+    bar.classList.toggle('indet', !known);
+    bar.firstChild.style.width = known ? Math.round(100 * j.done / j.total) + '%' : '';
+    const secs = Math.round(((j.finished || j.now) - j.started) || 0);
+    meta.textContent = (known ? `${j.done} von ${j.total} · ` : '') + `läuft seit ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} min`;
+    if (!j.running) {
+      cancel.hidden = true;
+      if (j.error) throw new Error(j.error);
+      return j.result;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+// Nur die gewählte Playlist (schneller) oder alle veröffentlichen
+async function publish(all) {
   if (!state.playlists.length) return toast('Noch keine Playlist angelegt.', true);
+  const pl = playlist();
+  if (!all && !pl) return toast('Bitte eine Playlist wählen.', true);
   const dlg = $('#dlg-publish');
   const body = $('#publish-body');
-  $('#publish-title').textContent = 'Veröffentlichen';
+  $('#publish-title').textContent = all ? 'Alle veröffentlichen' : `„${pl.name}“ veröffentlichen`;
   body.textContent = '';
-  body.appendChild(el('p', '', 'Erzeuge Playlists und EPG … (das erste Mal kann das EPG-Laden einige Minuten dauern)'));
   dlg.showModal();
   let res;
   try {
     await api('/api/state', state);
-    res = await busy(() => api('/api/publish', {}));
+    await api('/api/publish', { ids: all ? [] : [pl.id] });
+    res = await followJob(body, false);
   } catch (e) {
     body.textContent = '';
     body.appendChild(el('p', 'warn', e.message));
@@ -739,6 +776,70 @@ async function publish() {
   await loadSettings();
   body.appendChild(appCard());
   res.results.forEach((r) => body.appendChild(linksBox(r)));
+}
+
+// ---------- Sender prüfen ----------
+
+const checks = {};   // Playlist-ID -> Ergebnis von /api/check
+
+async function loadCheck(pid) {
+  try { checks[pid] = await api('/api/check?id=' + encodeURIComponent(pid)); } catch (e) { checks[pid] = {}; }
+  if (pid === ui.playlistId) renderPlaylist();
+}
+
+function isDead(pid, key) {
+  const r = checks[pid] && checks[pid].results && checks[pid].results[key];
+  return !!(r && !r.ok && !r.event);
+}
+
+async function checkPlaylist() {
+  const pl = playlist();
+  if (!pl) return toast('Bitte eine Playlist wählen.', true);
+  const n = pl.groups.reduce((a, g) => a + g.items.filter((i) => !i.variants && i.key.split(':')[1] === 'live').length, 0);
+  if (!n) return toast('In dieser Playlist gibt es keine Live-Sender.', true);
+  if (!confirm(`${n} Live-Sender nacheinander kurz anspielen – dauert etwa ${Math.max(1, Math.round(n * 2.5 / 60))} Minuten.\n\n`
+    + 'Der Anbieter erlaubt nur eine Verbindung: währenddessen bitte nicht fernsehen (am besten abends oder nachts).')) return;
+  const dlg = $('#dlg-publish');
+  const body = $('#publish-body');
+  $('#publish-title').textContent = `Sender prüfen „${pl.name}“`;
+  dlg.showModal();
+  let res;
+  try {
+    await api('/api/check', { id: pl.id });
+    res = await followJob(body, true);
+  } catch (e) {
+    body.textContent = '';
+    body.appendChild(el('p', 'warn', e.message));
+    return;
+  }
+  await loadCheck(pl.id);
+  showCheckResult(pl, res, body);
+}
+
+function showCheckResult(pl, res, body) {
+  body.textContent = '';
+  const c = checks[pl.id] || {};
+  const dead = Object.entries(c.results || {}).filter(([, v]) => !v.ok && !v.event);
+  body.appendChild(el('p', '', `${res.checked} von ${res.total} Sendern geprüft${res.cancelled ? ' (abgebrochen)' : ''}: `
+    + (dead.length ? `${dead.length} ohne Bild.` : 'alle laufen.')
+    + (res.events ? ` ${res.events} Event-/PPV-Kanäle senden gerade nichts (normal außerhalb von Events).` : '')));
+  if (!dead.length) return;
+  const ul = el('ul', 'checklist');
+  dead.forEach(([, v]) => ul.appendChild(el('li', '', v.name + (v.err ? ` – ${v.err}` : ''))));
+  body.appendChild(ul);
+  body.appendChild(el('p', 'hint', 'In der Playlist sind sie rot mit ✕ markiert. Manchmal ist ein Sender nur kurz gestört – dann später erneut prüfen.'));
+  const rm = el('button', 'danger', `${dead.length} defekte aus der Playlist entfernen`);
+  rm.type = 'button';
+  rm.onclick = () => {
+    if (!confirm(`${dead.length} Sender aus „${pl.name}“ entfernen?`)) return;
+    const keys = new Set(dead.map(([k]) => k));
+    pl.groups.forEach((g) => { g.items = g.items.filter((i) => !keys.has(i.key)); });
+    save();
+    renderPlaylist();
+    rm.disabled = true;
+    rm.textContent = 'Entfernt – zum Übernehmen „Veröffentlichen“';
+  };
+  body.appendChild(rm);
 }
 
 function qrEl(text, label) {
@@ -835,6 +936,16 @@ function linksBox(r) {
     card.appendChild(el('p', 'hint', 'Noch nicht über GitHub veröffentlicht – Token in den Einstellungen eintragen und „Veröffentlichen“.'));
   }
 
+  if (r.appLinks) {
+    const other = section('📡', 'Andere IPTV-Apps (z. B. IPTV Smarters auf dem Samsung)',
+      'In der App „Playlist hinzufügen“ → „M3U-URL“ wählen und diese Adresse eintragen. Das Programm (EPG) findet die App meist selbst; sonst die zweite Adresse als EPG-/XMLTV-URL eintragen. Enthält die Zugangsdaten – nicht weitergeben.');
+    other.appendChild(el('p', 'hint', 'Playlist (M3U):'));
+    other.appendChild(bigValue(r.appLinks.m3u));
+    other.appendChild(el('p', 'hint', 'Programm (XMLTV/EPG):'));
+    other.appendChild(bigValue(r.appLinks.xmltv));
+    card.appendChild(other);
+  }
+
   const test = el('details', 'ltest');
   test.appendChild(el('summary', '', '🔧 Zum Testen (WLAN / dieser Mac)'));
   if (r.lanLinks) {
@@ -880,6 +991,9 @@ function openSettings() {
   const f = $('#form-settings');
   f.reset();
   f.elements.pagesUrl.value = settings.pagesUrl || '';
+  f.elements.autoPublish.checked = !!settings.autoPublish;
+  f.elements.autoTime.value = settings.autoTime || '04:00';
+  if (settings.autoResult) $('#auto-status').textContent = 'Zuletzt automatisch: ' + settings.autoResult;
   f.elements.token.placeholder = settings.hasToken
     ? `ghp_••••••••${settings.tokenEnd || ''} (gespeichert – leer lassen = behalten)`
     : 'Token hier einfügen';
@@ -891,7 +1005,10 @@ function openSettings() {
   dlg.onclose = async () => {
     try {
       if (dlg.returnValue === 'save') {
-        await api('/api/settings', { token: f.elements.token.value, pagesUrl: f.elements.pagesUrl.value });
+        await api('/api/settings', {
+          token: f.elements.token.value, pagesUrl: f.elements.pagesUrl.value,
+          autoPublish: f.elements.autoPublish.checked, autoTime: f.elements.autoTime.value
+        });
       } else if (dlg.returnValue === 'clear') {
         if (!confirm('Token entfernen?')) return;
         await api('/api/settings', { clearToken: true });
@@ -1319,7 +1436,12 @@ function bind() {
     b.onclick = () => { $('#form-source').elements.epgUrl.value = b.dataset.epg; };
   });
 
-  $('#playlist').onchange = (ev) => { ui.playlistId = ev.target.value; ui.targetGroupId = null; renderAll(); };
+  $('#playlist').onchange = (ev) => {
+    ui.playlistId = ev.target.value;
+    ui.targetGroupId = null;
+    renderAll();
+    if (!checks[ui.playlistId]) loadCheck(ui.playlistId);
+  };
   $('#pl-devices').onchange = (ev) => {
     const pl = playlist();
     if (!pl) return;
@@ -1378,7 +1500,9 @@ function bind() {
     addToPlaylist(items, null);
   };
   $('#by-title').onchange = () => { ui.selected.clear(); renderChannels(); };
-  $('#publish').onclick = publish;
+  $('#publish').onclick = () => publish(false);
+  $('#publish-all').onclick = () => publish(true);
+  $('#check').onclick = checkPlaylist;
   $('#links').onclick = showLinks;
   $('#settings').onclick = openSettings;
   $('#epg-order').onclick = openEpgOrder;
@@ -1421,6 +1545,15 @@ async function start() {
   if (langFixed) save();
   renderAll();
   state.sources.forEach((s) => loadSourceInfo(s.id));
+  if (ui.playlistId) loadCheck(ui.playlistId);
+  // Läuft gerade eine Aufgabe (z. B. nachts gestartet oder Seite neu geladen)? Fortschritt zeigen.
+  if (settings.job && settings.job.running) {
+    $('#publish-title').textContent = settings.job.label;
+    $('#dlg-publish').showModal();
+    followJob($('#publish-body'), settings.job.kind === 'check')
+      .then(() => { $('#publish-body').appendChild(el('p', '', 'Fertig.')); })
+      .catch((e) => { $('#publish-body').appendChild(el('p', 'warn', e.message)); });
+  }
 }
 
 start();

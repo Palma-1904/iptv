@@ -17,6 +17,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Veröffentlichen → `editor/data/out/` + `lokal/` (WLAN-Test) + **Secret Gist** (Token in Editor-Einstellungen).
   EPG: Anbieter zuerst, Lücken aus `EXTRA_EPG` (epgshare01 DE1, open-epg germany) per tvg-id oder Sendername
   (`epg_name_keys` + `EPG_ALIASES`); Sender ohne tvg-id bekommen `x:<id>`. ASW: 197 → 324 von 506 Sendern.
+  Zusätzlich `<liste>.xml` (XMLTV) im Gist + `url-tvg` in der M3U → für andere Apps (IPTV Smarters, TiviMate).
+  Aufgaben laufen im Hintergrund (`start_job`, `/api/job` mit Fortschritt): „Veröffentlichen“ (gewählte Playlist),
+  „Alle“, „Sender prüfen“ (nacheinander, Verbindungslimit, Ergebnis `data/check_<id>.json`, ✕ in der Playlist).
+  Nachts automatisch veröffentlichen: Einstellungen (läuft nur, solange der Editor läuft).
+  Testen ohne Hochladen/Streams: Test-Editor auf Port 8791 mit gestubbtem `gist_upload`/`measure_stream`.
   `VERSION` in `server.py` und `SERVER_VERSION` in `editor.js` bei Änderungen an beiden erhöhen.
 - **Fire-TV-App** (`firetv/`, Java/WebView): lädt die Webapp; Streams spielt der eingebaute Player
   `PlayerActivity` (**libVLC 3.6.5** – ExoPlayer konnte MP2/AC3/E-AC3 der Sender nicht; 3.7.x braucht compileSdk 36;

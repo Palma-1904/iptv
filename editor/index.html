@@ -32,7 +32,8 @@
     <span class="spacer"></span>
     <button id="links" type="button" title="Einrichtungs-Links und QR-Codes für Geräte">Geräte-Links</button>
     <button id="settings" type="button">Einstellungen</button>
-    <button id="publish" type="button" class="primary">Veröffentlichen</button>
+    <button id="publish" type="button" class="primary" title="Nur die gewählte Playlist veröffentlichen (schneller)">Veröffentlichen</button>
+    <button id="publish-all" type="button" title="Alle Playlists veröffentlichen">Alle</button>
   </header>
 
   <main class="panes">
@@ -69,6 +70,7 @@
     <aside class="pane right">
       <div class="right-bar">
         <span id="pl-summary"></span>
+        <button id="check" type="button" title="Alle Live-Sender dieser Playlist kurz anspielen und defekte markieren">Sender prüfen</button>
         <button id="epg-order" type="button" title="Reihenfolge der Sender im Reiter „Programm“ der Webapp">Programm-Reihenfolge</button>
         <button id="group-add" type="button">＋ Gruppe</button>
       </div>
@@ -130,6 +132,9 @@
         <input name="pagesUrl" placeholder="https://BENUTZER.github.io/iptv/">
       </label>
       <p class="hint">Wird für die Einrichtungs-Links der Geräte verwendet.</p>
+      <label class="check-row"><input name="autoPublish" type="checkbox"> Jeden Tag automatisch alle Playlists veröffentlichen (hält das Programm aktuell)</label>
+      <label>Uhrzeit <input name="autoTime" type="time" value="04:00"></label>
+      <p class="hint" id="auto-status">Funktioniert, solange der Editor läuft und der Mac nicht schläft. Wurde es heute noch nicht gemacht, passiert es nach dem Start des Editors, sobald die Uhrzeit erreicht ist.</p>
       <div class="actions">
         <button value="clear" type="submit" class="danger">Token entfernen</button>
         <span class="spacer"></span>
@@ -159,7 +164,7 @@
     <form method="dialog">
       <h2 id="publish-title">Veröffentlichen</h2>
       <div id="publish-body"></div>
-      <div class="actions"><span class="spacer"></span><button value="close" class="primary">Schließen</button></div>
+      <div class="actions"><button value="cancel" type="button" id="job-cancel" hidden>Abbrechen</button><span class="spacer"></span><button value="close" class="primary">Schließen</button></div>
     </form>
   </dialog>
 

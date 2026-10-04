@@ -15,6 +15,7 @@ import re
 import shutil
 import ssl
 import sys
+import threading
 import time
 import unicodedata
 import urllib.error
@@ -35,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 8   # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 9   # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -485,8 +486,132 @@ def quality_test(src, keys):
     return {'summary': summary, 'results': results, 'history': history[-30:]}
 
 
+def check_playlist(pl_id):
+    """Alle Live-Sender einer Playlist kurz anspielen (nacheinander, wegen Verbindungslimit).
+    Ergebnis in data/check_<id>.json; Event-/PPV-Kanäle werden gesondert markiert."""
+    state = load_state()
+    pl = find(state['playlists'], pl_id, 'Playlist')
+    sources = {s['id']: s for s in state['sources']}
+    catalogs, items = {}, []
+    for g in pl.get('groups', []):
+        for it in g.get('items', []):
+            if it.get('variants'):
+                continue
+            sid = it['key'].split(':', 1)[0]
+            if sid not in catalogs:
+                catalogs[sid] = {x['key']: x for x in (load_catalog(sid) or {'items': []})['items']}
+            ch = catalogs[sid].get(it['key'])
+            if ch and ch['type'] == 'live':
+                items.append((it['key'], it.get('name') or ch['name'], ch['url'], sid))
+    if not items:
+        raise UserError('In dieser Playlist gibt es keine Live-Sender zum Prüfen.')
+    for sid in {x[3] for x in items}:
+        src = sources.get(sid)
+        if src and src.get('type') == 'xtream':
+            info = source_info(src)
+            mx, act = info.get('maxConnections'), info.get('activeConnections')
+            if mx and act is not None and act >= mx:
+                raise UserError(f'Gerade laufen {act} von {mx} erlaubten Verbindungen (es wird ferngesehen). '
+                                'Bitte später prüfen, z. B. nachts.')
+    event = re.compile(r'EVENT|PPV|NUR W[ÄA]HREND|NO EVENT|REPLAY|ᴴᴰ ◉|\b8K\b', re.I)
+    busy = re.compile(r'HTTP (403|429|458|503|509)\b')
+    results = {}
+    for i, (key, name, url, sid) in enumerate(items):
+        if JOB.get('cancel'):
+            break
+        job_progress(f'Prüfe {name}', i, len(items))
+        r = measure_stream(url, seconds=1.0, max_bytes=192 * 1024)
+        tries = 0
+        # Verbindungslimit: der Anbieter gibt die letzte Verbindung erst nach einigen Sekunden frei
+        while not r.get('ok') and busy.search(r.get('error') or '') and tries < 3 and not JOB.get('cancel'):
+            tries += 1
+            job_progress(f'Prüfe {name} (warte auf freie Verbindung …)', i, len(items))
+            time.sleep(20)
+            r = measure_stream(url, seconds=1.0, max_bytes=192 * 1024)
+        results[key] = {'ok': bool(r.get('ok')), 'err': (r.get('error') or '')[:120],
+                        'event': bool(event.search(name)), 'name': name}
+        time.sleep(0.5)
+    out = {'t': int(time.time()), 'checked': len(results), 'total': len(items),
+           'cancelled': bool(JOB.get('cancel')), 'results': results}
+    write_json(os.path.join(DATA, f'check_{pl_id}.json'), out)
+    bad = [v['name'] for v in results.values() if not v['ok'] and not v['event']]
+    return {'checked': len(results), 'total': len(items), 'bad': len(bad), 'cancelled': out['cancelled'],
+            'events': sum(1 for v in results.values() if not v['ok'] and v['event'])}
+
+
+# ---------- Nachts automatisch veröffentlichen ----------
+
+def auto_publish_loop():
+    """Läuft im Hintergrund, solange der Editor läuft: einmal täglich ab der eingestellten Uhrzeit."""
+    while True:
+        time.sleep(60)
+        try:
+            s = load_settings()
+            if not s.get('autoPublish'):
+                continue
+            now = datetime.now()
+            today = now.strftime('%Y-%m-%d')
+            hh, mm = (s.get('autoTime') or '04:00').split(':')
+            if s.get('lastAuto') == today or (now.hour, now.minute) < (int(hh), int(mm)) or JOB.get('running'):
+                continue
+            s['lastAuto'] = today
+            write_json(SETTINGS_FILE, s)
+
+            def run():
+                res = publish([])
+                st = load_settings()
+                warn = sum(len(r.get('warnings') or []) for r in res['results'])
+                st['autoResult'] = (f'{now.strftime("%d.%m. %H:%M")}: {len(res["results"])} Playlists '
+                                    + ('hochgeladen' if res['uploaded'] else 'NICHT hochgeladen')
+                                    + (f', {warn} Hinweise' if warn else ''))
+                write_json(SETTINGS_FILE, st)
+                return res
+            start_job('publish', 'Automatisch veröffentlichen (nachts)', run)
+        except Exception as e:  # nie den Editor stören
+            print('Automatisch veröffentlichen fehlgeschlagen:', e)
+
+
 def load_catalog(source_id):
     return read_json(os.path.join(CACHE, f'catalog_{source_id}.json'), None)
+
+
+# ---------- Hintergrund-Aufgaben mit Fortschritt (Veröffentlichen, Sender prüfen) ----------
+
+JOB = {'running': False}
+JOB_LOCK = threading.Lock()
+
+
+def job_progress(step, done=None, total=None):
+    JOB.update(step=step, done=done, total=total)
+
+
+def start_job(kind, label, fn):
+    """Aufgabe im Hintergrund starten; die Oberfläche fragt /api/job ab."""
+    with JOB_LOCK:
+        if JOB.get('running'):
+            raise UserError(f'Es läuft gerade: {JOB.get("label")} – bitte warten, bis das fertig ist.')
+        JOB.clear()
+        JOB.update(kind=kind, label=label, running=True, step='Start …', done=None, total=None,
+                   cancel=False, started=time.time())
+
+    def run():
+        try:
+            JOB['result'] = fn()
+        except UserError as e:
+            JOB['error'] = str(e)
+        except Exception as e:  # unerwartet: trotzdem verständlich melden
+            JOB['error'] = f'Interner Fehler: {type(e).__name__}: {e}'
+        finally:
+            JOB.update(running=False, finished=time.time())
+
+    threading.Thread(target=run, daemon=True).start()
+    return job_status()
+
+
+def job_status():
+    st = {k: v for k, v in JOB.items() if k != 'cancel'}
+    st['now'] = time.time()
+    return st
 
 
 # ---------- Veröffentlichen ----------
@@ -517,8 +642,12 @@ def prefetch_episodes(pl, state, lookup):
         except Exception:
             pass   # Fehler zeigt der normale Durchlauf
 
+    from concurrent.futures import as_completed
     with ThreadPoolExecutor(max_workers=6) as pool:
-        list(pool.map(load, sorted(todo)))
+        futures = [pool.submit(load, job) for job in sorted(todo)]
+        for i, _ in enumerate(as_completed(futures), 1):
+            if i % 5 == 0 or i == len(futures):
+                job_progress('Folgenlisten der Serien laden', i, len(futures))
 
 
 def build_playlist(pl, state, warnings):
@@ -815,11 +944,19 @@ def publish(ids):
             continue
         warnings = []
         slug = slugify(pl.get('slug') or pl.get('name') or pl['id'])
+        JOB['pl'] = pl.get('name')
+        job_progress('Einträge zusammenstellen …')
         lines, epg_ids, catalogs, count, live = build_playlist(pl, state, warnings)
+        job_progress('Programm (EPG) des Anbieters …')
         epg = {}
         for sid, wanted in epg_ids.items():
             epg.update(epg_for_source(sid, catalogs.get(sid, {}).get('epg'), wanted, warnings))
+        job_progress('Programm aus Zusatzquellen …')
         fill_from_extra_epg(lines, live, epg, warnings)
+        # Andere IPTV-Apps (z. B. Smarters): Adresse des XMLTV-Programms in die Kopfzeile
+        if settings.get('gistId') and settings.get('login'):
+            xml_url = f'https://gist.githubusercontent.com/{settings["login"]}/{settings["gistId"]}/raw/{slug}.xml'
+            lines[0] = f'#EXTM3U url-tvg="{xml_url}" x-tvg-url="{xml_url}"'
         m3u = '\n'.join(lines) + '\n'
         # Eigene Reihenfolge für den Reiter „Programm“ (sonst wie in der Playlist)
         order = [i for i in pl.get('epgOrder') or [] if i in epg]
@@ -830,13 +967,19 @@ def publish(ids):
                 f.write(m3u)
             with open(os.path.join(folder, slug + '.epg.json'), 'w', encoding='utf-8') as f:
                 f.write(epg_json)
+        xmltv = build_xmltv(epg, live)
+        with open(os.path.join(OUT, slug + '.xml'), 'w', encoding='utf-8') as f:
+            f.write(xmltv)
         files[slug + '.m3u'] = m3u
         files[slug + '.epg.json'] = epg_json
+        files[slug + '.xml'] = xmltv
         results.append({'id': pl['id'], 'name': pl.get('name'), 'slug': slug, 'entries': count,
                         'epgChannels': len(epg), 'sizeKb': round(len(m3u.encode()) / 1024),
                         'warnings': warnings})
     uploaded = None
     if files:
+        JOB['pl'] = None
+        job_progress('Hochladen zu GitHub …')
         try:
             uploaded = gist_upload(files, settings)
         except UserError as e:
@@ -845,6 +988,27 @@ def publish(ids):
     for r in results:
         r.update(device_links(r['slug'], uploaded or {}))
     return {'results': results, 'uploaded': bool(uploaded)}
+
+
+def build_xmltv(epg, live):
+    """Programm im XMLTV-Format für andere IPTV-Apps (IPTV Smarters, TiviMate …)."""
+    from xml.sax.saxutils import escape, quoteattr
+    names = {}
+    for c in live:
+        if c['tvgId'] and c['tvgId'] not in names:
+            names[c['tvgId']] = re.sub(r'^\s*[A-Z]{2,3}\|\s*', '', c['names'][-1] or '')
+
+    def t(sec):
+        return datetime.utcfromtimestamp(sec).strftime('%Y%m%d%H%M%S') + ' +0000'
+    out = ['<?xml version="1.0" encoding="UTF-8"?>', '<tv generator-info-name="IPTV-Editor">']
+    for cid in epg:
+        out.append(f'<channel id={quoteattr(cid)}><display-name>{escape(names.get(cid, cid))}</display-name></channel>')
+    for cid, progs in epg.items():
+        for start, stop, title in progs:
+            out.append(f'<programme start="{t(start)}" stop="{t(stop)}" channel={quoteattr(cid)}>'
+                       f'<title lang="de">{escape(title or "")}</title></programme>')
+    out.append('</tv>')
+    return '\n'.join(out) + '\n'
 
 
 def device_links(slug, settings):
@@ -859,6 +1023,8 @@ def device_links(slug, settings):
     if settings.get('gistId') and settings.get('login'):
         ref = f'{settings["login"]}/{settings["gistId"]}/{slug}'
         out['setupRef'] = ref
+        raw = f'https://gist.githubusercontent.com/{settings["login"]}/{settings["gistId"]}/raw/{slug}'
+        out['appLinks'] = {'m3u': raw + '.m3u', 'xmltv': raw + '.xml'}   # andere IPTV-Apps
         if pages:
             out['webLinks'] = setup_links(pages.rstrip('/') + '/index.html', 'liste=' + ref)
     return out
@@ -1077,7 +1243,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({'version': VERSION, 'state': load_state(), 'settings': {
                     'hasToken': bool(s.get('token')), 'tokenEnd': (s.get('token') or '')[-4:],
                     'login': s.get('login'), 'gistId': s.get('gistId'),
-                    'pagesUrl': s.get('pagesUrl', '')}})
+                    'pagesUrl': s.get('pagesUrl', ''), 'autoPublish': bool(s.get('autoPublish')),
+                    'autoTime': s.get('autoTime') or '04:00', 'autoResult': s.get('autoResult', ''),
+                    'job': job_status()}})
             if method == 'POST' and path == '/api/state':
                 state = self.body()
                 if not isinstance(state.get('sources'), list) or not isinstance(state.get('playlists'), list):
@@ -1092,6 +1260,10 @@ class Handler(SimpleHTTPRequestHandler):
                     s.pop('token', None)
                 if 'pagesUrl' in b:
                     s['pagesUrl'] = b['pagesUrl'].strip()
+                if 'autoPublish' in b:
+                    s['autoPublish'] = bool(b['autoPublish'])
+                if re.match(r'^\d{1,2}:\d{2}$', b.get('autoTime') or ''):
+                    s['autoTime'] = b['autoTime']
                 write_json(SETTINGS_FILE, s)
                 return self.send_json({'ok': True, 'hasToken': bool(s.get('token'))})
             if method == 'POST' and path == '/api/refresh':
@@ -1127,7 +1299,21 @@ class Handler(SimpleHTTPRequestHandler):
                 open_in_vlc(stream_url(self.body().get('key', '')))
                 return self.send_json({'ok': True})
             if method == 'POST' and path == '/api/publish':
-                return self.send_json(publish(self.body().get('ids') or []))
+                ids = self.body().get('ids') or []
+                names = [p.get('name') for p in load_state()['playlists'] if p['id'] in ids]
+                return self.send_json(start_job('publish', 'Veröffentlichen' + (f' „{", ".join(names)}“' if names else ' (alle)'),
+                                                lambda: publish(ids)))
+            if method == 'GET' and path == '/api/job':
+                return self.send_json(job_status())
+            if method == 'POST' and path == '/api/job/cancel':
+                JOB['cancel'] = True
+                return self.send_json({'ok': True})
+            if method == 'POST' and path == '/api/check':
+                pid = self.body().get('id')
+                name = find(load_state()['playlists'], pid, 'Playlist').get('name')
+                return self.send_json(start_job('check', f'Sender prüfen „{name}“', lambda: check_playlist(pid)))
+            if method == 'GET' and path == '/api/check':
+                return self.send_json(read_json(os.path.join(DATA, f'check_{q.get("id", "")}.json'), {}))
             self.send_error(404)
         except UserError as e:
             self.send_json({'error': str(e)}, 400)
@@ -1137,6 +1323,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main():
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
+    threading.Thread(target=auto_publish_loop, daemon=True).start()
     url = f'http://localhost:{PORT}/'
     print(f'Playlist-Editor läuft: {url}  (Beenden mit Ctrl+C)')
     if '--no-browser' not in sys.argv:

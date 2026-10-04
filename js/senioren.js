@@ -45,6 +45,7 @@
 
   function show(entries) {
     allEntries = entries;
+    dataVersion++;
     // Index über Name, tvg-name und tvg-id; Live-Sender haben Vorrang, erster Treffer gewinnt.
     var index = new Map();
     var ordered = entries.filter(function (e) { return e.type === 'live'; })
@@ -74,37 +75,53 @@
     render(list.filter(function (x) { return x.entry; }));
   }
 
+  // Player der App: ganze Playlist wie in der Hauptansicht (Gruppe › Live TV › Übersicht);
+  // nur bei einer Senderauswahl aus config.js oben „Meine Sender“. Version ändert sich mit neuen
+  // Daten (Hintergrund-Auffrischung) und stündlich.
+  var seniorEntries = [];
+  var seniorFound = [];
+  var dataVersion = 0;
+  var treeCache = null;
+  IPTV.setTreeProvider(function () {
+    if (!IPTV.buildTree) return null;   // alte senioren.html ohne js/tree.js: ältere Übergabe
+    var version = 'sen:' + pageId + ':' + dataVersion + ':' + IPTV.epgStamp() + ':' + Math.floor(Date.now() / 3600000);
+    if (treeCache && treeCache.version === version) return treeCache;
+    var own = !IPTV.hasDeviceList() && seniorEntries.length;
+    var t = IPTV.buildTree(allEntries, own
+      ? { first: [{ n: 'Meine Sender', c: seniorEntries.map(function (e) { return IPTV.nativeLeaf(e); }) }] }
+      : {});
+    seniorEntries.forEach(function (e, i) {
+      t.paths.set(e, own ? [0, i] : t.paths.get(seniorFound[i].entry));
+    });
+    treeCache = {
+      version: version,
+      build: function () { return { n: 'Übersicht', c: t.root }; },
+      pathOf: function (e) { return t.paths.get(e) || null; },
+      pathOfUrl: function (url) {
+        var hit = allEntries.find(function (e) { return e.url === url; });
+        return hit ? t.paths.get(hit) || null : null;
+      }
+    };
+    return treeCache;
+  });
+  var pageId = Date.now();
+
   function render(found) {
-    if (!found.length) return status('Keine Sender gefunden.');
+    seniorEntries = [];
+    seniorFound = [];
+    if (!found.length) {
+      status('Keine Sender gefunden.');
+      if (appPlayer && !lastAuto) setTimeout(autoStart, 300);   // z. B. reine Serienliste
+      return;
+    }
 
     box.textContent = '';
     var frag = document.createDocumentFragment();
     // Für den Player der App: Sender mit dem hier angezeigten Namen
     var entries = found.map(function (x) { return Object.assign({}, x.entry, { name: x.label }); });
+    seniorEntries = entries;
+    seniorFound = found;
     IPTV.setLiveGroups(function () { return [{ name: 'Sender', items: entries }]; });
-    // Player der App: oben „Meine Sender“, mit ◀ darüber die ganze Playlist wie in der Hauptansicht
-    var base = 'sen:' + Date.now();
-    var cache = null;
-    IPTV.setTreeProvider(function () {
-      if (!IPTV.buildTree) return null;   // alte senioren.html ohne js/tree.js: ältere Übergabe
-      var version = base + ':' + Math.floor(Date.now() / 3600000);
-      if (cache && cache.version === version) return cache;
-      // Eigene Playlist des Geräts (alle Live-Sender): gleiche Ebenen wie die Hauptansicht
-      // (Gruppe › Live TV › Übersicht). Nur bei einer Auswahl aus config.js oben „Meine Sender“.
-      var own = !IPTV.hasDeviceList();
-      var t = IPTV.buildTree(allEntries, own
-        ? { first: [{ n: 'Meine Sender', c: entries.map(function (e) { return IPTV.nativeLeaf(e); }) }] }
-        : {});
-      entries.forEach(function (e, i) {
-        t.paths.set(e, own ? [0, i] : t.paths.get(found[i].entry));
-      });
-      cache = {
-        version: version,
-        build: function () { return { n: 'Übersicht', c: t.root }; },
-        pathOf: function (e) { return t.paths.get(e) || null; }
-      };
-      return cache;
-    });
     found.forEach(function (x, i) {
       var a = document.createElement('a');
       a.className = 'channel';
@@ -147,17 +164,23 @@
   var lastAuto = 0;
 
   function autoStart() {
-    var tiles = box.querySelectorAll('.channel');
-    if (!tiles.length) return;
+    if (!allEntries.length) return;
     // Schutz gegen Endlosschleife, wenn der Player sofort wieder zugeht
     if (Date.now() - lastAuto < 15000) {
       document.documentElement.classList.remove('appplayer');
       return;
     }
     lastAuto = Date.now();
-    var last = N.lastSeniorUrl();
-    var hit = Array.prototype.find.call(tiles, function (a) { return a._play && a._play.entry.url === last; });
-    (hit || tiles[0]).click();
+    var tiles = box.querySelectorAll('.channel');
+    var tp = IPTV.nativeTree();
+    if (!tp) {   // ältere Übergabe ohne Baum: nur mit Sendern möglich
+      if (tiles.length) tiles[0].click(); else document.documentElement.classList.remove('appplayer');
+      return;
+    }
+    // Zuletzt gesehen (Sender, Film oder Folge), sonst erster Sender, sonst nur die Übersicht
+    var path = tp.pathOfUrl(N.lastSeniorUrl());
+    if (!path && tiles.length) path = tp.pathOf(tiles[0]._play.entry);
+    IPTV.openNativePath(path || []);
   }
 
   if (appPlayer) {

@@ -36,6 +36,14 @@ public class MainActivity extends Activity {
     private static final String PREF_CONFIGURED = "configured";
 
     private WebView web;
+    private static MainActivity instance;
+
+    /** Vom Player: Playlist und Programm im Hintergrund neu laden (die Webapp schickt dann einen neuen Baum). */
+    static void requestRefresh() {
+        MainActivity a = instance;
+        if (a == null || a.web == null) return;
+        a.runOnUiThread(() -> a.web.evaluateJavascript("window.IPTV&&IPTV.nativeRefresh&&IPTV.nativeRefresh()", null));
+    }
     private SharedPreferences prefs;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -44,6 +52,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prefs = getSharedPreferences("iptv", MODE_PRIVATE);
+        instance = this;
 
         web = new WebView(this);
         setContentView(web);
@@ -290,6 +299,12 @@ public class MainActivity extends Activity {
         }
         // Seniorenansicht: beim (erneuten) Öffnen der App gleich wieder den letzten Sender starten
         web.evaluateJavascript("window.IPTV&&IPTV.onAppResume&&IPTV.onAppResume()", null);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (instance == this) instance = null;
+        super.onDestroy();
     }
 
     @Override

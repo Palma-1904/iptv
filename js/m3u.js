@@ -255,7 +255,9 @@
   // Holt die Playlist erneut, wenn die App wieder in den Vordergrund kommt
   // (z. B. vom Home-Bildschirm), und meldet nur echte Änderungen.
   var REFRESH_AFTER = 5 * 60 * 1000;
+  var epgStamp = 0;   // ändert sich bei jeder Hintergrund-Auffrischung (neuer Baum fürs Programm)
   function watch(onChange) {
+    watchers.push(onChange);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
       if (Date.now() - lastLoad < REFRESH_AFTER) return;
@@ -365,6 +367,39 @@
     if (e.tvgId) o.id = e.tvgId;
     if (e.type === 'live' && e.tvgId) o.e = programmes(e.tvgId).slice(0, 12);
     return o;
+  }
+
+  // Pfad im Baum öffnen (Eintrag abspielen; Gruppe/Übersicht = nur Liste zeigen)
+  function openNativePath(path) {
+    var N = window.IPTVNative;
+    var tp = treeProvider && treeProvider();
+    if (!tp || typeof N.playPath !== 'function') return false;
+    if (!N.hasTree(tp.version)) N.setTree(tp.version, JSON.stringify(tp.build()));
+    N.playPath(JSON.stringify({ path: path, view: /senioren/.test(location.pathname) ? 'senioren' : 'komplett' }));
+    return true;
+  }
+
+  // Die App fragt im laufenden Player regelmäßig nach (Liste und Programm auffrischen, ohne den
+  // Sender zu unterbrechen): neu laden, bei Änderungen neu zeichnen, neuen Baum übergeben.
+  var watchers = [];
+  function nativeRefresh() {
+    return Promise.all([fetchText(), loadEpg()]).then(function (res) {
+      if (res[0] !== lastText) {
+        lastText = res[0];
+        var entries = parse(res[0]);
+        watchers.forEach(function (fn) { fn(entries); });
+      } else {
+        refreshEpgEls();
+      }
+      epgStamp = Date.now();
+      var N = window.IPTVNative;
+      var tp = treeProvider && treeProvider();
+      if (tp && N && typeof N.setTree === 'function' && !N.hasTree(tp.version)) {
+        N.setTree(tp.version, JSON.stringify(tp.build()));
+      }
+    }).catch(function (err) {
+      console.warn('Auffrischen fehlgeschlagen, alte Liste bleibt:', err.message);
+    });
   }
 
   function playNativeTree(entry) {
@@ -482,6 +517,9 @@
     handleBack: handleBack,
     setLiveGroups: function (fn) { liveGroups = fn; },
     setTreeProvider: function (fn) { treeProvider = fn; },
+    openNativePath: openNativePath,
+    nativeRefresh: nativeRefresh,
+    epgStamp: function () { return epgStamp; },
     nativeTree: function () { return treeProvider ? treeProvider() : null; },   // zum Testen
     nativeLeaf: nativeLeaf,
     platform: platform,

@@ -80,6 +80,8 @@ public class PlayerActivity extends Activity {
     private static final long TUNE_DELAY = 700;   // ms Ruhe nach dem Umschalten, dann verbinden
     private static final long INFO_MS = 6000;
     private static final long LIST_MS = 30000;
+    private static final long REFRESH_MS = 2 * 3600 * 1000L;   // Liste und Programm alle 2 Stunden auffrischen
+    private static final long ADOPT_MS = 30 * 1000L;            // neuen Baum der Webapp übernehmen (prüfen)
 
     static class Item {
         String name, url, logo, tvgId, type, group;
@@ -212,6 +214,8 @@ public class PlayerActivity extends Activity {
     private ListView list;
     private ListAdapter adapter;
     private Node browse;            // Ebene, die die Liste gerade zeigt
+    private Node browseStart;       // Start ohne laufenden Eintrag: Liste an dieser Stelle öffnen
+    private String treeSeen;        // Fassung des Baums, mit der der Player arbeitet
     private LinearLayout preview;
     private TextView previewName, previewEpg;
     private ImageLoader images;
@@ -225,6 +229,51 @@ public class PlayerActivity extends Activity {
         retries = 0;
         play();
     };
+    /** Webapp (im Hintergrund) bitten, Playlist und Programm neu zu laden; sie liefert einen neuen Baum. */
+    private final Runnable refresh = new Runnable() {
+        @Override
+        public void run() {
+            MainActivity.requestRefresh();
+            handler.postDelayed(this, REFRESH_MS);
+        }
+    };
+
+    /** Neuen Baum übernehmen, ohne die Wiedergabe zu unterbrechen. */
+    private final Runnable adopt = new Runnable() {
+        @Override
+        public void run() {
+            handler.postDelayed(this, ADOPT_MS);
+            Node fresh = treeRoot;
+            String v = treeVersion;
+            if (fresh == null || v == null || v.equals(treeSeen) || treeSeen == null) return;
+            treeSeen = v;
+            Item playing = current();
+            Node leaf = playing == null ? null : findLeaf(fresh, playing.url);
+            if (playing != null && leaf == null) return;   // laufender Eintrag nicht mehr in der Liste: alten Baum behalten
+            rootNode = fresh;
+            if (leaf != null && pendingIndex < 0) {
+                ctx = leaf.parent;
+                ctxItems.clear();
+                for (Node c : ctx.children) if (c.item != null) ctxItems.add(c.item);
+                index = Math.max(0, ctxItems.indexOf(leaf.item));
+            }
+            if (idle()) browseStart = rootNode;
+            if (listOpen()) {
+                if (idle()) showNode(rootNode, null);
+                else openList();
+            }
+        }
+    };
+
+    private static Node findLeaf(Node n, String url) {
+        if (n.item != null) return url.equals(n.item.url) ? n : null;
+        for (Node c : n.children) {
+            Node f = findLeaf(c, url);
+            if (f != null) return f;
+        }
+        return null;
+    }
+
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
@@ -283,8 +332,15 @@ public class PlayerActivity extends Activity {
             }
         });
 
-        play();
+        if (idle()) {
+            spinner.setVisibility(View.GONE);
+            root.post(this::openList);
+        } else {
+            play();
+        }
         handler.post(tick);
+        handler.postDelayed(refresh, REFRESH_MS);
+        handler.postDelayed(adopt, ADOPT_MS);
     }
 
     private static Item readItem(JSONObject j) throws Exception {
@@ -319,9 +375,14 @@ public class PlayerActivity extends Activity {
                 int k = path.getInt(i);
                 n = k >= 0 && k < n.children.size() ? n.children.get(k) : null;
             }
-            if (n == null || n.item == null) return false;
+            if (n == null) return false;
             rootNode = treeRoot;
+            treeSeen = treeVersion;
             if ("senioren".equals(o.optString("view"))) senior = true;   // gleiche Schriftgröße wie Komplett
+            if (n.item == null) {
+                browseStart = n;   // z. B. Liste ohne Live-Sender: nur Auswahl, noch nichts abspielen
+                return true;
+            }
             setContext(n);
             return true;
         } catch (Exception e) {
@@ -382,8 +443,13 @@ public class PlayerActivity extends Activity {
         return ctxItems;
     }
 
+    /** Läuft gerade etwas (oder wird gleich umgeschaltet)? Ohne: nur Auswahl-Liste. */
+    private boolean idle() {
+        return ctxItems.isEmpty();
+    }
+
     private Item current() {
-        return items().get(pendingIndex >= 0 ? pendingIndex : index);
+        return idle() ? null : items().get(pendingIndex >= 0 ? pendingIndex : index);
     }
 
     private void play() {
@@ -436,7 +502,7 @@ public class PlayerActivity extends Activity {
 
     /** Direkt umschalten (aus der Liste), auch in eine andere Gruppe oder zu einem Film. */
     private void jumpTo(Node leaf) {
-        if (leaf.parent == ctx && leaf.item == items().get(index) && pendingIndex < 0 && !failed) return;
+        if (!idle() && leaf.parent == ctx && leaf.item == items().get(index) && pendingIndex < 0 && !failed) return;
         handler.removeCallbacks(tune);
         player.stop();
         pendingIndex = -1;
@@ -549,6 +615,10 @@ public class PlayerActivity extends Activity {
                 default:
                     return super.onKeyDown(keyCode, event);
             }
+        }
+        if (idle()) {             // noch nichts gewählt: jede Taste öffnet die Auswahl
+            openList();
+            return true;
         }
         boolean live = current().live();
         boolean fast = event.getRepeatCount() > 2;
@@ -782,7 +852,7 @@ public class PlayerActivity extends Activity {
     }
 
     private void showInfo() {
-        if (listOpen()) return;
+        if (listOpen() || idle()) return;
         updateInfo();
         info.setVisibility(View.VISIBLE);
         handler.removeCallbacks(hideInfo);
@@ -931,16 +1001,25 @@ public class PlayerActivity extends Activity {
         listPanel.setVisibility(View.VISIBLE);
         preview.setVisibility(View.VISIBLE);
         listPanel.requestLayout();
-        // Gruppe des laufenden Eintrags zeigen, Auswahl auf ihm
-        Item playing = items().get(pendingIndex >= 0 ? pendingIndex : index);
-        Node sel = null;
-        for (Node c : ctx.children) if (c.item == playing) sel = c;
-        showNode(ctx, sel);
+        // Gruppe des laufenden Eintrags zeigen, Auswahl auf ihm (ohne laufenden Eintrag: Startebene)
+        if (idle()) {
+            showNode(browseStart != null ? browseStart : rootNode, null);
+        } else {
+            Item playing = current();
+            Node sel = null;
+            for (Node c : ctx.children) if (c.item == playing) sel = c;
+            showNode(ctx, sel);
+        }
         list.requestFocus();
         layoutVideo();
     }
 
     private void closeList() {
+        if (idle()) {              // ohne laufenden Eintrag bleibt die Auswahl offen
+            handler.removeCallbacks(hideList);
+            if (!senior) finish();
+            return;
+        }
         handler.removeCallbacks(hideList);
         listPanel.setVisibility(View.GONE);
         preview.setVisibility(View.GONE);
@@ -1116,7 +1195,7 @@ public class PlayerActivity extends Activity {
             Row row = convertView != null && convertView.getTag() instanceof Row
                     ? (Row) convertView.getTag() : new Row();
             Node n = browse.children.get(position);
-            Item playing = items().get(index);
+            Item playing = idle() ? null : items().get(index);
             if (n.item == null) {
                 boolean inside = contains(n, playing);
                 row.num.setText(inside ? "▶" : n.search ? "" : "›");

@@ -610,7 +610,7 @@
   var dataVersion = 0;
   var tree = null;
   IPTV.setTreeProvider(function () {
-    var version = pageId + ':' + dataVersion + ':' + Math.floor(Date.now() / 3600000) + ':' + favs.movie.length + ':' + favs.series.length;
+    var version = pageId + ':' + dataVersion + ':' + IPTV.epgStamp() + ':' + Math.floor(Date.now() / 3600000) + ':' + favs.movie.length + ':' + favs.series.length;
     if (tree && tree.version === version) return tree;
     var t = IPTV.buildTree(all, {
       favKey: favKey, isFav: isFav, favMovies: favMovies, favSeriesFirst: favSeriesFirst,

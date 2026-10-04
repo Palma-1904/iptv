@@ -56,7 +56,7 @@ import java.util.Locale;
  * Der Anbieter erlaubt nur EINE Verbindung: Beim Umschalten wird der alte Sender sofort gestoppt
  * und der neue erst verbunden, wenn kurz keine Taste mehr gedrückt wurde.
  */
-public class PlayerActivity extends Activity {
+public class PlayerActivity extends Activity implements Remote.Target {
 
     /** Daten von der Webapp (für Intent-Extras evtl. zu groß). */
     static String pending;
@@ -308,6 +308,7 @@ public class PlayerActivity extends Activity {
         }
         images = new ImageLoader();
         mem = Memory.get(this);
+        Remote.player_target = this;
         buildViews();
 
         vlc = new LibVLC(this, new ArrayList<>(Arrays.asList(
@@ -324,6 +325,7 @@ public class PlayerActivity extends Activity {
                 case MediaPlayer.Event.Playing:
                     retries = 0;
                     failed = false;
+                    reportPlaying();
                     spinner.setVisibility(View.GONE);
                     status.setVisibility(View.GONE);
                     if (pendingSeek > 0) {            // Weiterschauen
@@ -491,6 +493,48 @@ public class PlayerActivity extends Activity {
         if (adapter != null) adapter.notifyDataSetChanged();
     }
 
+    private void reportPlaying() {
+        Item it = current();
+        if (it != null) Remote.status("playing", it.heading != null ? it.heading : it.name, it.type);
+    }
+
+    // ---------- Fernwartung (Befehle aus dem Editor) ----------
+
+    @Override
+    public void remote(String action, JSONObject arg) {
+        switch (action) {
+            case "close":
+                finish();
+                break;
+            case "message":
+                Remote.showMessage(this, arg.optString("text"));
+                break;
+            case "stop":
+                saveResume();
+                player.stop();
+                sleeping = true;      // jede Taste schaut weiter
+                closeList();
+                info.setVisibility(View.GONE);
+                showStatus("Die Wiedergabe wurde aus der Ferne beendet.\n\nZum Weiterschauen eine beliebige Taste drücken.");
+                Remote.status("stopped", "", "");
+                break;
+            case "play": {
+                Node leaf = rootNode == null ? null : findLeaf(rootNode, arg.optString("norm"));
+                if (leaf == null) {
+                    Remote.report("Eintrag nicht gefunden");
+                    return;
+                }
+                sleeping = false;
+                status.setVisibility(View.GONE);
+                if (listOpen()) closeList();
+                jumpTo(leaf);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
     /** Film/Folge schon angefangen: fortsetzen oder von vorne? */
     private void askResume(Item it, long pos) {
         spinner.setVisibility(View.GONE);
@@ -528,7 +572,9 @@ public class PlayerActivity extends Activity {
         Media media = new Media(vlc, Uri.parse(it.url));
         media.setHWDecoderEnabled(true, false);
         media.addOption(":http-user-agent=" + USER_AGENT);
-        media.addOption(":network-caching=" + (it.live() ? 2000 : 3000));
+        // Vorrat gegen Ruckeln bei schwankendem WLAN/Anbieter (Live 5 s, Filme 8 s; Umschalten etwas langsamer)
+        media.addOption(":network-caching=" + (it.live() ? 5000 : 8000));
+        media.addOption(":live-caching=5000");
         player.setMedia(media);
         media.release();
         player.play();
@@ -601,6 +647,7 @@ public class PlayerActivity extends Activity {
         }
         failed = true;
         spinner.setVisibility(View.GONE);
+        Remote.status("error", it.name, it.type);
         String keys = it.live() || items().size() > 1
                 ? "\n\n▲ ▼ anderen Sender wählen  ·  OK = in VLC öffnen" : "\n\nOK = in VLC öffnen";
         showStatus("„" + it.name + "“ kann gerade nicht abgespielt werden.\n"
@@ -608,7 +655,13 @@ public class PlayerActivity extends Activity {
     }
 
     private void togglePause() {
-        if (player.isPlaying()) player.pause(); else player.play();
+        if (player.isPlaying()) {
+            player.pause();
+            Item it = current();
+            if (it != null) Remote.status("paused", it.heading != null ? it.heading : it.name, it.type);
+        } else {
+            player.play();
+        }
         handler.postDelayed(this::showInfo, 150);
     }
 
@@ -792,6 +845,7 @@ public class PlayerActivity extends Activity {
                 saveResume();
                 player.stop();
                 sleeping = true;
+                Remote.status("sleep", "", "");
                 sleepWarned = false;
                 closeList();
                 info.setVisibility(View.GONE);
@@ -843,6 +897,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (Remote.player_target == this) Remote.player_target = null;
         if (mem != null && player != null) saveResume();
         handler.removeCallbacksAndMessages(null);
         if (player != null) {

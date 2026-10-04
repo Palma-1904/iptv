@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 12; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 13; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -1030,6 +1030,103 @@ async function publish(all) {
   res.results.forEach((r) => body.appendChild(linksBox(r)));
 }
 
+// ---------- Fernwartung ----------
+
+const STATE_TEXT = { playing: '▶ läuft', paused: '❚❚ pausiert', stopped: '■ gestoppt', error: '⚠ Fehler',
+  sleep: '☾ Schlaf-Timer – angehalten', overview: '☰ in der Übersicht', start: 'gestartet' };
+const remoteChannels = {};   // Liste -> Sender (Name, Adresse ohne Zugangsdaten)
+let remoteTimer = null;
+
+function ago(sec) {
+  if (sec < 90) return 'gerade eben';
+  if (sec < 3600) return `vor ${Math.round(sec / 60)} Min.`;
+  if (sec < 86400) return `vor ${Math.round(sec / 3600)} Std.`;
+  return `vor ${Math.round(sec / 86400)} Tagen`;
+}
+
+async function remoteCmd(to, action, arg, label) {
+  try {
+    await api('/api/remote/cmd', { to, action, arg: arg || {} });
+    toast(`${label} gesendet – das Gerät reagiert in etwa 15 Sekunden`);
+    setTimeout(renderRemote, 20000);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function renderRemote() {
+  const dlg = $('#dlg-remote');
+  if (!dlg.open) return;
+  const body = $('#remote-body');
+  let st;
+  try { st = await api('/api/remote/status'); } catch (e) { body.textContent = e.message; return; }
+  $('#remote-off').hidden = !st.enabled;
+  body.textContent = '';
+  if (!st.enabled) {
+    body.appendChild(el('p', '', 'Mit der Fernwartung siehst du, was auf den Fire-TV-Sticks läuft, und kannst sie aus der Ferne steuern: umschalten, Nachricht anzeigen, stoppen, neu laden, Update anstoßen, Ansicht wechseln.'));
+    body.appendChild(el('p', 'hint', 'Die Sticks melden sich über einen geheimen Kanal beim Dienst ntfy.sh (Meldungen werden dort nach 12 Stunden gelöscht). Übertragen werden nur Gerätename, Liste, Ansicht, laufender Titel und App-Version – keine Zugangsdaten. Funktioniert ab App-Version mit Fernwartung.'));
+    const on = el('button', 'primary', 'Fernwartung einschalten');
+    on.type = 'button';
+    on.onclick = async () => {
+      try { await busy(() => api('/api/remote/enable', { on: true })); toast('Fernwartung eingeschaltet – die Geräte melden sich nach dem nächsten Start der App'); renderRemote(); } catch (e) { toast(e.message, true); }
+    };
+    body.appendChild(on);
+    return;
+  }
+  if (st.error) body.appendChild(el('p', 'warn', 'ntfy.sh nicht erreichbar: ' + st.error));
+  if (!st.devices.length) {
+    body.appendChild(el('p', '', 'Noch keine Geräte gemeldet. Die Sticks melden sich, sobald die App (neueste Version) geöffnet wird – das kann ein paar Minuten dauern.'));
+    return;
+  }
+  for (const d of st.devices) {
+    const online = d.age < 7 * 60;
+    const box = el('div', 'dev');
+    const head = el('div', 'dev-head');
+    head.appendChild(el('span', 'dev-dot' + (online ? ' on' : '')));
+    head.appendChild(el('strong', '', d.name || 'Gerät'));
+    head.appendChild(el('span', 'chip', `Liste „${d.list || '?'}“ · ${d.view === 'senioren' ? 'Senioren' : 'Komplett'} · App ${d.ver || '?'}`));
+    head.appendChild(el('span', 'hint', (online ? 'online, ' : 'offline? ') + 'zuletzt gemeldet ' + ago(d.age)));
+    box.appendChild(head);
+    box.appendChild(el('p', 'dev-now', (STATE_TEXT[d.state] || d.state || '') + (d.title ? ': ' + d.title : '')));
+    if (d.lastNote) box.appendChild(el('p', 'hint', 'Letzte Rückmeldung: ' + d.lastNote));
+
+    const acts = el('div', 'dev-acts');
+    const sel = el('select');
+    sel.appendChild(el('option', '', 'Umschalten auf …'));
+    acts.appendChild(sel);
+    const loadChannels = async () => {
+      if (!remoteChannels[d.list]) {
+        try { remoteChannels[d.list] = (await api('/api/remote/channels?list=' + encodeURIComponent(d.list || ''))).channels; } catch (e) { remoteChannels[d.list] = []; }
+      }
+      if (sel.options.length > 1) return;
+      remoteChannels[d.list].forEach((c) => { const o = el('option', '', `${c.name}  (${c.group})`); o.value = c.norm; sel.appendChild(o); });
+    };
+    sel.onfocus = loadChannels;
+    sel.onmousedown = loadChannels;
+    sel.onchange = () => { if (sel.value) remoteCmd(d.id, 'play', { norm: sel.value }, 'Umschalten'); };
+    const btn = (label, fn, cls) => { const b = el('button', cls || '', label); b.type = 'button'; b.onclick = fn; acts.appendChild(b); };
+    btn('Nachricht …', () => { const t = prompt('Nachricht, die auf dem Fernseher erscheint:'); if (t && t.trim()) remoteCmd(d.id, 'message', { text: t.trim() }, 'Nachricht'); });
+    btn('Stoppen', () => { if (confirm(`Wiedergabe auf „${d.name}“ stoppen?`)) remoteCmd(d.id, 'stop', {}, 'Stoppen'); });
+    btn('Neu laden', () => remoteCmd(d.id, 'reload', {}, 'Neu laden'));
+    btn('Update', () => remoteCmd(d.id, 'update', {}, 'Update'));
+    const other = d.view === 'senioren' ? 'komplett' : 'senioren';
+    btn(`Ansicht: ${other === 'senioren' ? 'Senioren' : 'Komplett'}`, () => {
+      if (confirm(`„${d.name}“ auf die Ansicht „${other}“ umstellen?`)) remoteCmd(d.id, 'view', { view: other }, 'Ansicht');
+    });
+    box.appendChild(acts);
+    body.appendChild(box);
+  }
+  body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. „Update“ fragt am Gerät nach – dort muss jemand mit OK bestätigen.'));
+}
+
+function openRemote() {
+  const dlg = $('#dlg-remote');
+  $('#remote-body').textContent = 'Lade …';
+  dlg.showModal();
+  renderRemote();
+  clearInterval(remoteTimer);
+  remoteTimer = setInterval(() => { if (dlg.open && !document.activeElement.closest('#dlg-remote select')) renderRemote(); }, 15000);
+  dlg.onclose = () => clearInterval(remoteTimer);
+}
+
 // ---------- Sender prüfen ----------
 
 const checks = {};   // Playlist-ID -> Ergebnis von /api/check
@@ -1771,6 +1868,11 @@ function bind() {
   $('#publish').onclick = () => publish(false);
   $('#publish-all').onclick = () => publish(true);
   $('#check').onclick = checkPlaylist;
+  $('#remote').onclick = openRemote;
+  $('#remote-off').onclick = async () => {
+    if (!confirm('Fernwartung ausschalten? Die Geräte melden sich dann nicht mehr.')) return;
+    try { await api('/api/remote/enable', { on: false }); renderRemote(); } catch (e) { toast(e.message, true); }
+  };
   $('#sel-top').onclick = () => moveSelToEdge(true);
   $('#sel-bottom').onclick = () => moveSelToEdge(false);
   $('#sel-move').onchange = (ev) => { if (ev.target.value) moveSelToGroup(ev.target.value); };

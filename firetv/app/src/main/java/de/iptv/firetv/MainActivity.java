@@ -30,7 +30,7 @@ import java.net.URISyntaxException;
  * Senderliste der Gruppe auf. intent://-Links (VLC) funktionieren weiterhin.
  * Menü-Taste (☰) der Fernbedienung: Einrichtung (Playlist und Ansicht) erneut öffnen.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements Remote.Target {
 
     private static final String VLC = "org.videolan.vlc";
     private static final String PREF_CONFIGURED = "configured";
@@ -53,6 +53,8 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prefs = getSharedPreferences("iptv", MODE_PRIVATE);
         instance = this;
+        Remote.init(this);
+        Remote.main_target = this;
 
         web = new WebView(this);
         setContentView(web);
@@ -148,6 +150,17 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 PlayerActivity.treeRoot = null;
                 PlayerActivity.treeVersion = null;
+            }
+        }
+
+        /** Fernwartung: welche Playlist und Ansicht dieses Gerät nutzt. */
+        @JavascriptInterface
+        public void hello(String json) {
+            try {
+                JSONObject o = new JSONObject(json);
+                Remote.setPlaylist(o.optString("playlist"), o.optString("view"));
+            } catch (Exception ignored) {
+                // nicht wichtig
             }
         }
 
@@ -298,13 +311,71 @@ public class MainActivity extends Activity {
             web.evaluateJavascript("window.IPTV&&IPTV.nativeReturned&&IPTV.nativeReturned("
                     + JSONObject.quote(last) + ")", null);
         }
+        Remote.status("overview", "", "");
         // Seniorenansicht: beim (erneuten) Öffnen der App gleich wieder den letzten Sender starten
         web.evaluateJavascript("window.IPTV&&IPTV.onAppResume&&IPTV.onAppResume()", null);
+    }
+
+    // ---------- Fernwartung (Befehle aus dem Editor) ----------
+
+    @Override
+    public void remote(String action, JSONObject arg) {
+        Remote.Target player = Remote.player_target;
+        switch (action) {
+            case "play":
+                remotePlay(arg.optString("norm"), 0);
+                break;
+            case "message":
+                Remote.showMessage(this, arg.optString("text"));
+                break;
+            case "reload":
+                if (player != null) player.remote("close", arg);
+                web.reload();
+                Remote.report("Neu geladen");
+                break;
+            case "update":
+                prefs.edit().remove("updateSnooze").apply();
+                Updater.check(this, true);
+                Remote.report("Update-Prüfung gestartet (vor Ort mit OK bestätigen)");
+                break;
+            case "view":
+                if (player != null) player.remote("close", arg);
+                String v = "senioren".equals(arg.optString("view")) ? "senioren" : "komplett";
+                applySetup("", v);
+                Remote.report("Ansicht: " + v);
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Sender/Film aus der Ferne starten; braucht den Baum der Webapp (notfalls anfordern). */
+    private void remotePlay(String norm, int attempt) {
+        org.json.JSONArray path = Remote.pathTo(PlayerActivity.treeRoot, norm);
+        if (path == null) {
+            if (attempt < 2) {
+                web.evaluateJavascript("window.IPTV&&IPTV.nativeRefresh&&IPTV.nativeRefresh()", null);
+                handler.postDelayed(() -> remotePlay(norm, attempt + 1), 6000);
+            } else {
+                Remote.report("Eintrag nicht gefunden: " + norm);
+            }
+            return;
+        }
+        try {
+            String url = web.getUrl();
+            String view = url != null && url.contains("senioren") ? "senioren" : "komplett";
+            PlayerActivity.pendingPath = new JSONObject().put("path", path).put("view", view).toString();
+            PlayerActivity.pending = null;
+            startActivity(new Intent(this, PlayerActivity.class));
+        } catch (Exception e) {
+            Remote.report("Start fehlgeschlagen");
+        }
     }
 
     @Override
     protected void onDestroy() {
         if (instance == this) instance = null;
+        if (Remote.main_target == this) Remote.main_target = null;
         super.onDestroy();
     }
 

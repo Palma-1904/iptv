@@ -468,6 +468,15 @@
     }, true);
   }
 
+  // Fernwartung in der App: Playlist und Ansicht melden (daraus findet die App den Fernwartungs-Kanal)
+  if (NATIVE && typeof window.IPTVNative.hello === 'function') {
+    try {
+      window.IPTVNative.hello(JSON.stringify({
+        playlist: playlistUrl(), view: /senioren/.test(location.pathname) ? 'senioren' : 'komplett'
+      }));
+    } catch (err) { /* ältere App */ }
+  }
+
   // Die App meldet beim Schließen des Players den zuletzt gesehenen Sender -> Fokus dorthin.
   // Liegt er in einer anderen (geschlossenen) Gruppe, wird diese geöffnet.
   function nativeReturned(url) {

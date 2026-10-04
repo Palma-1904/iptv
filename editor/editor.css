@@ -350,3 +350,15 @@ dialog .check-row input { width: auto; }
 .sortopts label { display: block; margin-bottom: 10px; font-weight: 400; }
 .sortopts input[type=radio] { width: auto; margin-right: 6px; }
 .pg-head .sort { color: var(--accent); }
+
+/* Fernwartung */
+dialog#dlg-remote { width: min(900px, 96vw); }
+.dev { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+.dev-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dev-head strong { font-size: 15px; }
+.dev-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.dev-dot.on { background: var(--ok); }
+.dev-now { margin: 6px 0; font-size: 14px; }
+.dev-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.dev-acts select { max-width: 280px; }
+.dev .hint { margin: 4px 0 0; }

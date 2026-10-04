@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 12  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 13  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -602,6 +602,96 @@ def switch_source_map(keys, target_id):
     return {'mapping': mapping, 'missing': missing}
 
 
+# ---------- Fernwartung über ntfy.sh (Geräte melden Status, Editor schickt Befehle) ----------
+
+NTFY = 'https://ntfy.sh/'
+
+
+def stream_norm(url):
+    """Adresse ohne Server und Zugangsdaten – so vergleicht auch die App (Memory.norm)."""
+    return re.sub(r'^https?://[^/]+/(live|movie|series)/[^/]+/[^/]+/', r'\1/', url or '')
+
+
+def remote_enable(on):
+    s = load_settings()
+    if not s.get('token') or not s.get('gistId'):
+        raise UserError('Zuerst Token eintragen und einmal veröffentlichen (dann gibt es den Gist).')
+    if on:
+        if not s.get('remoteTopic'):
+            import secrets
+            s['remoteTopic'] = 'iptv' + re.sub(r'[^A-Za-z0-9]', '', secrets.token_urlsafe(32))[:28]
+        gist_upload({'fernwartung.json': json.dumps({'topic': s['remoteTopic']})}, s)
+    else:
+        gist_upload({'fernwartung.json': None}, s)
+        s.pop('remoteTopic', None)
+    write_json(SETTINGS_FILE, s)
+    return {'enabled': bool(s.get('remoteTopic'))}
+
+
+def remote_status():
+    topic = load_settings().get('remoteTopic')
+    if not topic:
+        return {'enabled': False, 'devices': []}
+    try:
+        text = fetch(NTFY + topic + '-status/json?poll=1&since=12h', timeout=20)
+    except UserError as e:
+        return {'enabled': True, 'devices': [], 'error': str(e)}
+    devices = {}
+    for line in text.decode('utf-8', 'replace').splitlines() if isinstance(text, bytes) else text.splitlines():
+        try:
+            m = json.loads(line)
+            if m.get('event') != 'message':
+                continue
+            d = json.loads(m.get('message') or '{}')
+        except ValueError:
+            continue
+        if not d.get('id'):
+            continue
+        old = devices.get(d['id'], {})
+        if d.get('note'):
+            d['lastNote'] = d['note']
+        elif old.get('lastNote'):
+            d['lastNote'] = old['lastNote']
+        if d.get('t', 0) >= old.get('t', 0):
+            devices[d['id']] = d
+    now = int(time.time())
+    out = sorted(devices.values(), key=lambda d: (d.get('list') or '', d.get('name') or ''))
+    for d in out:
+        d['age'] = now - int(d.get('t') or 0)
+    return {'enabled': True, 'devices': out}
+
+
+def remote_cmd(to, action, arg):
+    topic = load_settings().get('remoteTopic')
+    if not topic:
+        raise UserError('Fernwartung ist nicht eingeschaltet.')
+    import uuid
+    body = json.dumps({'id': uuid.uuid4().hex[:12], 'to': to, 'action': action, 'arg': arg or {},
+                       't': int(time.time())}).encode()
+    with http(NTFY + topic + '-cmd', data=body, method='POST', timeout=20) as r:
+        r.read()
+    return {'ok': True}
+
+
+def remote_channels(slug):
+    """Live-Sender der zuletzt veröffentlichten Playlist (genau das, was die Geräte kennen):
+    Name, Gruppe und Adresse ohne Zugangsdaten für „Umschalten auf …“."""
+    path = os.path.join(OUT, re.sub(r'[^a-z0-9-]', '', slug) + '.m3u')
+    if not os.path.exists(path):
+        return {'channels': []}
+    out, cur = [], None
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('#EXTINF'):
+                cur = line if 'tvg-type="live"' in line else None
+            elif cur and line.startswith('http'):
+                g = re.search(r'group-title="([^"]*)"', cur)
+                out.append({'name': cur.rsplit(',', 1)[-1], 'group': g.group(1) if g else '', 'norm': stream_norm(line)})
+                cur = None
+    return {'channels': out}
+
+
 def load_catalog(source_id):
     return read_json(os.path.join(CACHE, f'catalog_{source_id}.json'), None)
 
@@ -952,7 +1042,8 @@ def gist_upload(files, settings):
         return None
     headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json',
                'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'}
-    body = {'files': {name: {'content': content} for name, content in files.items()}}
+    # content None = Datei im Gist löschen
+    body = {'files': {name: ({'content': content} if content is not None else None) for name, content in files.items()}}
     gid = settings.get('gistId')
     if gid:
         url, method = f'https://api.github.com/gists/{gid}', 'PATCH'
@@ -1313,6 +1404,15 @@ class Handler(SimpleHTTPRequestHandler):
                         x['ext'] = m.group(1).lower()
                     items.append(x)
                 return self.send_json({'updated': cat['updated'], 'items': items})
+            if method == 'POST' and path == '/api/remote/enable':
+                return self.send_json(remote_enable(bool(self.body().get('on'))))
+            if method == 'GET' and path == '/api/remote/status':
+                return self.send_json(remote_status())
+            if method == 'POST' and path == '/api/remote/cmd':
+                b = self.body()
+                return self.send_json(remote_cmd(b.get('to') or '', b.get('action') or '', b.get('arg')))
+            if method == 'GET' and path == '/api/remote/channels':
+                return self.send_json(remote_channels(q.get('list', '')))
             if method == 'POST' and path == '/api/switch-source':
                 b = self.body()
                 find(load_state()['sources'], b.get('source'), 'Quelle')

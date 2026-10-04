@@ -49,6 +49,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Zifferntasten = Sendernummer in der Gruppe. Schlaf-Timer: 3 h ohne Taste → Vorwarnung, nach 1 min Stopp.
 - **Auto-Update** (`Updater.java`): Workflow schreibt `app-version.txt` (= run_number = versionCode); App prüft bei jedem Start (im Betrieb alle 6 h),
   lädt app.apk und öffnet den Installer (FileProvider `de.iptv.firetv.files`, Recht „unbekannte Apps installieren“).
+- **Fernwartung** (ntfy.sh, ohne Schlüssel auf Geräten): Editor → Einstellungs-Knopf „Fernwartung“ erzeugt geheimen
+  Kanal (`remoteTopic` in settings.json) und legt `fernwartung.json` in den Gist. App (`Remote.java`) meldet Status an
+  `<kanal>-status` (Start, Wechsel, alle 5 min), holt Befehle von `<kanal>-cmd` (alle 15 s): play (norm-Adresse),
+  message, stop, reload, update, view. Senderliste fürs Umschalten aus `data/out/<liste>.m3u`.
+- Player-Puffer: Live 5 s, Filme 8 s (gegen Ruckeln).
 - **Auffrischen im Player**: alle 2 h ruft der Player `MainActivity.requestRefresh()` → Webapp `IPTV.nativeRefresh()`
   lädt Liste+EPG neu und schickt einen neuen Baum; der Player übernimmt ihn ohne Unterbrechung (`adopt`).
 - **Zugang je Playlist**: Auswahlfeld „Zugang“ in der Toolbar stellt alle Einträge einer Playlist auf eine andere

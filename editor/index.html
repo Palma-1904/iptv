@@ -33,6 +33,7 @@
     </div>
 
     <span class="spacer"></span>
+    <button id="remote" type="button" title="Geräte aus der Ferne sehen und steuern">Fernwartung</button>
     <button id="links" type="button" title="Einrichtungs-Links und QR-Codes für Geräte">Geräte-Links</button>
     <button id="settings" type="button">Einstellungen</button>
     <button id="publish" type="button" class="primary" title="Nur die gewählte Playlist veröffentlichen (schneller)">Veröffentlichen</button>
@@ -152,6 +153,15 @@
         <button value="cancel" type="submit" formnovalidate>Abbrechen</button>
         <button value="save" type="submit" class="primary">Speichern</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Fernwartung: Geräte sehen und steuern -->
+  <dialog id="dlg-remote">
+    <form method="dialog">
+      <h2>Fernwartung</h2>
+      <div id="remote-body"></div>
+      <div class="actions"><button type="button" id="remote-off" class="link" hidden>Fernwartung ausschalten</button><span class="spacer"></span><button value="close" class="primary">Schließen</button></div>
     </form>
   </dialog>
 

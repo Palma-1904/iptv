@@ -161,7 +161,8 @@ final class Remote {
                         .put("overlay", Build.VERSION.SDK_INT < 23 || android.provider.Settings.canDrawOverlays(app))
                         .put("install", Updater.installAllowed(app))
                         .put("waechter", Waechter.running())
-                        .put("waechterSwitch", Waechter.canSwitch(app))
+                        .put("waechterSwitch", Waechter.canSwitch(app) && Waechter.supported())
+                        .put("waechterOld", !Waechter.supported())
                         .put("pause", (Waechter.pausedFor(app) + 59999) / 60000));
         note = "";
         post(NTFY + topic + "-status", o.toString());

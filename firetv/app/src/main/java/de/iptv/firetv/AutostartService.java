@@ -49,7 +49,10 @@ public class AutostartService extends Service {
     private static int visible;               // sichtbare eigene Bildschirme (MainActivity, Player)
     private static long suppressUntil;        // z. B. Installieren-Fenster, Einstellungen, VLC
 
-    static void shown() { visible++; }
+    static void shown() {
+        visible++;
+        Waechter.appShown();
+    }
 
     static void hidden() { if (visible > 0) visible--; }
 

@@ -56,6 +56,10 @@ done
 [ "$STATE" = device ] || fail "Keine Verbindung. ADB-Debugging am Stick an? Mac im selben WLAN? IP richtig?"
 echo "$IP" > "$DATA/letzte-ip"
 ok "Verbunden: $(sh_ getprop ro.product.model) · $(sh_ getprop ro.build.version.name)"
+SDK=$(sh_ getprop ro.build.version.sdk)
+# Fire OS 6 (Android 7) und älter: Amazon lässt dort keinen Wächter zu
+OLD_FIREOS=""
+[ "${SDK:-0}" -lt 28 ] && OLD_FIREOS=1
 
 # ---------- 2) App ----------
 installed() { sh_ dumpsys package $PKG | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1; }
@@ -95,7 +99,11 @@ grant() {   # $1 = Text, Rest = Befehl
   if [ -z "$out" ]; then ok "$text"; else warn "$text: $out"; fi
 }
 grant "Autostart (über anderen Apps einblenden)" appops set $PKG SYSTEM_ALERT_WINDOW allow
-grant "Updates installieren"                     appops set $PKG REQUEST_INSTALL_PACKAGES allow
+if [ "${SDK:-0}" -ge 26 ]; then
+  grant "Updates installieren"                   appops set $PKG REQUEST_INSTALL_PACKAGES allow
+else
+  grant "Updates installieren (Apps unbekannter Herkunft)" settings put secure install_non_market_apps 1
+fi
 grant "Wächter selbst ein-/ausschalten"          pm grant $PKG android.permission.WRITE_SECURE_SETTINGS
 
 # ---------- 4) Wächter ----------
@@ -138,8 +146,12 @@ echo
 echo "6) App starten"
 sh_ am start -n $PKG/.MainActivity >/dev/null
 sleep 5
-if sh_ dumpsys accessibility | grep -i "bound services" | grep -qE "$PKG|Fernsehen"; then
+# Android 9+: „services:{Service[label=Fernsehen …“, älter: „Bound services:{…}“
+if sh_ dumpsys accessibility | grep -iE "services:\{.*(label=Fernsehen|$PKG)" >/dev/null; then
   ok "Wächter läuft"
+elif [ -n "$OLD_FIREOS" ]; then
+  warn "Älterer Stick (Fire OS 6): Amazon lässt hier keinen Wächter zu. Die App läuft trotzdem;"
+  warn "Home-Rückkehr wie bisher nach 1,5 s, Updates brauchen hier einen Klick vor Ort."
 else
   warn "Wächter läuft noch nicht – in einer Minute in der App prüfen (☰ 3 s → Weitere Einstellungen)."
 fi
@@ -153,4 +165,4 @@ echo " • Stecker ziehen und wieder einstecken → „Fernsehen“ startet von 
 echo " • Editor → Fernwartung: Gerät erscheint mit „Wächter: AN“"
 echo "ADB-Debugging kann am Stick an bleiben (nur bestätigte Computer kommen hinein)."
 echo
-read -r -p "Enter drücken zum Schließen …" _
+read -r -p "Enter drücken zum Schließen …" _ || true

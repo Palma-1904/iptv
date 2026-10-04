@@ -1167,7 +1167,9 @@ async function renderRemote() {
       // Wächter (ab App mit Wächter): hält die App vorne und drückt bei Updates selbst „Installieren“
       if (d.cfg.waechter !== undefined) {
         const w = el('div', 'dev-acts dev-cfg');
-        if (d.cfg.waechterSwitch) {
+        if (d.cfg.waechterOld) {
+          w.appendChild(el('span', 'hint', 'Wächter: auf diesem älteren Stick (Fire OS 6) nicht möglich – Updates brauchen hier einen Klick vor Ort'));
+        } else if (d.cfg.waechterSwitch) {
           const b = el('button', d.cfg.waechter ? 'on' : '', `Wächter: ${d.cfg.waechter ? 'AN' : 'AUS'}`);
           b.type = 'button';
           b.title = 'Hält die App vorne (Home-Taste führt zurück) und installiert Updates ohne Klick vor Ort';

@@ -1,20 +1,32 @@
 package de.iptv.firetv;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.graphics.Color;
+import android.graphics.PixelFormat;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import java.util.HashSet;
 import java.util.List;
@@ -28,6 +40,8 @@ import java.util.Set;
  * Einschalten nur vom Computer (ADB, Stick-einrichten.command) – Fire OS zeigt dafür keinen Schalter.
  * Mit dem dabei erteilten Recht WRITE_SECURE_SETTINGS schaltet die App ihn danach selbst ein/aus.
  * Pause (☰ 3 s oder Fernwartung): 10 Minuten lang nichts abfangen, z. B. für die Fire-TV-Einstellungen.
+ * Fire OS lässt die Home-Taste nicht abfangen, und nach Home darf Android 5 Sekunden lang keine App öffnen:
+ * darum deckt der Wächter den Fire-TV-Startbildschirm sofort mit „Einen Moment …“ ab, bis die App wieder da ist.
  */
 public class Waechter extends AccessibilityService {
 
@@ -41,6 +55,15 @@ public class Waechter extends AccessibilityService {
     private long burstStart, giveUpUntil;
     private int burst;
     private int installTries;
+    private View cover;
+    /** Android meldet den Druck auf Home sofort („homekey“) – schneller als der Fire-TV-Startbildschirm erscheint. */
+    private final BroadcastReceiver homeKey = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            if ("homekey".equals(i.getStringExtra("reason")) && guarding()) bringBack();
+        }
+    };
+    private final Runnable hideCover = this::hideCover;
 
     // ---------- Zustand (auch für Einstellungen und Fernwartung) ----------
 
@@ -51,6 +74,11 @@ public class Waechter extends AccessibilityService {
     /** Läuft der Wächter gerade (von Android eingeschaltet und verbunden)? */
     static boolean running() {
         return running != null;
+    }
+
+    /** Fire OS 6 und älter (Android ≤ 8): Amazon startet dort keine fremden Bedienungshilfen. */
+    static boolean supported() {
+        return android.os.Build.VERSION.SDK_INT >= 28;
     }
 
     /** Soll er laufen? (Schalter in den Einstellungen bzw. per Fernwartung) */
@@ -152,6 +180,11 @@ public class Waechter extends AccessibilityService {
         } catch (Exception ignored) {
             // dann nur über die Fensterklasse erkennen
         }
+        try {
+            registerReceiver(homeKey, new IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
+        } catch (Exception ignored) {
+            // dann über den Fensterwechsel
+        }
         Remote.report("Wächter aktiv");
         // Gleich nach dem Hochfahren die App öffnen (die Startmeldung kommt bei Fire OS 8 manchmal spät)
         if (SystemClock.elapsedRealtime() < 3 * 60 * 1000L) AutostartService.openApp(this);
@@ -167,7 +200,69 @@ public class Waechter extends AccessibilityService {
     public void onDestroy() {
         running = null;
         handler.removeCallbacksAndMessages(null);
+        hideCover();
+        try {
+            unregisterReceiver(homeKey);
+        } catch (Exception ignored) {
+            // war nicht angemeldet
+        }
         super.onDestroy();
+    }
+
+    /** Ein Bildschirm der App ist wieder vorne: Abdeckung kurz danach entfernen. */
+    static void appShown() {
+        Waechter w = running;
+        if (w == null) return;
+        w.handler.post(() -> {
+            if (w.cover == null) return;
+            w.handler.removeCallbacks(w.hideCover);
+            w.handler.postDelayed(w.hideCover, 400);   // erst wenn die App gezeichnet ist
+        });
+    }
+
+    /** Schwarzes Bild mit Logo über alles legen (Bedienungshilfen dürfen das ohne weitere Erlaubnis). */
+    private void showCover() {
+        handler.removeCallbacks(hideCover);
+        handler.postDelayed(hideCover, 8000);   // spätestens dann weg, falls die App nicht kommt
+        if (cover != null) return;
+        try {
+            float dp = getResources().getDisplayMetrics().density;
+            LinearLayout box = new LinearLayout(this);
+            box.setOrientation(LinearLayout.VERTICAL);
+            box.setGravity(Gravity.CENTER);
+            box.setBackgroundColor(Color.BLACK);
+            ImageView logo = new ImageView(this);
+            logo.setImageResource(R.mipmap.icon);
+            box.addView(logo, new LinearLayout.LayoutParams((int) (140 * dp), (int) (140 * dp)));
+            TextView text = new TextView(this);
+            text.setText("Einen Moment …");
+            text.setTextColor(Color.WHITE);
+            text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
+            text.setPadding(0, (int) (24 * dp), 0, 0);
+            text.setGravity(Gravity.CENTER);
+            box.addView(text, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+            WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    PixelFormat.OPAQUE);
+            ((WindowManager) getSystemService(WINDOW_SERVICE)).addView(box, lp);   // nimmt auch die Tasten weg
+            cover = box;
+        } catch (Exception ignored) {
+            cover = null;
+        }
+    }
+
+    private void hideCover() {
+        handler.removeCallbacks(hideCover);
+        if (cover == null) return;
+        try {
+            ((WindowManager) getSystemService(WINDOW_SERVICE)).removeView(cover);
+        } catch (Exception ignored) {
+            // schon weg
+        }
+        cover = null;
     }
 
     @Override
@@ -234,7 +329,8 @@ public class Waechter extends AccessibilityService {
         Intent start = new Intent(this, MainActivity.class);
         start.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
-            startActivity(start);
+            startActivity(start);   // Android führt das nach der Home-Taste erst nach bis zu 5 s aus
+            showCover();
         } catch (Exception ignored) {
             // sollte mit verbundenem Wächter nicht vorkommen
         }

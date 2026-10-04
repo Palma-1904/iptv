@@ -286,6 +286,9 @@ public class MainActivity extends Activity implements Remote.Target {
                         + " – die Home-Taste führt jetzt zum Fire-TV-Startbildschirm.", Toast.LENGTH_LONG).show();
                 closeSetup();
             });
+        } else if (!Waechter.supported()) {
+            labels.add("Wächter:  auf diesem älteren Stick nicht möglich");
+            actions.add(this::showSettings);
         } else if (Waechter.canSwitch(this)) {
             labels.add("Wächter:  AUS – einschalten");
             actions.add(() -> {

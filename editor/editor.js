@@ -1361,12 +1361,15 @@ async function openEpgOrder() {
 
 const sourceInfos = {}; // sourceId -> Antwort von /api/source-info (oder {error})
 
-async function loadSourceInfo(id) {
+async function loadSourceInfo(id, attempt = 0) {
   if (!id) return;
   try {
     sourceInfos[id] = await api('/api/source-info', { id });
   } catch (e) {
-    sourceInfos[id] = { error: e.message };
+    // Fehlerseite des Anbieters (HTML) kurz und verständlich; kurze Störungen: erneut versuchen
+    const msg = e.message.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').replace(/:\s*\d{3} [A-Za-z ]+$/, '').slice(0, 140);
+    sourceInfos[id] = { error: msg + (attempt < 3 ? ' – neuer Versuch in 10 Sekunden …' : '') };
+    if (attempt < 3) setTimeout(() => loadSourceInfo(id, attempt + 1), 10000);
   }
   if (id === ui.sourceId) renderSrcInfo();
   renderDeviceWarning();
@@ -1847,7 +1850,8 @@ async function start() {
   })));
   if (langFixed) save();
   renderAll();
-  state.sources.forEach((s) => loadSourceInfo(s.id));
+  // leicht versetzt, damit der Anbieter nicht drei Anfragen auf einmal bekommt
+  state.sources.forEach((s, i) => setTimeout(() => loadSourceInfo(s.id), i * 1500));
   if (ui.playlistId) loadCheck(ui.playlistId);
   // Läuft gerade eine Aufgabe (z. B. nachts gestartet oder Seite neu geladen)? Fortschritt zeigen.
   if (settings.job && settings.job.running) {

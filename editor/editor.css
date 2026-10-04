@@ -343,6 +343,7 @@ dialog .check-row input { width: auto; }
 /* Auswahl in der Playlist */
 .it.sel { background: var(--accent-soft); }
 .it { cursor: default; }
+.selbar[hidden] { display: none; }
 .selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 12px; background: var(--accent-soft); border-bottom: 1px solid var(--border); }
 .selbar span { flex: 1; font-weight: 600; min-width: 90px; }
 .selbar select { max-width: 160px; }

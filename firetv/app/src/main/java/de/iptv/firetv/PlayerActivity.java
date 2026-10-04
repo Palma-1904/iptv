@@ -875,6 +875,14 @@ public class PlayerActivity extends Activity {
         return t;
     }
 
+    /** Mehrzeilig, am Ende mit „…“ gekürzt. */
+    private static TextView lines(TextView t, int max) {
+        t.setSingleLine(false);
+        t.setMaxLines(max);
+        t.setEllipsize(TextUtils.TruncateAt.END);
+        return t;
+    }
+
     private void buildViews() {
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
@@ -969,7 +977,7 @@ public class PlayerActivity extends Activity {
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.BOTTOM);
         infoNum = text(20, MUTED, true);
-        infoName = text(32, Color.WHITE, true);
+        infoName = lines(text(28, Color.WHITE, true), 2);   // lange Film-/Serientitel: 2 Zeilen
         LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         nlp.leftMargin = dp(12);
         top.addView(infoNum);
@@ -1128,7 +1136,7 @@ public class PlayerActivity extends Activity {
 
         preview = new LinearLayout(this);
         preview.setOrientation(LinearLayout.VERTICAL);
-        previewName = text(24, Color.WHITE, true);
+        previewName = lines(text(22, Color.WHITE, true), 3);
         previewEpg = text(18, MUTED, false);
         previewEpg.setSingleLine(false);
         previewEpg.setMaxLines(5);
@@ -1459,7 +1467,7 @@ public class PlayerActivity extends Activity {
         final LinearLayout view = new LinearLayout(PlayerActivity.this);
         final TextView num = text(16, MUTED, true);
         final ImageView logo = new ImageView(PlayerActivity.this);
-        final TextView name = text(20, Color.WHITE, true);
+        final TextView name = lines(text(18, Color.WHITE, true), 2);   // Titel nicht abschneiden
         final TextView now = text(15, MUTED, false);
 
         Row() {

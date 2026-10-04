@@ -17,7 +17,10 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   `VERSION` in `server.py` und `SERVER_VERSION` in `editor.js` bei Änderungen an beiden erhöhen.
 - **Fire-TV-App** (`firetv/`, Java/WebView): lädt die Webapp; Streams spielt der eingebaute Player
   `PlayerActivity` (Media3/ExoPlayer; Webapp ruft `IPTVNative.play(json)` mit der Liste der Gruppe auf).
-  Live: ▲▼ Sender, ◀▶ Senderliste, OK Info. Filme/Serien: ◀▶ spulen, OK Pause, ▲▼ Folge. Fehler → OK = VLC.
+  Live: ▲▼ Sender, ◀▶ Senderliste (links, Bild verkleinert rechts + Programmvorschau; in der Liste ◀ = Gruppen),
+  OK Info. Filme/Serien: ◀▶ spulen, OK Pause, ▲▼ Folge. Fehler → OK = VLC. Escape = Zurück (Handy-Fernbedienung).
+  App-Symbol/Banner als PNG (`mipmap-*/icon.png`, `drawable-xhdpi/banner.png`) – Fire-TV-Startseite zeigt keine Vektorgrafik.
+  Übersicht auf dem TV: nur eine Gruppe offen, Zurück klappt sie zu (`IPTV.handleBack`).
   Menü-Taste = Einrichtung, Autostart nach Boot. Wird im GitHub-Workflow gebaut → https://palma-1904.github.io/iptv/app.apk
   Signatur: `firetv/signing/iptv.p12` (fest, damit Updates drüber installieren).
   **Lokal bauen** (Werkzeuge in `werkzeuge/`, gitignored; `firetv/local.properties` zeigt aufs SDK):

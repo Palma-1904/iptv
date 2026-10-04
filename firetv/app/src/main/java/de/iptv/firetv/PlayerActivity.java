@@ -3,6 +3,7 @@ package de.iptv.firetv;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
@@ -52,6 +53,8 @@ import java.util.Locale;
  * Eingebauter Player (ExoPlayer) für die Fire-TV-App.
  *
  * Live:   ▲/▼ Sender davor/danach (innerhalb der Gruppe), ◀/▶ oder ☰ Senderliste, OK Info.
+ *         Senderliste: links neben dem verkleinerten Bild, darunter das Programm des markierten
+ *         Senders. ◀ in der Liste = Gruppen, OK = umschalten (Liste bleibt offen), ▶/Zurück = schließen.
  * Filme/Serien: ◀/▶ spulen, OK Pause, ▲/▼ Folge davor/danach (Serien).
  * Zurück: Einblendung schließen bzw. zurück zur Übersicht.
  *
@@ -68,18 +71,21 @@ public class PlayerActivity extends Activity {
     private static final String VLC = "org.videolan.vlc";
     private static final String USER_AGENT = "VLC/3.0.20 LibVLC/3.0.20";
     private static final int ROYAL = 0xFF1D4ED8;
-    private static final int PANEL = 0xEE0B1220;
+    private static final int ROYAL_LIGHT = 0xFF8FB0FF;
+    private static final int PANEL = 0xF20B1220;
     private static final int MUTED = 0xFFB8C2D6;
     private static final long TUNE_DELAY = 700;   // ms Ruhe nach dem Umschalten, dann verbinden
     private static final long INFO_MS = 6000;
-    private static final long LIST_MS = 15000;
+    private static final long LIST_MS = 30000;
 
     static class Item {
         String name, url, logo, tvgId, type, group;
         long[] start = new long[0], end = new long[0];
         String[] title = new String[0];
 
-        boolean live() { return "live".equals(type); }
+        boolean live() {
+            return "live".equals(type);
+        }
 
         /** Index der laufenden Sendung oder -1. */
         int now() {
@@ -94,11 +100,21 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    static class Group {
+        final String name;
+        final List<Item> items = new ArrayList<>();
+
+        Group(String name) {
+            this.name = name;
+        }
+    }
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final SimpleDateFormat hhmm = new SimpleDateFormat("HH:mm", Locale.GERMANY);
-    private final List<Item> items = new ArrayList<>();
-    private int index;
-    private int pendingIndex = -1;
+    private final List<Group> groups = new ArrayList<>();
+    private int group;              // spielende Gruppe
+    private int index;              // spielender Eintrag in dieser Gruppe
+    private int pendingIndex = -1;  // Ziel beim Umschalten mit ▲/▼ (gleiche Gruppe)
     private int retries;
     private boolean failed;
     private float textScale = 1f;
@@ -113,9 +129,16 @@ public class PlayerActivity extends Activity {
     private ImageView infoLogo;
     private TextView infoNum, infoName, infoNow, infoNext, infoClock, infoHint;
     private ProgressBar infoProgress;
+
+    // Senderliste
     private LinearLayout listPanel;
+    private TextView listTitle, listHint;
     private ListView list;
-    private ChannelAdapter adapter;
+    private ListAdapter adapter;
+    private boolean showGroups;     // Liste zeigt gerade die Gruppen statt der Sender
+    private int browseGroup;        // Gruppe, deren Sender die Liste zeigt
+    private LinearLayout preview;
+    private TextView previewName, previewEpg;
     private ImageLoader images;
 
     private final Runnable hideInfo = () -> info.setVisibility(View.GONE);
@@ -141,7 +164,7 @@ public class PlayerActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        if (!readItems(pending)) {
+        if (!readData(pending)) {
             finish();
             return;
         }
@@ -188,36 +211,54 @@ public class PlayerActivity extends Activity {
         handler.post(tick);
     }
 
-    private boolean readItems(String json) {
+    private static Item readItem(JSONObject j) throws Exception {
+        Item it = new Item();
+        it.name = j.optString("name");
+        it.url = j.optString("url");
+        it.logo = j.optString("logo");
+        it.tvgId = j.optString("tvgId");
+        it.type = j.optString("type", "live");
+        it.group = j.optString("group");
+        JSONArray epg = j.optJSONArray("epg");
+        int n = epg == null ? 0 : epg.length();
+        it.start = new long[n];
+        it.end = new long[n];
+        it.title = new String[n];
+        for (int k = 0; k < n; k++) {
+            JSONArray p = epg.getJSONArray(k);
+            it.start[k] = p.optLong(0);
+            it.end[k] = p.optLong(1);
+            it.title[k] = p.optString(2);
+        }
+        return it;
+    }
+
+    /** Neue Webapp: "groups" + "group" + "index"; ältere: nur "items" + "index". */
+    private boolean readData(String json) {
         if (json == null) return false;
         try {
             JSONObject o = new JSONObject(json);
-            JSONArray arr = o.getJSONArray("items");
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject j = arr.getJSONObject(i);
-                Item it = new Item();
-                it.name = j.optString("name");
-                it.url = j.optString("url");
-                it.logo = j.optString("logo");
-                it.tvgId = j.optString("tvgId");
-                it.type = j.optString("type", "live");
-                it.group = j.optString("group");
-                JSONArray epg = j.optJSONArray("epg");
-                int n = epg == null ? 0 : epg.length();
-                it.start = new long[n];
-                it.end = new long[n];
-                it.title = new String[n];
-                for (int k = 0; k < n; k++) {
-                    JSONArray p = epg.getJSONArray(k);
-                    it.start[k] = p.optLong(0);
-                    it.end[k] = p.optLong(1);
-                    it.title[k] = p.optString(2);
+            JSONArray gs = o.optJSONArray("groups");
+            if (gs != null && gs.length() > 0) {
+                for (int g = 0; g < gs.length(); g++) {
+                    JSONObject jg = gs.getJSONObject(g);
+                    Group grp = new Group(jg.optString("name"));
+                    JSONArray arr = jg.getJSONArray("items");
+                    for (int i = 0; i < arr.length(); i++) grp.items.add(readItem(arr.getJSONObject(i)));
+                    if (!grp.items.isEmpty()) groups.add(grp);
                 }
-                items.add(it);
+                group = Math.max(0, Math.min(groups.size() - 1, o.optInt("group")));
+            } else {
+                JSONArray arr = o.getJSONArray("items");
+                Group grp = new Group("");
+                for (int i = 0; i < arr.length(); i++) grp.items.add(readItem(arr.getJSONObject(i)));
+                if (!grp.items.isEmpty()) groups.add(grp);
+                group = 0;
             }
-            index = Math.max(0, Math.min(items.size() - 1, o.optInt("index")));
+            if (groups.isEmpty()) return false;
+            index = Math.max(0, Math.min(items().size() - 1, o.optInt("index")));
             if ("senioren".equals(o.optString("view"))) textScale = 1.25f;
-            return !items.isEmpty();
+            return true;
         } catch (Exception e) {
             Toast.makeText(this, "Wiedergabe nicht möglich: " + e.getMessage(), Toast.LENGTH_LONG).show();
             return false;
@@ -226,12 +267,16 @@ public class PlayerActivity extends Activity {
 
     // ---------- Wiedergabe ----------
 
+    private List<Item> items() {
+        return groups.get(group).items;
+    }
+
     private Item current() {
-        return items.get(pendingIndex >= 0 ? pendingIndex : index);
+        return items().get(pendingIndex >= 0 ? pendingIndex : index);
     }
 
     private void play() {
-        Item it = items.get(index);
+        Item it = items().get(index);
         lastUrl = it.url;
         failed = false;
         status.setVisibility(View.GONE);
@@ -239,13 +284,13 @@ public class PlayerActivity extends Activity {
         player.setMediaItem(MediaItem.fromUri(it.url));
         player.prepare();
         player.setPlayWhenReady(true);
-        showInfo();
+        if (!listOpen()) showInfo();
         if (adapter != null) adapter.notifyDataSetChanged();
     }
 
     /** Sender/Folge wechseln: alten Stream sofort beenden, neuen erst nach kurzer Ruhe laden. */
     private void step(int delta) {
-        int size = items.size();
+        int size = items().size();
         if (size < 2) {
             showInfo();
             return;
@@ -267,19 +312,23 @@ public class PlayerActivity extends Activity {
         handler.postDelayed(tune, TUNE_DELAY);
     }
 
-    private void jumpTo(int i) {
-        if (i == index && pendingIndex < 0 && !failed) return;
-        pendingIndex = i;
-        player.stop();
+    /** Direkt umschalten (aus der Senderliste), auch in eine andere Gruppe. */
+    private void jumpTo(int g, int i) {
+        if (g == group && i == index && pendingIndex < 0 && !failed) return;
         handler.removeCallbacks(tune);
-        tune.run();
+        player.stop();
+        group = g;
+        index = i;
+        pendingIndex = -1;
+        retries = 0;
+        play();
     }
 
     private void onEnded() {
-        Item it = items.get(index);
+        Item it = items().get(index);
         if (it.live()) {
             onError(null);
-        } else if (index < items.size() - 1) {
+        } else if (index < items().size() - 1) {
             step(1);                       // nächste Folge
         } else {
             finish();
@@ -287,7 +336,7 @@ public class PlayerActivity extends Activity {
     }
 
     private void onError(PlaybackException error) {
-        Item it = items.get(index);
+        Item it = items().get(index);
         // Live-Stream zu weit zurück: einfach an die aktuelle Stelle springen
         if (error != null && error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
             player.seekToDefaultPosition();
@@ -303,9 +352,9 @@ public class PlayerActivity extends Activity {
             retries++;
             showStatus("Verbindung wird erneut aufgebaut …");
             spinner.setVisibility(View.VISIBLE);
-            final int at = index;
+            final int atGroup = group, at = index;
             handler.postDelayed(() -> {
-                if (at == index && pendingIndex < 0) {
+                if (atGroup == group && at == index && pendingIndex < 0) {
                     player.prepare();
                     player.setPlayWhenReady(true);
                 }
@@ -317,7 +366,8 @@ public class PlayerActivity extends Activity {
         String why = code == 403 || code == 458 || code == 509 || code == 429
                 ? "Der Anbieter erlaubt nur ein Gerät gleichzeitig.\nBitte auf den anderen Geräten das Fernsehen beenden."
                 : "„" + it.name + "“ kann gerade nicht abgespielt werden.";
-        String keys = it.live() || items.size() > 1 ? "\n\n▲ ▼ anderen Sender wählen  ·  OK = in VLC öffnen" : "\n\nOK = in VLC öffnen";
+        String keys = it.live() || items().size() > 1
+                ? "\n\n▲ ▼ anderen Sender wählen  ·  OK = in VLC öffnen" : "\n\nOK = in VLC öffnen";
         showStatus(why + keys);
     }
 
@@ -335,7 +385,7 @@ public class PlayerActivity extends Activity {
     }
 
     private void openInVlc() {
-        Item it = items.get(index);
+        Item it = items().get(index);
         player.stop();
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.setDataAndType(Uri.parse(it.url), "video/*");
@@ -350,15 +400,29 @@ public class PlayerActivity extends Activity {
 
     // ---------- Fernbedienung ----------
 
+    /** Manche Fernbedienungen (z. B. Fire-TV-App auf dem Handy) senden Escape statt Zurück. */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE) {
+            if (event.getAction() == KeyEvent.ACTION_UP) onBackPressed();
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        boolean live = current().live();
-        if (listPanel.getVisibility() == View.VISIBLE) {
+        if (listOpen()) {
             handler.removeCallbacks(hideList);
             handler.postDelayed(hideList, LIST_MS);
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
+                    if (!showGroups && groups.size() > 1) showGroupList();
+                    return true;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    if (showGroups) showChannelList(list.getSelectedItemPosition());
+                    else closeList();
+                    return true;
                 case KeyEvent.KEYCODE_MENU:
                     closeList();
                     return true;
@@ -369,6 +433,7 @@ public class PlayerActivity extends Activity {
                     return super.onKeyDown(keyCode, event);
             }
         }
+        boolean live = current().live();
         boolean fast = event.getRepeatCount() > 2;
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_UP:
@@ -421,7 +486,7 @@ public class PlayerActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (listPanel.getVisibility() == View.VISIBLE) {
+        if (listOpen()) {
             closeList();
         } else if (info.getVisibility() == View.VISIBLE && !failed) {
             info.setVisibility(View.GONE);
@@ -496,19 +561,42 @@ public class PlayerActivity extends Activity {
         buildList();
     }
 
-    /** Video im Seitenverhältnis einpassen (schwarze Ränder statt Verzerrung). */
+    /**
+     * Video im Seitenverhältnis einpassen (schwarze Ränder statt Verzerrung).
+     * Bei offener Senderliste: verkleinert rechts neben der Liste, darunter die Programmvorschau.
+     */
     private void layoutVideo() {
         int w = root.getWidth(), h = root.getHeight();
-        if (videoW <= 0 || videoH <= 0 || w == 0 || h == 0) return;
-        float aspect = (float) videoW / videoH;
-        int vw = w, vh = Math.round(w / aspect);
-        if (vh > h) {
-            vh = h;
-            vw = Math.round(h * aspect);
+        if (w == 0 || h == 0) return;
+        int bx = 0, by = 0, bw = w, bh = h;
+        if (listOpen()) {
+            int pw = listPanel.getLayoutParams().width;
+            bx = pw + dp(32);
+            by = dp(40);
+            bw = Math.max(dp(160), w - bx - dp(40));
+            bh = Math.round(bw * 9f / 16f);
         }
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) surface.getLayoutParams();
-        if (lp.width == vw && lp.height == vh) return;
-        surface.setLayoutParams(new FrameLayout.LayoutParams(vw, vh, Gravity.CENTER));
+        float aspect = videoW > 0 && videoH > 0 ? (float) videoW / videoH : 16f / 9f;
+        int vw = bw, vh = Math.round(bw / aspect);
+        if (vh > bh) {
+            vh = bh;
+            vw = Math.round(bh * aspect);
+        }
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(vw, vh, Gravity.TOP | Gravity.START);
+        lp.leftMargin = bx + (bw - vw) / 2;
+        lp.topMargin = by + (bh - vh) / 2;
+        FrameLayout.LayoutParams old = (FrameLayout.LayoutParams) surface.getLayoutParams();
+        if (old.width != vw || old.height != vh || old.leftMargin != lp.leftMargin || old.topMargin != lp.topMargin
+                || old.gravity != lp.gravity) {
+            surface.setLayoutParams(lp);
+        }
+        if (listOpen()) {
+            FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(bw, ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.START);
+            pl.leftMargin = bx;
+            pl.topMargin = by + bh + dp(20);
+            preview.setLayoutParams(pl);
+        }
     }
 
     private void buildInfo() {
@@ -543,7 +631,7 @@ public class PlayerActivity extends Activity {
         mid.addView(infoNow);
         infoProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         infoProgress.setMax(1000);
-        infoProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFF4D7CFF));
+        infoProgress.setProgressTintList(ColorStateList.valueOf(0xFF4D7CFF));
         LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8));
         plp.topMargin = dp(8);
         plp.bottomMargin = dp(8);
@@ -563,6 +651,7 @@ public class PlayerActivity extends Activity {
     }
 
     private void showInfo() {
+        if (listOpen()) return;
         updateInfo();
         info.setVisibility(View.VISIBLE);
         handler.removeCallbacks(hideInfo);
@@ -577,7 +666,8 @@ public class PlayerActivity extends Activity {
     private void updateInfo() {
         Item it = current();
         int i = pendingIndex >= 0 ? pendingIndex : index;
-        infoNum.setText(items.size() > 1 ? (i + 1) + "/" + items.size() : "");
+        int size = items().size();
+        infoNum.setText(size > 1 ? (i + 1) + "/" + size : "");
         infoName.setText(it.name);
         infoClock.setText(hhmm.format(new Date()));
         images.load(it.logo, infoLogo);
@@ -590,11 +680,12 @@ public class PlayerActivity extends Activity {
                 infoProgress.setVisibility(View.VISIBLE);
                 infoNext.setText(n + 1 < it.start.length ? "Danach  " + time(it.start[n + 1]) + "   " + it.title[n + 1] : "");
             } else {
-                infoNow.setText(it.group == null ? "" : it.group);
+                String g = groups.get(group).name;
+                infoNow.setText(g == null ? "" : g);
                 infoProgress.setVisibility(View.GONE);
                 infoNext.setText("");
             }
-            infoHint.setText(items.size() > 1
+            infoHint.setText(size > 1 || groups.size() > 1
                     ? "▲ ▼  Sender wechseln     ◀ ▶  Senderliste     OK  Info     ↩  Übersicht"
                     : "OK  Info     ↩  Übersicht");
         } else {
@@ -604,9 +695,9 @@ public class PlayerActivity extends Activity {
                     + duration(pos) + (known ? "  /  " + duration(dur) : ""));
             infoProgress.setVisibility(known ? View.VISIBLE : View.GONE);
             if (known) infoProgress.setProgress((int) (1000 * pos / dur));
-            infoNext.setText(items.size() > 1 && i + 1 < items.size() ? "Nächste Folge:  " + items.get(i + 1).name : "");
+            infoNext.setText(size > 1 && i + 1 < size ? "Nächste Folge:  " + items().get(i + 1).name : "");
             infoHint.setText("◀ ▶  Spulen (gedrückt halten = schneller)     OK  Pause"
-                    + (items.size() > 1 ? "     ▲ ▼  Folge" : "") + "     ↩  Übersicht");
+                    + (size > 1 ? "     ▲ ▼  Folge" : "") + "     ↩  Übersicht");
         }
     }
 
@@ -626,7 +717,11 @@ public class PlayerActivity extends Activity {
         status.setVisibility(View.VISIBLE);
     }
 
-    // ---------- Senderliste ----------
+    // ---------- Senderliste (links neben dem Bild) ----------
+
+    private boolean listOpen() {
+        return listPanel != null && listPanel.getVisibility() == View.VISIBLE;
+    }
 
     private void buildList() {
         listPanel = new LinearLayout(this);
@@ -634,11 +729,9 @@ public class PlayerActivity extends Activity {
         listPanel.setBackgroundColor(PANEL);
         listPanel.setPadding(dp(16), dp(24), dp(16), dp(16));
 
-        TextView head = text(22, Color.WHITE, true);
-        Item first = items.get(index);
-        head.setText(first.group == null || first.group.isEmpty() ? "Sender" : first.group);
-        head.setPadding(dp(8), 0, dp(8), dp(12));
-        listPanel.addView(head);
+        listTitle = text(22, Color.WHITE, true);
+        listTitle.setPadding(dp(8), 0, dp(8), dp(12));
+        listPanel.addView(listTitle);
 
         list = new ListView(this);
         list.setDivider(new ColorDrawable(0x22FFFFFF));
@@ -646,55 +739,143 @@ public class PlayerActivity extends Activity {
         list.setSelector(new ColorDrawable(ROYAL));
         list.setDrawSelectorOnTop(false);
         list.setItemsCanFocus(false);
-        adapter = new ChannelAdapter();
+        adapter = new ListAdapter();
         list.setAdapter(adapter);
         list.setOnItemClickListener((AdapterView<?> parent, View view, int position, long id) -> {
-            closeList();
-            jumpTo(position);
+            handler.removeCallbacks(hideList);
+            handler.postDelayed(hideList, LIST_MS);
+            if (showGroups) showChannelList(position);
+            else jumpTo(browseGroup, position);
+        });
+        list.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                updatePreview(position);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
         });
         listPanel.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
-        TextView hint = text(14, MUTED, false);
-        hint.setText("▲ ▼ auswählen   OK umschalten   ◀ ▶ schließen");
-        hint.setPadding(dp(8), dp(10), dp(8), 0);
-        listPanel.addView(hint);
+        listHint = text(14, MUTED, false);
+        listHint.setSingleLine(false);
+        listHint.setPadding(dp(8), dp(10), dp(8), 0);
+        listPanel.addView(listHint);
 
         listPanel.setVisibility(View.GONE);
-        root.addView(listPanel, new FrameLayout.LayoutParams(dp(480 * Math.min(textScale, 1.15f)),
-                ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START));
+        root.addView(listPanel, new FrameLayout.LayoutParams(dp(420), ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.START));
+
+        preview = new LinearLayout(this);
+        preview.setOrientation(LinearLayout.VERTICAL);
+        previewName = text(24, Color.WHITE, true);
+        previewEpg = text(18, MUTED, false);
+        previewEpg.setSingleLine(false);
+        previewEpg.setMaxLines(5);
+        previewEpg.setLineSpacing(0, 1.15f);
+        LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        elp.topMargin = dp(8);
+        preview.addView(previewName);
+        preview.addView(previewEpg, elp);
+        preview.setVisibility(View.GONE);
+        root.addView(preview, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     private void openList() {
-        if (items.size() < 2) {
+        if (items().size() < 2 && groups.size() < 2) {
             showInfo();
             return;
         }
         info.setVisibility(View.GONE);
-        adapter.notifyDataSetChanged();
+        int w = root.getWidth();
+        int pw = Math.max(dp(380 * Math.min(textScale, 1.15f)), Math.round(w * 0.42f));
+        listPanel.getLayoutParams().width = pw;
         listPanel.setVisibility(View.VISIBLE);
-        int sel = pendingIndex >= 0 ? pendingIndex : index;
+        preview.setVisibility(View.VISIBLE);
+        listPanel.requestLayout();
+        showChannelList(group);
         list.requestFocus();
-        list.setSelectionFromTop(sel, dp(160));
-        list.setSelection(sel);
-        handler.removeCallbacks(hideList);
-        handler.postDelayed(hideList, LIST_MS);
+        layoutVideo();
     }
 
     private void closeList() {
         handler.removeCallbacks(hideList);
         listPanel.setVisibility(View.GONE);
+        preview.setVisibility(View.GONE);
         root.requestFocus();
+        layoutVideo();
     }
 
-    private class ChannelAdapter extends BaseAdapter {
+    /** Liste zeigt die Sender einer Gruppe; Auswahl auf dem laufenden Sender, falls in dieser Gruppe. */
+    private void showChannelList(int g) {
+        if (g < 0 || g >= groups.size()) g = group;
+        showGroups = false;
+        browseGroup = g;
+        String name = groups.get(g).name;
+        listTitle.setText(name == null || name.isEmpty() ? "Sender" : name);
+        listHint.setText(groups.size() > 1
+                ? "▲ ▼ auswählen   OK umschalten   ◀ Gruppen   ▶ / ↩ schließen"
+                : "▲ ▼ auswählen   OK umschalten   ▶ / ↩ schließen");
+        adapter.notifyDataSetChanged();
+        int sel = g == group ? (pendingIndex >= 0 ? pendingIndex : index) : 0;
+        list.setSelectionFromTop(sel, dp(120));
+        list.setSelection(sel);
+        updatePreview(sel);
+        handler.removeCallbacks(hideList);
+        handler.postDelayed(hideList, LIST_MS);
+    }
+
+    private void showGroupList() {
+        showGroups = true;
+        listTitle.setText("Gruppen");
+        listHint.setText("▲ ▼ auswählen   OK / ▶ Sender zeigen   ↩ schließen");
+        adapter.notifyDataSetChanged();
+        list.setSelectionFromTop(browseGroup, dp(120));
+        list.setSelection(browseGroup);
+        updatePreview(browseGroup);
+    }
+
+    /** Unter dem kleinen Bild: Programm des markierten Senders bzw. Inhalt der markierten Gruppe. */
+    private void updatePreview(int position) {
+        if (showGroups) {
+            if (position < 0 || position >= groups.size()) return;
+            Group g = groups.get(position);
+            previewName.setText(g.name);
+            StringBuilder sb = new StringBuilder(g.items.size() + " Sender");
+            for (int k = 0; k < Math.min(4, g.items.size()); k++) sb.append("\n").append(g.items.get(k).name);
+            previewEpg.setText(sb);
+            return;
+        }
+        List<Item> its = groups.get(browseGroup).items;
+        if (position < 0 || position >= its.size()) return;
+        Item it = its.get(position);
+        previewName.setText(it.name);
+        int n = it.now();
+        if (n < 0) {
+            previewEpg.setText(it.start.length == 0 ? "Keine Programmdaten" : "");
+            return;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int k = n; k < Math.min(it.start.length, n + 5); k++) {
+            if (sb.length() > 0) sb.append("\n");
+            sb.append(k == n ? "Jetzt  " : time(it.start[k]) + "   ").append(it.title[k]);
+        }
+        previewEpg.setText(sb);
+    }
+
+    private class ListAdapter extends BaseAdapter {
         @Override
         public int getCount() {
-            return items.size();
+            return showGroups ? groups.size() : groups.get(browseGroup).items.size();
         }
 
         @Override
         public Object getItem(int position) {
-            return items.get(position);
+            return showGroups ? groups.get(position) : groups.get(browseGroup).items.get(position);
         }
 
         @Override
@@ -704,12 +885,24 @@ public class PlayerActivity extends Activity {
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            Row row = convertView instanceof LinearLayout && convertView.getTag() instanceof Row
+            Row row = convertView != null && convertView.getTag() instanceof Row
                     ? (Row) convertView.getTag() : new Row();
-            Item it = items.get(position);
-            boolean playing = position == index;
+            if (showGroups) {
+                Group g = groups.get(position);
+                boolean playing = position == group;
+                row.num.setText(playing ? "▶" : "");
+                row.num.setTextColor(ROYAL_LIGHT);
+                row.logo.setVisibility(View.GONE);
+                row.name.setText(g.name);
+                row.now.setText(g.items.size() + " Sender");
+                row.now.setVisibility(View.VISIBLE);
+                return row.view;
+            }
+            Item it = groups.get(browseGroup).items.get(position);
+            boolean playing = browseGroup == group && position == index;
             row.num.setText(playing ? "▶" : String.valueOf(position + 1));
-            row.num.setTextColor(playing ? 0xFF8FB0FF : MUTED);
+            row.num.setTextColor(playing ? ROYAL_LIGHT : MUTED);
+            row.logo.setVisibility(View.VISIBLE);
             row.name.setText(it.name);
             String now = it.nowTitle();
             row.now.setText(now);
@@ -736,13 +929,14 @@ public class PlayerActivity extends Activity {
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(64), dp(44));
             lp.leftMargin = dp(12);
-            lp.rightMargin = dp(12);
             view.addView(logo, lp);
             LinearLayout texts = new LinearLayout(PlayerActivity.this);
             texts.setOrientation(LinearLayout.VERTICAL);
             texts.addView(name);
             texts.addView(now);
-            view.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            tlp.leftMargin = dp(12);
+            view.addView(texts, tlp);
             view.setTag(this);
         }
     }

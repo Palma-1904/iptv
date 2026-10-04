@@ -208,10 +208,18 @@
         units(items).forEach(function (u) { f.appendChild(unitEl(u, false, type === 'live' ? items : null)); });
         box.appendChild(f);
       };
-      d.addEventListener('toggle', function () { if (d.open) d.fill(); });
+      d.addEventListener('toggle', function () { if (d.open) { d.fill(); closeOthers(d); } });
       frag.appendChild(d);
     });
     content.appendChild(frag);
+  }
+
+  // Fernseher: nur eine Gruppe offen, damit man nicht an allen Sendern vorbeiblättern muss
+  function closeOthers(d) {
+    if (!IPTV.isTv) return;
+    content.querySelectorAll('details[open]').forEach(function (o) {
+      if (o !== d && !o.classList.contains('favgroup')) o.open = false;
+    });
   }
 
   function fillSeries(d, box, items, langs) {
@@ -555,12 +563,22 @@
     var open = new Set();
     content.querySelectorAll('details[open] .gname').forEach(function (n) { open.add(n.textContent); });
     var y = window.scrollY;
+    // Fokus merken (Fernbedienung), damit er nach dem Neuzeichnen nicht an den Seitenanfang springt
+    var a = document.activeElement;
+    var focusUrl = a && a._play ? a._play.entry.url : null;
+    var focusGroup = a && a.tagName === 'SUMMARY' ? a.querySelector('.gname').textContent : null;
     apply(entries);
     render();
     content.querySelectorAll('details').forEach(function (d) {
       if (open.has(d.querySelector('.gname').textContent)) { d.open = true; d.fill(); }
     });
     window.scrollTo(0, y);
+    if (!IPTV.isTv || (!focusUrl && !focusGroup)) return;
+    var hit = Array.prototype.find.call(content.querySelectorAll('.item, summary'), function (n) {
+      return focusUrl ? n._play && n._play.entry.url === focusUrl
+        : n.tagName === 'SUMMARY' && n.querySelector('.gname').textContent === focusGroup;
+    });
+    if (hit) TV.focusFirst(null, hit);
   }
 
   // Zuletzt geöffneten Eintrag merken, damit der Fokus nach "Zurück" aus dem Player dort steht.
@@ -607,6 +625,13 @@
       status('Playlist konnte nicht geladen werden: ' + err.message, true);
     });
   }
+
+  // Senderliste im Player der App: alle Live-Gruppen
+  IPTV.setLiveGroups(function () {
+    var out = [];
+    groupsOf(byType.live).forEach(function (items, name) { out.push({ name: name, items: items }); });
+    return out;
+  });
 
   IPTV.watch(refresh);
   start();

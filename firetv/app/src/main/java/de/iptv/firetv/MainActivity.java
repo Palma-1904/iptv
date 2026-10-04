@@ -181,16 +181,30 @@ public class MainActivity extends Activity {
         return super.onKeyDown(keyCode, event);
     }
 
-    /** Zurück-Taste: erst offene Dialoge der Webapp schließen, dann zurückblättern; die App bleibt offen. */
+    /**
+     * Zurück-Taste: erst Dialoge schließen bzw. offene Gruppe zuklappen (IPTV.handleBack der Webapp),
+     * sonst zurückblättern; die App bleibt offen.
+     */
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        String js = "(function(){var o=document.querySelector('[aria-modal=\"true\"]:not([hidden])');"
+        String js = "(function(){if(window.IPTV&&IPTV.handleBack)return IPTV.handleBack()?'closed':'';"
+                + "var o=document.querySelector('[aria-modal=true]:not([hidden])');"
                 + "if(o){(document.activeElement||document.body).dispatchEvent("
                 + "new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return 'closed';}return '';})()";
         web.evaluateJavascript(js, result -> {
             if (!"\"closed\"".equals(result) && web.canGoBack()) web.goBack();
         });
+    }
+
+    /** Manche Fernbedienungen (z. B. Fire-TV-App auf dem Handy) senden Escape statt Zurück. */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE) {
+            if (event.getAction() == KeyEvent.ACTION_UP) onBackPressed();
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     @Override

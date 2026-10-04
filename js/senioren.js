@@ -78,6 +78,7 @@
     var frag = document.createDocumentFragment();
     // Für den Player der App: Sender mit dem hier angezeigten Namen
     var entries = found.map(function (x) { return Object.assign({}, x.entry, { name: x.label }); });
+    IPTV.setLiveGroups(function () { return [{ name: 'Sender', items: entries }]; });
     found.forEach(function (x, i) {
       var a = document.createElement('a');
       a.className = 'channel';

@@ -350,11 +350,33 @@
     };
   }
 
+  // Alle Live-Gruppen für die Senderliste im Player (setzt app.js bzw. senioren.js)
+  var liveGroups = function () { return []; };
+
   function playNative(entry, list) {
     if (!list || list.indexOf(entry) < 0) list = [entry];
+    var groups = [];
+    var group = 0;
+    if (entry.type === 'live') {
+      groups = liveGroups().filter(function (g) { return g.items.length; });
+      // Die übergebene Liste ist eine der Gruppen? Sonst (Suche, Programm) als eigene Gruppe vorne.
+      group = -1;
+      groups.forEach(function (g, i) {
+        if (group < 0 && g.items.length === list.length && g.items.indexOf(entry) >= 0 && g.items[0] === list[0]) group = i;
+      });
+      if (group < 0) {
+        groups.unshift({ name: entry.group || 'Auswahl', items: list });
+        group = 0;
+      }
+    } else {
+      groups = [{ name: entry.group || '', items: list }];
+    }
     window.IPTVNative.play(JSON.stringify({
+      // "items"/"index" für ältere App-Versionen
       index: list.indexOf(entry),
       items: list.map(nativeItem),
+      group: group,
+      groups: groups.map(function (g) { return { name: g.name, items: g.items.map(nativeItem) }; }),
       view: /senioren/.test(location.pathname) ? 'senioren' : 'komplett'
     }));
   }
@@ -374,11 +396,45 @@
   }
 
   // Die App meldet beim Schließen des Players den zuletzt gesehenen Sender -> Fokus dorthin.
+  // Liegt er in einer anderen (geschlossenen) Gruppe, wird diese geöffnet.
   function nativeReturned(url) {
-    var hit = Array.prototype.find.call(document.querySelectorAll('a'), function (a) {
-      return a._play && a._play.entry.url === url;
-    });
+    var find = function () {
+      return Array.prototype.find.call(document.querySelectorAll('a'), function (a) {
+        return a._play && a._play.entry.url === url && a.getClientRects().length;
+      });
+    };
+    var hit = find();
+    if (!hit) {
+      Array.prototype.some.call(document.querySelectorAll('details.group'), function (d) {
+        if (!d.fill) return false;
+        var was = d.open;
+        d.open = true;
+        d.fill();
+        hit = find();
+        if (!hit) d.open = was;
+        return !!hit;
+      });
+    }
     if (hit && window.TV) window.TV.focusFirst(null, hit);
+  }
+
+  // Zurück-Taste der App: Dialog schließen, sonst offene Gruppe zuklappen.
+  // Liefert true, wenn etwas geschlossen wurde (dann bleibt die App auf der Seite).
+  function handleBack() {
+    var modal = document.querySelector('[aria-modal="true"]:not([hidden])');
+    if (modal) {
+      (document.activeElement || document.body).dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return true;
+    }
+    var a = document.activeElement;
+    var d = a && a.closest ? a.closest('details[open]') : null;
+    if (!d) d = document.querySelector('details.group[open]');
+    if (!d) return false;
+    d.open = false;
+    var s = d.querySelector('summary');
+    if (s && window.TV) window.TV.focusFirst(null, s);
+    return true;
   }
 
   window.IPTV = {
@@ -397,6 +453,8 @@
     epgEl: epgEl,
     bindPlay: bindPlay,
     nativeReturned: nativeReturned,
+    handleBack: handleBack,
+    setLiveGroups: function (fn) { liveGroups = fn; },
     platform: platform,
     isTv: isTv,
     playerHref: playerHref,

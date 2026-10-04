@@ -360,7 +360,7 @@ public class PlayerActivity extends Activity {
         handler.postDelayed(refresh, REFRESH_MS);
         handler.postDelayed(adopt, ADOPT_MS);
         handler.postDelayed(sleepCheck, 60000);
-        handler.postDelayed(() -> Updater.check(this), 20000);
+        handler.postDelayed(() -> Updater.check(this, false), 20000);
     }
 
     private static Item readItem(JSONObject j) throws Exception {

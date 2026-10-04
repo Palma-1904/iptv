@@ -87,7 +87,7 @@ public class MainActivity extends Activity {
         web.setFocusable(true);
         web.requestFocus();
 
-        handler.postDelayed(() -> Updater.check(this), 8000);   // neue App-Version?
+        handler.postDelayed(() -> Updater.check(this, true), 8000);   // neue App-Version? (bei jedem Start)
         if (prefs.getBoolean(PREF_CONFIGURED, false)) {
             load(null);
         } else {

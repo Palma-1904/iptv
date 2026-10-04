@@ -24,7 +24,8 @@ import java.net.URL;
 /**
  * Automatische Updates: Neben app.apk liegt app-version.txt (Build-Nummer aus GitHub).
  * Ist sie höher als die eigene, wird gefragt, geladen und der Android-Installer geöffnet.
- * Höchstens alle 6 Stunden prüfen; „Später“ fragt einen Tag lang nicht mehr.
+ * Prüft bei jedem Start der App, im laufenden Betrieb höchstens alle 6 Stunden;
+ * „Später“ fragt einen Tag lang nicht mehr.
  */
 final class Updater {
 
@@ -35,11 +36,12 @@ final class Updater {
     private Updater() {
     }
 
-    static void check(Activity a) {
+    /** atStart: beim Öffnen der App immer prüfen (sonst höchstens alle 6 Stunden). */
+    static void check(Activity a, boolean atStart) {
         if (running || a.isFinishing()) return;
         SharedPreferences prefs = a.getSharedPreferences("iptv", Context.MODE_PRIVATE);
         long now = System.currentTimeMillis();
-        if (now - prefs.getLong("updateChecked", 0) < CHECK_EVERY) return;
+        if (!atStart && now - prefs.getLong("updateChecked", 0) < CHECK_EVERY) return;
         if (now < prefs.getLong("updateSnooze", 0)) return;
         running = true;
         prefs.edit().putLong("updateChecked", now).apply();

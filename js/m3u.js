@@ -175,7 +175,7 @@
     var u = playlistUrl();
     // EPG gibt es nur zu Listen aus dem Editor (nicht zur Beispielliste im Repo).
     if (!hasDeviceList() || !/\.m3u8?(\?|$)/i.test(u)) return Promise.resolve(null);
-    return fetch(u.replace(/\.m3u8?(?=\?|$)/i, '.epg.json'), { cache: 'no-cache' })
+    return fetch(fresh(u.replace(/\.m3u8?(?=\?|$)/i, '.epg.json')), { cache: 'no-cache' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         epg = d && d.channels ? d.channels : null;
@@ -232,8 +232,13 @@
   var lastText = null;
   var lastLoad = 0;
 
+  // GitHub hält Gist-Dateien bis zu 5 Minuten im Zwischenspeicher – Zeitstempel holt die neueste Fassung
+  function fresh(u) {
+    return /^https:\/\/gist\.githubusercontent\.com\//.test(u) ? u + (u.indexOf('?') < 0 ? '?' : '&') + 't=' + Date.now() : u;
+  }
+
   function fetchText() {
-    return fetch(playlistUrl(), { cache: 'no-cache' }).then(function (r) {
+    return fetch(fresh(playlistUrl()), { cache: 'no-cache' }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status + ' beim Laden der Playlist');
       return r.text();
     }).then(function (text) {
@@ -265,6 +270,7 @@
         if (res[0] === lastText) return refreshEpgEls();
         lastText = res[0];
         onChange(parse(res[0]));
+        pushTree();   // läuft der Player der App, bekommt er die neue Liste sofort
       }).catch(function (err) {
         console.warn('Aktualisierung fehlgeschlagen, alte Liste bleibt:', err.message);
       });
@@ -392,14 +398,18 @@
         refreshEpgEls();
       }
       epgStamp = Date.now();
-      var N = window.IPTVNative;
-      var tp = treeProvider && treeProvider();
-      if (tp && N && typeof N.setTree === 'function' && !N.hasTree(tp.version)) {
-        N.setTree(tp.version, JSON.stringify(tp.build()));
-      }
+      pushTree();
     }).catch(function (err) {
       console.warn('Auffrischen fehlgeschlagen, alte Liste bleibt:', err.message);
     });
+  }
+
+  function pushTree() {
+    var N = window.IPTVNative;
+    var tp = treeProvider && treeProvider();
+    if (tp && N && typeof N.setTree === 'function' && !N.hasTree(tp.version)) {
+      N.setTree(tp.version, JSON.stringify(tp.build()));
+    }
   }
 
   function playNativeTree(entry) {

@@ -46,6 +46,24 @@
     external.hidden = false;
   }
 
+  // Mac: Browser sperren http-Streams auf der https-Seite und können .mkv/AC3 nicht –
+  // daher Übergabe an VLC oder IINA (Mac-Player) und „Adresse kopieren“ (für VLC: Ablage → Netzwerk öffnen).
+  var isMac = /Macintosh/.test(navigator.userAgent) && !(navigator.maxTouchPoints > 1);
+  var macVlc = document.getElementById('mac-vlc');
+  var macIina = document.getElementById('mac-iina');
+  var copy = document.getElementById('copy');
+  function showMacButtons() {
+    if (!isMac || !/^https?:\/\//i.test(url)) return;
+    macVlc.href = 'vlc://' + url;
+    macIina.href = 'iina://weblink?url=' + encodeURIComponent(url);
+    macVlc.hidden = macIina.hidden = copy.hidden = false;
+  }
+  copy.addEventListener('click', function () {
+    navigator.clipboard.writeText(url).then(function () {
+      showOverlay('Adresse kopiert – in VLC: Ablage → Netzwerk öffnen → einfügen.', true);
+    });
+  });
+
   var hideTimer;
   function showOverlay(text, sticky) {
     if (text) message.textContent = text;
@@ -57,6 +75,13 @@
   var mixed = false;
 
   function fail(text) {
+    if (isMac) {
+      showMacButtons();
+      text = (mixed ? 'Der Browser darf diesen Sender auf dieser Seite nicht abspielen (unverschlüsselte Adresse). '
+        : text + ' ') + 'Bitte „In VLC öffnen“ oder „In IINA öffnen“ wählen.';
+      showOverlay(text, true);
+      return;
+    }
     if (mixed) {
       text = 'Dieser Sender nutzt eine unverschlüsselte Adresse (http), die der Browser auf dieser Seite sperrt. ' +
         (external.hidden ? 'Bitte auf iPad/iPhone (Outplayer), Fire TV (App) oder am Mac im Editor ansehen.' : 'Bitte „In VLC öffnen“ wählen.');
@@ -93,6 +118,8 @@
     // http-Stream auf https-Seite: manche Browser sperren das (Mixed Content) – trotzdem versuchen,
     // bei Fehler erklärt fail() den Grund.
     mixed = location.protocol === 'https:' && /^http:/i.test(url);
+    // Mac: Safari und Chrome sperren das sicher – gleich die Player-Knöpfe zeigen
+    if (mixed && isMac) return fail('');
 
     var path = url.split('?')[0].toLowerCase();
     var p;

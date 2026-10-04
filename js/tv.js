@@ -7,7 +7,12 @@
   var DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
   function visible(el) {
-    if (!el.getClientRects().length) return false; // z. B. in geschlossenem <details>
+    // In zugeklappten <details> ist nur deren Überschrift erreichbar. Neuere Browser melden den
+    // Inhalt einer einmal geöffneten Gruppe sonst weiter als sichtbar -> Fokus bliebe hängen.
+    for (var p = el.parentElement; p; p = p.parentElement) {
+      if (p.tagName === 'DETAILS' && !p.open && !(el.tagName === 'SUMMARY' && el.parentElement === p)) return false;
+    }
+    if (!el.getClientRects().length) return false;
     var r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   }

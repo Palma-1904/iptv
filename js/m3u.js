@@ -283,6 +283,7 @@
     forcedTv || /AFT[A-Z0-9]|Android ?TV|GoogleTV|SMART-TV|SmartTV|BRAVIA/i.test(ua) ? 'tv' :
     /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ? 'ios' :
     /Android/i.test(ua) ? 'android' :
+    /Macintosh/.test(ua) ? 'mac' :                                // Mac (iPad oben schon erkannt)
     'web';
   var isTv = platform === 'tv' || platform === 'app';
   if (isTv) document.documentElement.classList.add('tv');
@@ -353,7 +354,32 @@
   // Alle Live-Gruppen für die Senderliste im Player (setzt app.js bzw. senioren.js)
   var liveGroups = function () { return []; };
 
+  // Neuere App: ganze Playlist als Baum (Live TV / Filme / Serien / Suche), nur bei Änderung übertragen.
+  // Liefert app.js bzw. senioren.js: { version, build(): Baum, pathOf(entry): [Indizes] }
+  var treeProvider = null;
+
+  function nativeLeaf(e, label, title) {
+    var o = { n: label || e.name, u: e.url, t: e.type };
+    if (title && title !== o.n) o.ti = title;
+    if (e.logo) o.l = absUrl(e.logo);
+    if (e.tvgId) o.id = e.tvgId;
+    if (e.type === 'live' && e.tvgId) o.e = programmes(e.tvgId).slice(0, 12);
+    return o;
+  }
+
+  function playNativeTree(entry) {
+    var N = window.IPTVNative;
+    if (!treeProvider || typeof N.setTree !== 'function') return false;
+    var tp = treeProvider();
+    var path = tp && tp.pathOf(entry);
+    if (!path) return false;
+    if (!N.hasTree(tp.version)) N.setTree(tp.version, JSON.stringify(tp.build()));
+    N.playPath(JSON.stringify({ path: path, view: /senioren/.test(location.pathname) ? 'senioren' : 'komplett' }));
+    return true;
+  }
+
   function playNative(entry, list) {
+    if (playNativeTree(entry)) return;
     if (!list || list.indexOf(entry) < 0) list = [entry];
     var groups = [];
     var group = 0;
@@ -455,6 +481,9 @@
     nativeReturned: nativeReturned,
     handleBack: handleBack,
     setLiveGroups: function (fn) { liveGroups = fn; },
+    setTreeProvider: function (fn) { treeProvider = fn; },
+    nativeTree: function () { return treeProvider ? treeProvider() : null; },   // zum Testen
+    nativeLeaf: nativeLeaf,
     platform: platform,
     isTv: isTv,
     playerHref: playerHref,

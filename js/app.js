@@ -553,6 +553,7 @@
 
   function apply(entries) {
     all = entries;
+    dataVersion++;
     byType = { live: [], movie: [], series: [] };
     entries.forEach(function (e) { byType[e.type].push(e); });
     // Zählen wie man es erwartet: Filme (nicht Sprachfassungen), Serien (nicht Folgen).
@@ -637,7 +638,86 @@
     });
   }
 
-  // Senderliste im Player der App: alle Live-Gruppen
+  // Player der App: ganze Playlist als Baum – Live TV › Gruppen › Sender, Filme › Gruppen › Film
+  // (› Sprache), Serien › Serie (› Sprache) › Folgen, Suche. Pfad = Indizes bis zum Eintrag.
+  var pageId = Date.now();   // neu geladene Seite = neuer Baum (die App merkt sich den alten)
+  var dataVersion = 0;
+  var tree = null;
+  IPTV.setTreeProvider(function () {
+    var version = pageId + ':' + dataVersion + ':' + Math.floor(Date.now() / 3600000) + ':' + favs.movie.length + ':' + favs.series.length;
+    if (tree && tree.version === version) return tree;
+    var paths = new Map();
+    var root = [];
+    var leaf = IPTV.nativeLeaf;
+
+    if (byType.live.length) {
+      var live = [];
+      groupsOf(byType.live).forEach(function (items, name) {
+        var gi = live.length;
+        live.push({ n: name, c: items.map(function (e, i) { paths.set(e, [root.length, gi, i]); return leaf(e); }) });
+      });
+      root.push({ n: 'Live TV', c: live });
+    }
+
+    if (byType.movie.length) {
+      var ai = root.length;
+      var movies = [];
+      var favUnits = favMovies();
+      var unitNode = function (u, path) {
+        if (!u.variants || u.variants.length < 2) {
+          if (path) paths.set(u.entry, path);
+          return leaf(u.entry);
+        }
+        return {
+          n: u.entry.name + '  ·  ' + u.variants.map(function (v) { return v.lang || '?'; }).join(' '),
+          v: 1,
+          c: u.variants.map(function (v, vi) {
+            if (path) paths.set(v, path.concat(vi));
+            return leaf(v, langName(v.lang), u.entry.name + ' (' + langName(v.lang) + ')');
+          })
+        };
+      };
+      if (favUnits.length) movies.push({ n: '★ Meine Favoriten', c: favUnits.map(function (u) { return unitNode(u, null); }) });
+      groupsOf(byType.movie).forEach(function (items, name) {
+        var gi = movies.length;
+        movies.push({ n: name, c: units(items).map(function (u, ui) { return unitNode(u, [ai, gi, ui]); }) });
+      });
+      root.push({ n: 'Filme', c: movies });
+    }
+
+    if (byType.series.length) {
+      var si = root.length;
+      var series = [];
+      var episode = function (e, name) {
+        var label = e.name.indexOf(name) === 0 ? e.name.slice(name.length).replace(/^[\s–:-]+/, '') : e.name;
+        return leaf(e, label || e.name, e.name);
+      };
+      favSeriesFirst(groupsOf(byType.series)).forEach(function (items, name) {
+        var gi = series.length;
+        var langs = seriesLangs(items);
+        var star = favs.series.indexOf(name) >= 0 ? '★ ' : '';
+        if (langs.length > 1) {
+          series.push({ n: star + name, c: langs.map(function (l, li) {
+            var eps = items.filter(function (e) { return e.lang === l; });
+            return { n: langName(l), c: eps.map(function (e, ei) { paths.set(e, [si, gi, li, ei]); return episode(e, name); }) };
+          }) });
+        } else {
+          series.push({ n: star + name, c: items.map(function (e, ei) { paths.set(e, [si, gi, ei]); return episode(e, name); }) });
+        }
+      });
+      root.push({ n: 'Serien', c: series });
+    }
+
+    root.push({ n: '🔍 Suche', s: 1 });
+    tree = {
+      version: version,
+      build: function () { return { n: 'Übersicht', c: root }; },
+      pathOf: function (e) { return paths.get(e) || null; }
+    };
+    return tree;
+  });
+
+  // Ältere App-Versionen: nur die Live-Gruppen
   IPTV.setLiveGroups(function () {
     var out = [];
     groupsOf(byType.live).forEach(function (items, name) { out.push({ name: name, items: items }); });

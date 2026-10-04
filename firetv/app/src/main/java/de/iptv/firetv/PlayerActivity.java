@@ -60,6 +60,10 @@ public class PlayerActivity extends Activity {
 
     /** Daten von der Webapp (für Intent-Extras evtl. zu groß). */
     static String pending;
+    /** Neuere Webapp: ganze Playlist als Baum (bleibt gespeichert, solange die App läuft) und Pfad zum Eintrag. */
+    static volatile Node treeRoot;
+    static volatile String treeVersion;
+    static String pendingPath;
     /** Zuletzt gesehener Eintrag – die Webapp setzt dort den Fokus. */
     static String lastUrl;
 
@@ -75,6 +79,7 @@ public class PlayerActivity extends Activity {
 
     static class Item {
         String name, url, logo, tvgId, type, group;
+        String heading;   // Titel in der Info (z. B. „Film (Deutsch 4K)“), sonst name
         long[] start = new long[0], end = new long[0];
         String[] title = new String[0];
 
@@ -95,20 +100,71 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    static class Group {
+    /** Eintrag im Baum: Bereich, Gruppe, Film mit Sprachen … oder ein abspielbarer Eintrag (item). */
+    static class Node {
         final String name;
-        final List<Item> items = new ArrayList<>();
+        Node parent;
+        final List<Node> children = new ArrayList<>();
+        Item item;
+        boolean search;
+        boolean variants;   // Film mit mehreren Sprachfassungen
 
-        Group(String name) {
+        Node(String name) {
             this.name = name;
         }
+
+        Node add(Node c) {
+            c.parent = this;
+            children.add(c);
+            return c;
+        }
+
+        /** Anzahl der abspielbaren Einträge darunter (für „97 Sender“). */
+        int count() {
+            if (item != null) return 1;
+            int n = 0;
+            for (Node c : children) n += c.count();
+            return n;
+        }
+    }
+
+    static Node parseTree(JSONObject j) throws Exception {
+        Node n = new Node(j.optString("n"));
+        if (j.has("u")) {
+            Item it = new Item();
+            it.name = n.name;
+            it.heading = j.optString("ti", n.name);
+            it.url = j.optString("u");
+            it.logo = j.optString("l");
+            it.tvgId = j.optString("id");
+            it.type = j.optString("t", "live");
+            JSONArray epg = j.optJSONArray("e");
+            int k = epg == null ? 0 : epg.length();
+            it.start = new long[k];
+            it.end = new long[k];
+            it.title = new String[k];
+            for (int i = 0; i < k; i++) {
+                JSONArray p = epg.getJSONArray(i);
+                it.start[i] = p.optLong(0);
+                it.end[i] = p.optLong(1);
+                it.title[i] = p.optString(2);
+            }
+            n.item = it;
+            return n;
+        }
+        n.search = j.optInt("s") == 1;
+        n.variants = j.optInt("v") == 1;
+        JSONArray c = j.optJSONArray("c");
+        if (c != null) for (int i = 0; i < c.length(); i++) n.add(parseTree(c.getJSONObject(i)));
+        return n;
     }
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final SimpleDateFormat hhmm = new SimpleDateFormat("HH:mm", Locale.GERMANY);
-    private final List<Group> groups = new ArrayList<>();
-    private int group;              // spielende Gruppe
-    private int index;              // spielender Eintrag in dieser Gruppe
+    private Node rootNode;          // Übersicht (Live TV, Filme, Serien, Suche)
+    private Node ctx;               // Gruppe des laufenden Eintrags (▲/▼ schaltet darin)
+    private final List<Item> ctxItems = new ArrayList<>();
+    private int index;              // laufender Eintrag in ctxItems
     private int pendingIndex = -1;  // Ziel beim Umschalten mit ▲/▼ (gleiche Gruppe)
     private int retries;
     private boolean failed;
@@ -131,8 +187,7 @@ public class PlayerActivity extends Activity {
     private TextView listTitle, listHint;
     private ListView list;
     private ListAdapter adapter;
-    private boolean showGroups;     // Liste zeigt gerade die Gruppen statt der Sender
-    private int browseGroup;        // Gruppe, deren Sender die Liste zeigt
+    private Node browse;            // Ebene, die die Liste gerade zeigt
     private LinearLayout preview;
     private TextView previewName, previewEpg;
     private ImageLoader images;
@@ -160,11 +215,13 @@ public class PlayerActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        if (!readData(pending)) {
+        boolean ok = pendingPath != null ? readPath(pendingPath) : readData(pending);
+        pending = null;
+        pendingPath = null;
+        if (!ok) {
             finish();
             return;
         }
-        pending = null;
         images = new ImageLoader();
         buildViews();
 
@@ -228,31 +285,20 @@ public class PlayerActivity extends Activity {
         return it;
     }
 
-    /** Neue Webapp: "groups" + "group" + "index"; ältere: nur "items" + "index". */
-    private boolean readData(String json) {
-        if (json == null) return false;
+    /** Neue Webapp: Baum (treeRoot) + Pfad aus Indizes bis zum Eintrag. */
+    private boolean readPath(String json) {
         try {
             JSONObject o = new JSONObject(json);
-            JSONArray gs = o.optJSONArray("groups");
-            if (gs != null && gs.length() > 0) {
-                for (int g = 0; g < gs.length(); g++) {
-                    JSONObject jg = gs.getJSONObject(g);
-                    Group grp = new Group(jg.optString("name"));
-                    JSONArray arr = jg.getJSONArray("items");
-                    for (int i = 0; i < arr.length(); i++) grp.items.add(readItem(arr.getJSONObject(i)));
-                    if (!grp.items.isEmpty()) groups.add(grp);
-                }
-                group = Math.max(0, Math.min(groups.size() - 1, o.optInt("group")));
-            } else {
-                JSONArray arr = o.getJSONArray("items");
-                Group grp = new Group("");
-                for (int i = 0; i < arr.length(); i++) grp.items.add(readItem(arr.getJSONObject(i)));
-                if (!grp.items.isEmpty()) groups.add(grp);
-                group = 0;
+            Node n = treeRoot;
+            JSONArray path = o.getJSONArray("path");
+            for (int i = 0; n != null && i < path.length(); i++) {
+                int k = path.getInt(i);
+                n = k >= 0 && k < n.children.size() ? n.children.get(k) : null;
             }
-            if (groups.isEmpty()) return false;
-            index = Math.max(0, Math.min(items().size() - 1, o.optInt("index")));
+            if (n == null || n.item == null) return false;
+            rootNode = treeRoot;
             if ("senioren".equals(o.optString("view"))) textScale = 1.25f;
+            setContext(n);
             return true;
         } catch (Exception e) {
             Toast.makeText(this, "Wiedergabe nicht möglich: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -260,10 +306,56 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    /** Ältere Webapp: "groups" + "group" + "index" bzw. nur "items" + "index" -> als Baum „Live TV“. */
+    private boolean readData(String json) {
+        if (json == null) return false;
+        try {
+            JSONObject o = new JSONObject(json);
+            rootNode = new Node("Übersicht");
+            Node area = rootNode.add(new Node("Live TV"));
+            JSONArray gs = o.optJSONArray("groups");
+            int g = 0;
+            if (gs == null || gs.length() == 0) {
+                gs = new JSONArray().put(new JSONObject().put("name", "").put("items", o.getJSONArray("items")));
+            } else {
+                g = o.optInt("group");
+            }
+            for (int i = 0; i < gs.length(); i++) {
+                JSONObject jg = gs.getJSONObject(i);
+                Node grp = area.add(new Node(jg.optString("name")));
+                JSONArray arr = jg.getJSONArray("items");
+                for (int k = 0; k < arr.length(); k++) {
+                    Item it = readItem(arr.getJSONObject(k));
+                    it.heading = it.name;
+                    Node leaf = grp.add(new Node(it.name));
+                    leaf.item = it;
+                }
+            }
+            if (g < 0 || g >= area.children.size()) g = 0;
+            Node grp = area.children.get(g);
+            if (grp.children.isEmpty()) return false;
+            int i = Math.max(0, Math.min(grp.children.size() - 1, o.optInt("index")));
+            if ("senioren".equals(o.optString("view"))) textScale = 1.25f;
+            setContext(grp.children.get(i));
+            return true;
+        } catch (Exception e) {
+            Toast.makeText(this, "Wiedergabe nicht möglich: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            return false;
+        }
+    }
+
+    /** Laufender Eintrag = leaf; ▲/▼ schaltet zwischen den abspielbaren Geschwistern. */
+    private void setContext(Node leaf) {
+        ctx = leaf.parent;
+        ctxItems.clear();
+        for (Node c : ctx.children) if (c.item != null) ctxItems.add(c.item);
+        index = Math.max(0, ctxItems.indexOf(leaf.item));
+    }
+
     // ---------- Wiedergabe ----------
 
     private List<Item> items() {
-        return groups.get(group).items;
+        return ctxItems;
     }
 
     private Item current() {
@@ -317,15 +409,14 @@ public class PlayerActivity extends Activity {
         handler.postDelayed(tune, TUNE_DELAY);
     }
 
-    /** Direkt umschalten (aus der Senderliste), auch in eine andere Gruppe. */
-    private void jumpTo(int g, int i) {
-        if (g == group && i == index && pendingIndex < 0 && !failed) return;
+    /** Direkt umschalten (aus der Liste), auch in eine andere Gruppe oder zu einem Film. */
+    private void jumpTo(Node leaf) {
+        if (leaf.parent == ctx && leaf.item == items().get(index) && pendingIndex < 0 && !failed) return;
         handler.removeCallbacks(tune);
         player.stop();
-        group = g;
-        index = i;
         pendingIndex = -1;
         retries = 0;
+        setContext(leaf);
         play();
     }
 
@@ -346,9 +437,10 @@ public class PlayerActivity extends Activity {
             retries++;
             showStatus("Verbindung wird erneut aufgebaut …");
             spinner.setVisibility(View.VISIBLE);
-            final int atGroup = group, at = index;
+            final Node atCtx = ctx;
+            final int at = index;
             handler.postDelayed(() -> {
-                if (atGroup == group && at == index && pendingIndex < 0) {
+                if (atCtx == ctx && at == index && pendingIndex < 0) {
                     player.stop();
                     start(it);
                 }
@@ -409,12 +501,15 @@ public class PlayerActivity extends Activity {
             handler.postDelayed(hideList, LIST_MS);
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (!showGroups && groups.size() > 1) showGroupList();
+                    if (browse.parent != null) showNode(browse.parent, browse);
                     return true;
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (showGroups) showChannelList(list.getSelectedItemPosition());
+                case KeyEvent.KEYCODE_DPAD_RIGHT: {
+                    int pos = list.getSelectedItemPosition();
+                    Node sel = pos >= 0 && pos < browse.children.size() ? browse.children.get(pos) : null;
+                    if (sel != null && sel.item == null) open(sel);
                     else closeList();
                     return true;
+                }
                 case KeyEvent.KEYCODE_MENU:
                     closeList();
                     return true;
@@ -449,7 +544,7 @@ public class PlayerActivity extends Activity {
                 if (live) openList(); else seek(fast ? 60000 : 30000);
                 return true;
             case KeyEvent.KEYCODE_MENU:
-                if (live) openList(); else showInfo();
+                openList();
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
@@ -660,7 +755,7 @@ public class PlayerActivity extends Activity {
         int i = pendingIndex >= 0 ? pendingIndex : index;
         int size = items().size();
         infoNum.setText(size > 1 ? (i + 1) + "/" + size : "");
-        infoName.setText(it.name);
+        infoName.setText(it.heading != null ? it.heading : it.name);
         infoClock.setText(hhmm.format(new Date()));
         images.load(it.logo, infoLogo);
         if (it.live()) {
@@ -672,14 +767,13 @@ public class PlayerActivity extends Activity {
                 infoProgress.setVisibility(View.VISIBLE);
                 infoNext.setText(n + 1 < it.start.length ? "Danach  " + time(it.start[n + 1]) + "   " + it.title[n + 1] : "");
             } else {
-                String g = groups.get(group).name;
-                infoNow.setText(g == null ? "" : g);
+                infoNow.setText(ctx.name == null ? "" : ctx.name);
                 infoProgress.setVisibility(View.GONE);
                 infoNext.setText("");
             }
-            infoHint.setText(size > 1 || groups.size() > 1
+            infoHint.setText(size > 1
                     ? "▲ ▼  Sender wechseln     ◀ ▶  Senderliste     OK  Info     ↩  Übersicht"
-                    : "OK  Info     ↩  Übersicht");
+                    : "◀ ▶  Liste     OK  Info     ↩  Übersicht");
         } else {
             long pos = position, dur = length;
             boolean known = dur > 0;
@@ -689,7 +783,7 @@ public class PlayerActivity extends Activity {
             if (known) infoProgress.setProgress((int) (1000 * pos / dur));
             infoNext.setText(size > 1 && i + 1 < size ? "Nächste Folge:  " + items().get(i + 1).name : "");
             infoHint.setText("◀ ▶  Spulen (gedrückt halten = schneller)     OK  Pause"
-                    + (size > 1 ? "     ▲ ▼  Folge" : "") + "     ↩  Übersicht");
+                    + (size > 1 ? "     ▲ ▼  Folge" : "") + "     ☰  Liste     ↩  Übersicht");
         }
     }
 
@@ -736,8 +830,9 @@ public class PlayerActivity extends Activity {
         list.setOnItemClickListener((AdapterView<?> parent, View view, int position, long id) -> {
             handler.removeCallbacks(hideList);
             handler.postDelayed(hideList, LIST_MS);
-            if (showGroups) showChannelList(position);
-            else jumpTo(browseGroup, position);
+            Node n = browse.children.get(position);
+            if (n.item != null) jumpTo(n);
+            else open(n);
         });
         list.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -778,10 +873,6 @@ public class PlayerActivity extends Activity {
     }
 
     private void openList() {
-        if (items().size() < 2 && groups.size() < 2) {
-            showInfo();
-            return;
-        }
         info.setVisibility(View.GONE);
         int w = root.getWidth();
         int pw = Math.max(dp(380 * Math.min(textScale, 1.15f)), Math.round(w * 0.42f));
@@ -789,7 +880,11 @@ public class PlayerActivity extends Activity {
         listPanel.setVisibility(View.VISIBLE);
         preview.setVisibility(View.VISIBLE);
         listPanel.requestLayout();
-        showChannelList(group);
+        // Gruppe des laufenden Eintrags zeigen, Auswahl auf ihm
+        Item playing = items().get(pendingIndex >= 0 ? pendingIndex : index);
+        Node sel = null;
+        for (Node c : ctx.children) if (c.item == playing) sel = c;
+        showNode(ctx, sel);
         list.requestFocus();
         layoutVideo();
     }
@@ -802,18 +897,23 @@ public class PlayerActivity extends Activity {
         layoutVideo();
     }
 
-    /** Liste zeigt die Sender einer Gruppe; Auswahl auf dem laufenden Sender, falls in dieser Gruppe. */
-    private void showChannelList(int g) {
-        if (g < 0 || g >= groups.size()) g = group;
-        showGroups = false;
-        browseGroup = g;
-        String name = groups.get(g).name;
-        listTitle.setText(name == null || name.isEmpty() ? "Sender" : name);
-        listHint.setText(groups.size() > 1
-                ? "▲ ▼ auswählen   OK umschalten   ◀ Gruppen   ▶ / ↩ schließen"
-                : "▲ ▼ auswählen   OK umschalten   ▶ / ↩ schließen");
+    /** Ebene öffnen: Suche fragt nach dem Suchbegriff, sonst Inhalt anzeigen. */
+    private void open(Node n) {
+        if (n.search) askSearch();
+        else showNode(n, null);
+    }
+
+    /** Liste zeigt die Einträge von n; Auswahl auf select (oder dem ersten). */
+    private void showNode(Node n, Node select) {
+        browse = n;
+        listTitle.setText(n.parent == null ? "Übersicht" : n.name);
+        boolean leaves = !n.children.isEmpty() && n.children.get(0).item != null;
+        String up = n.parent != null ? "   ◀ zurück" : "";
+        listHint.setText(leaves
+                ? "▲ ▼ auswählen   OK abspielen" + up + "   ↩ schließen"
+                : "▲ ▼ auswählen   OK / ▶ öffnen" + up + "   ↩ schließen");
         adapter.notifyDataSetChanged();
-        int sel = g == group ? (pendingIndex >= 0 ? pendingIndex : index) : 0;
+        int sel = select == null ? 0 : Math.max(0, n.children.indexOf(select));
         list.setSelectionFromTop(sel, dp(120));
         list.setSelection(sel);
         updatePreview(sel);
@@ -821,53 +921,112 @@ public class PlayerActivity extends Activity {
         handler.postDelayed(hideList, LIST_MS);
     }
 
-    private void showGroupList() {
-        showGroups = true;
-        listTitle.setText("Gruppen");
-        listHint.setText("▲ ▼ auswählen   OK / ▶ Sender zeigen   ↩ schließen");
-        adapter.notifyDataSetChanged();
-        list.setSelectionFromTop(browseGroup, dp(120));
-        list.setSelection(browseGroup);
-        updatePreview(browseGroup);
+    /** Suche über alle Einträge (Name und Gruppe); Ergebnisse als eigene Ebene unter der Übersicht. */
+    private void askSearch() {
+        handler.removeCallbacks(hideList);
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setSingleLine(true);
+        input.setHint("Sender, Film oder Serie");
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle("Suche")
+                .setView(input)
+                .setPositiveButton("Suchen", (d, w) -> runSearch(input.getText().toString()))
+                .setNegativeButton("Abbrechen", (d, w) -> handler.postDelayed(hideList, LIST_MS))
+                .create();
+        input.setOnEditorActionListener((v, actionId, ev) -> {
+            dlg.dismiss();
+            runSearch(input.getText().toString());
+            return true;
+        });
+        dlg.show();
     }
 
-    /** Unter dem kleinen Bild: Programm des markierten Senders bzw. Inhalt der markierten Gruppe. */
+    private void runSearch(String q) {
+        String[] terms = q.trim().toLowerCase(Locale.GERMANY).split("\\s+");
+        if (q.trim().isEmpty()) return;
+        Node res = new Node("Suche: " + q.trim());
+        res.parent = rootNode;
+        collect(rootNode, "", terms, res);
+        if (res.children.isEmpty()) {
+            Toast.makeText(this, "Keine Treffer für „" + q.trim() + "“", Toast.LENGTH_LONG).show();
+            handler.postDelayed(hideList, LIST_MS);
+            return;
+        }
+        showNode(res, null);
+        list.requestFocus();
+    }
+
+    private void collect(Node n, String path, String[] terms, Node res) {
+        if (res.children.size() >= 300) return;
+        if (n.item != null) {
+            String hay = (n.item.heading + " " + path).toLowerCase(Locale.GERMANY);
+            for (String t : terms) if (!hay.contains(t)) return;
+            Node copy = new Node(n.item.heading);
+            copy.item = n.item;
+            copy.parent = res;
+            res.children.add(copy);
+            return;
+        }
+        String p = n.parent == null ? "" : path + " " + n.name;
+        for (Node c : n.children) collect(c, p, terms, res);
+    }
+
+    /** Unter dem kleinen Bild: Programm des markierten Senders bzw. Inhalt der markierten Ebene. */
     private void updatePreview(int position) {
-        if (showGroups) {
-            if (position < 0 || position >= groups.size()) return;
-            Group g = groups.get(position);
-            previewName.setText(g.name);
-            StringBuilder sb = new StringBuilder(g.items.size() + " Sender");
-            for (int k = 0; k < Math.min(4, g.items.size()); k++) sb.append("\n").append(g.items.get(k).name);
+        if (browse == null || position < 0 || position >= browse.children.size()) return;
+        Node n = browse.children.get(position);
+        if (n.item == null) {
+            previewName.setText(n.name);
+            if (n.search) {
+                previewEpg.setText("Alle Sender, Filme und Serien durchsuchen");
+                return;
+            }
+            StringBuilder sb = new StringBuilder(countText(n));
+            for (int k = 0; k < Math.min(4, n.children.size()); k++) sb.append("\n").append(n.children.get(k).name);
             previewEpg.setText(sb);
             return;
         }
-        List<Item> its = groups.get(browseGroup).items;
-        if (position < 0 || position >= its.size()) return;
-        Item it = its.get(position);
-        previewName.setText(it.name);
-        int n = it.now();
-        if (n < 0) {
+        Item it = n.item;
+        previewName.setText(it.heading != null ? it.heading : it.name);
+        if (!it.live()) {
+            previewEpg.setText("OK = abspielen");
+            return;
+        }
+        int now = it.now();
+        if (now < 0) {
             previewEpg.setText(it.start.length == 0 ? "Keine Programmdaten" : "");
             return;
         }
         StringBuilder sb = new StringBuilder();
-        for (int k = n; k < Math.min(it.start.length, n + 5); k++) {
+        for (int k = now; k < Math.min(it.start.length, now + 5); k++) {
             if (sb.length() > 0) sb.append("\n");
-            sb.append(k == n ? "Jetzt  " : time(it.start[k]) + "   ").append(it.title[k]);
+            sb.append(k == now ? "Jetzt  " : time(it.start[k]) + "   ").append(it.title[k]);
         }
         previewEpg.setText(sb);
+    }
+
+    /** „97 Sender“, „12 Filme“, „3 Fassungen“ … */
+    private static String countText(Node n) {
+        if (n.search) return "";
+        if (n.variants) return n.children.size() + " Fassungen";
+        int c = n.count();
+        Node first = n;
+        while (first.item == null && !first.children.isEmpty()) first = first.children.get(0);
+        String type = first.item == null ? "" : first.item.type;
+        return c + ("live".equals(type) ? " Sender" : "movie".equals(type) ? (c == 1 ? " Film" : " Filme")
+                : "series".equals(type) ? (c == 1 ? " Folge" : " Folgen") : " Einträge");
     }
 
     private class ListAdapter extends BaseAdapter {
         @Override
         public int getCount() {
-            return showGroups ? groups.size() : groups.get(browseGroup).items.size();
+            return browse == null ? 0 : browse.children.size();
         }
 
         @Override
         public Object getItem(int position) {
-            return showGroups ? groups.get(position) : groups.get(browseGroup).items.get(position);
+            return browse.children.get(position);
         }
 
         @Override
@@ -879,29 +1038,37 @@ public class PlayerActivity extends Activity {
         public View getView(int position, View convertView, ViewGroup parent) {
             Row row = convertView != null && convertView.getTag() instanceof Row
                     ? (Row) convertView.getTag() : new Row();
-            if (showGroups) {
-                Group g = groups.get(position);
-                boolean playing = position == group;
-                row.num.setText(playing ? "▶" : "");
-                row.num.setTextColor(ROYAL_LIGHT);
+            Node n = browse.children.get(position);
+            Item playing = items().get(index);
+            if (n.item == null) {
+                boolean inside = contains(n, playing);
+                row.num.setText(inside ? "▶" : n.search ? "" : "›");
+                row.num.setTextColor(inside ? ROYAL_LIGHT : MUTED);
                 row.logo.setVisibility(View.GONE);
-                row.name.setText(g.name);
-                row.now.setText(g.items.size() + " Sender");
-                row.now.setVisibility(View.VISIBLE);
+                row.name.setText(n.name);
+                String sub = countText(n);
+                row.now.setText(sub);
+                row.now.setVisibility(sub.isEmpty() ? View.GONE : View.VISIBLE);
                 return row.view;
             }
-            Item it = groups.get(browseGroup).items.get(position);
-            boolean playing = browseGroup == group && position == index;
-            row.num.setText(playing ? "▶" : String.valueOf(position + 1));
-            row.num.setTextColor(playing ? ROYAL_LIGHT : MUTED);
-            row.logo.setVisibility(View.VISIBLE);
-            row.name.setText(it.name);
+            Item it = n.item;
+            boolean isPlaying = it == playing;
+            row.num.setText(isPlaying ? "▶" : String.valueOf(position + 1));
+            row.num.setTextColor(isPlaying ? ROYAL_LIGHT : MUTED);
+            row.logo.setVisibility(it.logo == null || it.logo.isEmpty() ? View.GONE : View.VISIBLE);
+            row.name.setText(n.name);
             String now = it.nowTitle();
             row.now.setText(now);
             row.now.setVisibility(now.isEmpty() ? View.GONE : View.VISIBLE);
             images.load(it.logo, row.logo);
             return row.view;
         }
+    }
+
+    private static boolean contains(Node n, Item it) {
+        if (n.item != null) return n.item == it;
+        for (Node c : n.children) if (contains(c, it)) return true;
+        return false;
     }
 
     private class Row {

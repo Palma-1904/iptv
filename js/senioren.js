@@ -79,6 +79,14 @@
     // Für den Player der App: Sender mit dem hier angezeigten Namen
     var entries = found.map(function (x) { return Object.assign({}, x.entry, { name: x.label }); });
     IPTV.setLiveGroups(function () { return [{ name: 'Sender', items: entries }]; });
+    var version = 'sen:' + Date.now();
+    IPTV.setTreeProvider(function () {
+      return {
+        version: version + ':' + Math.floor(Date.now() / 3600000),
+        build: function () { return { n: 'Übersicht', c: [{ n: 'Sender', c: entries.map(function (e) { return IPTV.nativeLeaf(e); }) }] }; },
+        pathOf: function (e) { var i = entries.indexOf(e); return i < 0 ? null : [0, i]; }
+      };
+    });
     found.forEach(function (x, i) {
       var a = document.createElement('a');
       a.className = 'channel';

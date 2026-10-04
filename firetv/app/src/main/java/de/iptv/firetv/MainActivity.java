@@ -116,6 +116,37 @@ public class MainActivity extends Activity {
 
     /** Schnittstelle für die Webapp: Wiedergabe im eingebauten Player. */
     private class Bridge {
+        /** Hat der Player den Playlist-Baum in dieser Fassung schon? */
+        @JavascriptInterface
+        public boolean hasTree(String version) {
+            return PlayerActivity.treeRoot != null && version != null && version.equals(PlayerActivity.treeVersion);
+        }
+
+        /** Ganze Playlist als Baum (läuft im Hintergrund-Thread der Brücke, nicht im Bild-Thread). */
+        @JavascriptInterface
+        public void setTree(String version, String json) {
+            try {
+                PlayerActivity.Node root = PlayerActivity.parseTree(new JSONObject(json));
+                PlayerActivity.treeRoot = root;
+                PlayerActivity.treeVersion = version;
+            } catch (Exception e) {
+                PlayerActivity.treeRoot = null;
+                PlayerActivity.treeVersion = null;
+            }
+        }
+
+        /** Eintrag im Baum abspielen: {"path":[…], "view":"komplett|senioren"} */
+        @JavascriptInterface
+        public void playPath(String json) {
+            runOnUiThread(() -> {
+                String url = web.getUrl();
+                if (url == null || !url.startsWith(BuildConfig.START_URL)) return;
+                PlayerActivity.pendingPath = json;
+                PlayerActivity.pending = null;
+                startActivity(new Intent(MainActivity.this, PlayerActivity.class));
+            });
+        }
+
         @JavascriptInterface
         public void play(String json) {
             runOnUiThread(() -> {
@@ -123,6 +154,7 @@ public class MainActivity extends Activity {
                 String url = web.getUrl();
                 if (url == null || !url.startsWith(BuildConfig.START_URL)) return;
                 PlayerActivity.pending = json;
+                PlayerActivity.pendingPath = null;
                 startActivity(new Intent(MainActivity.this, PlayerActivity.class));
             });
         }

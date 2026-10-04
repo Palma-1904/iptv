@@ -185,7 +185,6 @@ public class Waechter extends AccessibilityService {
         } catch (Exception ignored) {
             // dann über den Fensterwechsel
         }
-        Remote.report("Wächter aktiv");
         // Gleich nach dem Hochfahren die App öffnen (die Startmeldung kommt bei Fire OS 8 manchmal spät)
         if (SystemClock.elapsedRealtime() < 3 * 60 * 1000L) AutostartService.openApp(this);
     }

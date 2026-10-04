@@ -1095,9 +1095,11 @@ async function publish(all) {
 // ---------- Fernwartung ----------
 
 const STATE_TEXT = { playing: '▶ läuft', paused: '❚❚ pausiert', stopped: '■ gestoppt', error: '⚠ Fehler',
-  sleep: '☾ Schlaf-Timer – angehalten', overview: '☰ in der Übersicht', start: 'gestartet' };
+  sleep: '☾ Schlaf-Timer – angehalten', tvoff: '📺 Fernseher aus – angehalten (Verbindung frei)',
+  overview: '☰ in der Übersicht', start: 'gestartet' };
 const remoteChannels = {};   // Liste -> Sender (Name, Adresse ohne Zugangsdaten)
 let remoteTimer = null;
+let remoteWatch = null;
 
 function ago(sec) {
   if (sec < 90) return 'gerade eben';
@@ -1109,8 +1111,8 @@ function ago(sec) {
 async function remoteCmd(to, action, arg, label) {
   try {
     await api('/api/remote/cmd', { to, action, arg: arg || {} });
-    toast(`${label} gesendet – das Gerät reagiert in etwa 15 Sekunden`);
-    setTimeout(renderRemote, 20000);
+    toast(`${label} gesendet – das Gerät reagiert in wenigen Sekunden`);
+    setTimeout(renderRemote, 6000);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -1139,7 +1141,7 @@ async function renderRemote() {
     return;
   }
   for (const d of st.devices) {
-    const online = d.age < 7 * 60;
+    const online = d.age < 12 * 60;
     const box = el('div', 'dev');
     const head = el('div', 'dev-head');
     head.appendChild(el('span', 'dev-dot' + (online ? ' on' : '')));
@@ -1217,7 +1219,7 @@ async function renderRemote() {
     box.appendChild(acts);
     body.appendChild(box);
   }
-  body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. „Update“ lädt die neue App still im Hintergrund. Mit aktivem Wächter installiert sie sich ganz von selbst; ohne Wächter muss vor Ort einmal „Installieren“ gedrückt werden (Vorgabe von Fire OS). Danach startet die App von selbst wieder. Rückmeldungen erscheinen unter „Letzte Rückmeldung“.'));
+  body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. Die Sticks melden sich von selbst nur alle 3 Stunden (ntfy.sh erlaubt 250 Nachrichten am Tag je Anschluss); solange dieses Fenster offen ist, melden sie sich sofort und zeigen Änderungen live (ab App-Version 37). „Update“ lädt die neue App still im Hintergrund. Mit aktivem Wächter installiert sie sich ganz von selbst; ohne Wächter muss vor Ort einmal „Installieren“ gedrückt werden (Vorgabe von Fire OS). Danach startet die App von selbst wieder. Rückmeldungen erscheinen unter „Letzte Rückmeldung“.'));
 }
 
 function openRemote() {
@@ -1227,7 +1229,13 @@ function openRemote() {
   renderRemote();
   clearInterval(remoteTimer);
   remoteTimer = setInterval(() => { if (dlg.open && !document.activeElement.closest('#dlg-remote select')) renderRemote(); }, 15000);
-  dlg.onclose = () => clearInterval(remoteTimer);
+  // Sticks bitten, sich gleich zu melden und Änderungen live zu schicken (sonst nur alle 3 Stunden)
+  const watch = () => api('/api/remote/cmd', { to: 'all', action: 'watch', arg: { sec: 900 } })
+    .then(() => setTimeout(renderRemote, 5000)).catch(() => {});
+  watch();
+  clearInterval(remoteWatch);
+  remoteWatch = setInterval(() => { if (dlg.open) watch(); }, 10 * 60 * 1000);
+  dlg.onclose = () => { clearInterval(remoteTimer); clearInterval(remoteWatch); };
 }
 
 // ---------- Sender prüfen ----------

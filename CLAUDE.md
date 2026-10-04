@@ -54,11 +54,18 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   lädt app.apk und öffnet den Installer (FileProvider `de.iptv.firetv.files`, Recht „unbekannte Apps installieren“).
 - **Fernwartung** (ntfy.sh, ohne Schlüssel auf Geräten): Editor → Einstellungs-Knopf „Fernwartung“ erzeugt geheimen
   Kanal (`remoteTopic` in settings.json) und legt `fernwartung.json` in den Gist. App (`Remote.java`) meldet Status an
-  `<kanal>-status` (Start, Wechsel, alle 5 min), holt Befehle von `<kanal>-cmd` (alle 15 s): play (norm-Adresse),
-  message, stop, reload, update, view. Senderliste fürs Umschalten aus `data/out/<liste>.m3u`.
+  `<kanal>-status`, empfängt Befehle von `<kanal>-cmd` über eine offen gehaltene Verbindung (Stream, ntfy-Keepalive 45 s):
+  play (norm-Adresse), message, stop, reload, update, view, setting, pause, watch. Senderliste fürs Umschalten aus
+  `data/out/<liste>.m3u`. **ntfy.sh anonym: 250 Nachrichten/Tag je IP** (Abfragen frei) – darum meldet ein Stick sich
+  von selbst nur alle 3 h (+ beim Start/Listenwechsel, Antworten auf Befehle); Änderungen nur, solange der Editor
+  zuschaut: Fernwartung öffnen → `watch` (900 s) an alle, alle 10 min erneut. Vorher (alle 5 min) war das Kontingent
+  mit 2 Sticks am selben Anschluss täglich erschöpft (HTTP 429 „daily message quota reached“).
   Update per Fernwartung: still laden (`Updater.remoteUpdate`), dann nur Fire-OS-„Installieren“; `UpdateReceiver`
   (MY_PACKAGE_REPLACED) öffnet die App danach wieder. Einmalig nötig: „Unbekannte Apps installieren“ für die App
   erlauben – Knopf in der Einrichtung (☰ 3 s).
+- **Fernseher aus** (Stick bleibt an, HDMI meldet `ACTION_HDMI_AUDIO_PLUG` = 0 länger als 20 s): Player hält an
+  (Status `tvoff`, gibt die einzige Verbindung frei), beim Wiedereinschalten läuft es von selbst weiter. Der
+  Anfangszustand zählt nicht; kurze Aussetzer (Tonformat-Wechsel) werden ignoriert. Ungetestet am echten TV.
 - Player passt die Bildwiederholrate an (preferredDisplayModeId, 50 Hz bei 25/50 fps), VLC clock-jitter/synchro aus.
 - Player-Puffer: Live 5 s, Filme 8 s; HLS live 30 s hinter live, bis 60 s Vorrat (Anbieter liefert 10-s-Stücke teils langsamer als Echtzeit).
 - **Auffrischen im Player**: alle 2 h ruft der Player `MainActivity.requestRefresh()` → Webapp `IPTV.nativeRefresh()`
@@ -93,7 +100,14 @@ TRX (Xtream, Server `http://line.trxdnscloud.ru`): **nur 1 gleichzeitige Verbind
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
 ## Stand / nächste Schritte (4.10.2026)
-- Fire-TV-App Version 34 läuft auf Thomas' Stick (Fire OS 8): Player (libVLC), Senioren-Player mit Autostart,
+- Sticks zu Hause (ADB-Debugging an, Mac freigegeben; Schlüssel in editor/data/adb):
+  Wohnzimmer 192.168.6.56 = Fire TV Stick 4K 2018 (AFTMM, **Fire OS 6** → kein Wächter, Liste tkh, Senioren);
+  Küche 192.168.6.110 = „Thomas' FireTVStick“, Stick 3. Gen. 2020 (AFTSSS, Fire OS 7.7, Liste asw, Senioren,
+  **Wächter getestet: läuft**, Home → nach ~1 s Abdeckung, nach ~5 s App zurück); Schlafzimmer .47 = AFTSSS
+  Fire OS 7 (AirReceiver, ohne unsere App, nicht freigegeben). Kein Gerät mit Fire OS 8 zu Hause.
+- Auf Küche und Wohnzimmer läuft eine lokal gebaute Test-App mit versionCode 36 (Wächter, sparsame Fernwartung,
+  Fernseher-aus); nach dem Push (Workflow-Lauf 37) testen: Küche bekommt das Update automatisch (Wächter klickt).
+- Fire-TV-App Version 34 läuft auf Thomas' Stick: Player (libVLC), Senioren-Player mit Autostart,
   Home-Rückkehr, Fernwartung, Auto-Update, 50-Hz-Anpassung – laut Thomas funktioniert alles.
 - Zugänge: TKH, ASW, KMH (je 1 Verbindung). Playlist ASW nutzt noch Zugang TKH → im Editor „Zugang“ auf ASW
   umstellen und veröffentlichen, damit ASW- und TKH-Geräte gleichzeitig schauen können.

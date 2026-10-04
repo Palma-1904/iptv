@@ -23,8 +23,13 @@ import java.util.UUID;
 /**
  * Fernwartung über ntfy.sh (ohne Schlüssel auf dem Gerät):
  * Den geheimen Kanal legt der Editor als fernwartung.json in den Gist neben die Playlist.
- * Der Stick meldet seinen Status an "<kanal>-status" und holt Befehle von "<kanal>-cmd".
+ * Der Stick meldet seinen Status an "<kanal>-status" und empfängt Befehle von "<kanal>-cmd" über eine
+ * dauerhaft offene Verbindung (kommen sofort an; wenige Anfragen – ntfy.sh bremst sonst bei mehreren
+ * Sticks am selben Anschluss).
  * Übertragen werden nur Gerätename, Liste, Ansicht, laufender Titel und App-Version.
+ * ntfy.sh erlaubt ohne Konto nur 250 Nachrichten am Tag je Internet-Anschluss: darum meldet sich der Stick
+ * von selbst nur alle 3 Stunden; Änderungen (Senderwechsel usw.) nur, solange der Editor zuschaut
+ * (Befehl „watch“ beim Öffnen der Fernwartung), Antworten auf Befehle immer.
  */
 final class Remote {
 
@@ -34,8 +39,10 @@ final class Remote {
     }
 
     private static final String NTFY = "https://ntfy.sh/";
-    private static final long POLL_MS = 15000;
-    private static final long HEARTBEAT_MS = 5 * 60 * 1000L;
+    private static final long HEARTBEAT_MS = 3 * 3600 * 1000L;
+    private static final long MIN_GAP_MS = 3000;            // Änderungen zusammenfassen (schnelles Umschalten)
+    private static volatile long watchUntil;                 // so lange schaut der Editor zu
+    private static volatile boolean dirty;                   // etwas Neues zu melden
     private static final long MAX_AGE_S = 10 * 60;   // ältere Befehle nicht mehr ausführen
 
     private static final Handler main = new Handler(Looper.getMainLooper());
@@ -75,6 +82,9 @@ final class Remote {
         Thread t = new Thread(Remote::loop, "Fernwartung");
         t.setDaemon(true);
         t.start();
+        Thread l = new Thread(Remote::listen, "Fernwartung-Befehle");
+        l.setDaemon(true);
+        l.start();
     }
 
     /** Von der Webapp: welche Playlist dieses Gerät nutzt (daraus folgt der Gist mit fernwartung.json). */
@@ -88,7 +98,7 @@ final class Remote {
         list = file.replaceAll("\\.m3u8?$", "");
         if (changed) {
             topic = null;   // neu laden
-            lastSent = 0;
+            lastSent = 0;   // gleich mit der neuen Liste melden
         }
     }
 
@@ -106,26 +116,64 @@ final class Remote {
         state = s;
         title = t == null ? "" : t;
         type = ty == null ? "" : ty;
-        lastSent = 0;   // gleich melden
+        if (System.currentTimeMillis() < watchUntil) dirty = true;   // nur melden, wenn der Editor zuschaut
     }
 
     private static void loop() {
-        long lastPoll = 0;
         while (true) {
             try {
                 Thread.sleep(2000);
                 if (topic == null) loadTopic();
                 if (topic == null) continue;
                 long now = System.currentTimeMillis();
-                if (now - lastSent > HEARTBEAT_MS) send();
-                if (now - lastPoll > POLL_MS) {
-                    lastPoll = now;
-                    poll();
-                }
+                if (now - lastSent > HEARTBEAT_MS || (dirty && now - lastSent > MIN_GAP_MS)) send();
             } catch (InterruptedException e) {
                 return;
             } catch (Exception ignored) {
                 // offline o. ä.: später erneut
+            }
+        }
+    }
+
+    /** Befehle über eine offen gehaltene Verbindung empfangen; ntfy schickt alle 45 s ein Lebenszeichen. */
+    private static void listen() {
+        long wait = 5000;
+        while (true) {
+            try {
+                String tp = topic;
+                if (tp == null) {
+                    Thread.sleep(3000);
+                    continue;
+                }
+                String s = lastCmdId != null ? lastCmdId : String.valueOf(since);
+                HttpURLConnection c = (HttpURLConnection) new URL(NTFY + tp + "-cmd/json?since=" + s).openConnection();
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(120000);
+                c.setUseCaches(false);
+                try {
+                    if (c.getResponseCode() != 200) throw new java.io.IOException("HTTP " + c.getResponseCode());
+                    wait = 5000;
+                    try (BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = r.readLine()) != null) {
+                            if (!tp.equals(topic)) break;   // andere Liste eingerichtet: neu verbinden
+                            handle(line);
+                        }
+                    }
+                } finally {
+                    c.disconnect();
+                }
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                return;
+            } catch (Exception e) {
+                // offline, ntfy bremst (429) o. ä.: mit wachsender Pause neu verbinden
+                try {
+                    Thread.sleep(wait);
+                } catch (InterruptedException ie) {
+                    return;
+                }
+                wait = Math.min(wait * 2, 5 * 60 * 1000L);
             }
         }
     }
@@ -150,6 +198,7 @@ final class Remote {
 
     private static void send() throws Exception {
         lastSent = System.currentTimeMillis();
+        dirty = false;
         JSONObject o = new JSONObject()
                 .put("id", deviceId).put("name", deviceName).put("list", list).put("view", view)
                 .put("state", state).put("title", title).put("type", type)
@@ -168,30 +217,30 @@ final class Remote {
         post(NTFY + topic + "-status", o.toString());
     }
 
-    private static void poll() throws Exception {
-        String s = lastCmdId != null ? lastCmdId : String.valueOf(since);
-        String text = get(NTFY + topic + "-cmd/json?poll=1&since=" + s);
-        if (text == null) return;
-        for (String line : text.split("\n")) {
-            if (line.trim().isEmpty()) continue;
+    /** Eine Zeile von ntfy (message, keepalive, open) auswerten. */
+    private static void handle(String line) {
+        if (line.trim().isEmpty()) return;
+        try {
             JSONObject m = new JSONObject(line);
-            if (!"message".equals(m.optString("event"))) continue;
+            if (!"message".equals(m.optString("event"))) return;
             lastCmdId = m.optString("id", lastCmdId);
-            JSONObject c;
-            try {
-                c = new JSONObject(m.optString("message"));
-            } catch (Exception e) {
-                continue;
-            }
+            JSONObject c = new JSONObject(m.optString("message"));
             String to = c.optString("to", "");
             boolean forMe = to.equals(deviceId) || to.equals("all") || to.equals("list:" + list);
             String cid = c.optString("id", m.optString("id"));
-            if (!forMe || done.contains(cid)) continue;
-            if (System.currentTimeMillis() / 1000 - m.optLong("time") > MAX_AGE_S) continue;
+            if (!forMe || done.contains(cid)) return;
+            if (System.currentTimeMillis() / 1000 - m.optLong("time") > MAX_AGE_S) return;
             done.add(cid);
             final String action = c.optString("action");
             final JSONObject arg = c.optJSONObject("arg") != null ? c.optJSONObject("arg") : new JSONObject();
+            if ("watch".equals(action)) {            // Editor schaut zu: gleich und bei Änderungen melden
+                watchUntil = System.currentTimeMillis() + Math.min(arg.optLong("sec", 600), 1800) * 1000L;
+                dirty = true;
+                return;
+            }
             main.post(() -> dispatch(action, arg));
+        } catch (Exception ignored) {
+            // keine gültige Nachricht
         }
     }
 
@@ -228,7 +277,7 @@ final class Remote {
 
     static void report(String text) {
         note = text;
-        lastSent = 0;
+        dirty = true;
     }
 
     private static String get(String url) throws Exception {

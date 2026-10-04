@@ -2,12 +2,16 @@ package de.iptv.firetv;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -225,6 +229,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
     private boolean sleeping, sleepWarned;
     private static final long SLEEP_MS = 3 * 3600 * 1000L;   // Schlaf-Timer: 3 Stunden ohne Taste
     private static final long SLEEP_GRACE = 60 * 1000L;      // dann 1 Minute Vorwarnung
+    private static final long TV_OFF_MS = 20 * 1000L;         // Fernseher so lange aus (HDMI getrennt): anhalten
+    private boolean tvOff;          // wegen „Fernseher aus“ angehalten – geht er wieder an, läuft es weiter
+    private BroadcastReceiver hdmi;
     private Node browseStart;       // Start ohne laufenden Eintrag: Liste an dieser Stelle öffnen
     private String treeSeen;        // Fassung des Baums, mit der der Player arbeitet
     private LinearLayout preview;
@@ -369,6 +376,52 @@ public class PlayerActivity extends Activity implements Remote.Target {
         handler.postDelayed(adopt, ADOPT_MS);
         handler.postDelayed(sleepCheck, 60000);
         handler.postDelayed(() -> Updater.check(this, false), 20000);
+        watchTv();
+    }
+
+    /**
+     * Fernseher aus, Stick aber noch an: HDMI meldet „getrennt“. Nach 20 s Wiedergabe anhalten (gibt die
+     * einzige Verbindung des Zugangs frei), beim Wiedereinschalten von selbst weiter. Kurze Aussetzer beim
+     * Umschalten des Tonformats werden so ignoriert; der Zustand beim Start zählt nicht (manche Geräte melden
+     * dauerhaft „getrennt“).
+     */
+    private void watchTv() {
+        hdmi = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                if (isInitialStickyBroadcast()) return;
+                boolean on = i.getIntExtra(AudioManager.EXTRA_AUDIO_PLUG_STATE, 1) == 1;
+                handler.removeCallbacks(tvGone);
+                if (!on) handler.postDelayed(tvGone, TV_OFF_MS);
+                else if (tvOff) tvBack();
+            }
+        };
+        try {
+            registerReceiver(hdmi, new IntentFilter(AudioManager.ACTION_HDMI_AUDIO_PLUG));
+        } catch (Exception e) {
+            hdmi = null;
+        }
+    }
+
+    private final Runnable tvGone = () -> {
+        if (sleeping || idle() || player == null) return;
+        saveResume();
+        player.stop();
+        sleeping = true;
+        tvOff = true;
+        sleepWarned = false;
+        Remote.status("tvoff", "", "");
+        closeList();
+        info.setVisibility(View.GONE);
+        showStatus("Fernseher aus – Wiedergabe angehalten.\n\nZum Weiterschauen eine beliebige Taste drücken.");
+    };
+
+    private void tvBack() {
+        tvOff = false;
+        if (!sleeping) return;
+        sleeping = false;
+        status.setVisibility(View.GONE);
+        if (!idle()) play();
     }
 
     private static Item readItem(JSONObject j) throws Exception {
@@ -753,6 +806,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         if (sleeping) {                            // angehalten: jede Taste startet wieder
             if (event.getAction() == KeyEvent.ACTION_UP) {
                 sleeping = false;
+                tvOff = false;
                 status.setVisibility(View.GONE);
                 if (!idle()) play();
             }
@@ -976,6 +1030,13 @@ public class PlayerActivity extends Activity implements Remote.Target {
     @Override
     protected void onDestroy() {
         if (Remote.player_target == this) Remote.player_target = null;
+        if (hdmi != null) {
+            try {
+                unregisterReceiver(hdmi);
+            } catch (Exception ignored) {
+                // schon abgemeldet
+            }
+        }
         if (mem != null && player != null) saveResume();
         handler.removeCallbacksAndMessages(null);
         if (player != null) {

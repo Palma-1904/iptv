@@ -47,16 +47,14 @@
   }
 
   // Mac: Browser sperren http-Streams auf der https-Seite und können .mkv/AC3 nicht –
-  // daher Übergabe an VLC oder IINA (Mac-Player) und „Adresse kopieren“ (für VLC: Ablage → Netzwerk öffnen).
+  // daher Übergabe an IINA (Mac-Player, iina.io) und „Adresse kopieren“ (für VLC: Ablage → Netzwerk öffnen).
   var isMac = /Macintosh/.test(navigator.userAgent) && !(navigator.maxTouchPoints > 1);
-  var macVlc = document.getElementById('mac-vlc');
   var macIina = document.getElementById('mac-iina');
   var copy = document.getElementById('copy');
   function showMacButtons() {
     if (!isMac || !/^https?:\/\//i.test(url)) return;
-    macVlc.href = 'vlc://' + url;
     macIina.href = 'iina://weblink?url=' + encodeURIComponent(url);
-    macVlc.hidden = macIina.hidden = copy.hidden = false;
+    macIina.hidden = copy.hidden = false;
   }
   copy.addEventListener('click', function () {
     navigator.clipboard.writeText(url).then(function () {
@@ -78,7 +76,8 @@
     if (isMac) {
       showMacButtons();
       text = (mixed ? 'Der Browser darf diesen Sender auf dieser Seite nicht abspielen (unverschlüsselte Adresse). '
-        : text + ' ') + 'Bitte „In VLC öffnen“ oder „In IINA öffnen“ wählen.';
+        : text + ' ') + 'Bitte „In IINA öffnen“ wählen (kostenlos: iina.io). Für VLC: „Adresse kopieren“, '
+        + 'dann in VLC Ablage → Netzwerk öffnen → einfügen.';
       showOverlay(text, true);
       return;
     }

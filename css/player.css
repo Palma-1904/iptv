@@ -61,5 +61,4 @@ button, .btn {
 }
 .btn { background: var(--accent); color: var(--accent-text); }
 button:focus, .btn:focus { outline: 4px solid #ffd34d; outline-offset: 2px; }
-#mac-iina { background: #e8edf5; color: #10151d; }
 [hidden] { display: none !important; }

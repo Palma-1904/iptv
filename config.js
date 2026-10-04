@@ -18,9 +18,10 @@ window.IPTV_CONFIG = {
     app: "{intent}",
     // Android-Handy/Tablet
     android: "{intent}",
-    // Mac: direkt in VLC (muss installiert sein: videolan.org). Browser spielen die http-Streams
-    // der https-Seite nicht und können .mkv/AC3/MP2 nicht.
-    mac: "vlc://{url}",
+    // Mac: direkt in IINA (kostenlos, iina.io – muss installiert sein). Browser spielen die
+    // http-Streams der https-Seite nicht und können .mkv/AC3/MP2 nicht; VLC nimmt vlc://-Links
+    // zwar an, spielt sie aber nicht ab.
+    mac: "iina://weblink?url={urlEncoded}",
     // Computer
     web: "player.html?url={urlEncoded}&name={nameEncoded}&id={idEncoded}"
   },

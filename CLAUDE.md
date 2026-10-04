@@ -6,7 +6,7 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
 - **Webapp** (statisch, `index.html`, `senioren.html`, `player.html`, `js/`, `css/`, `config.js`):
   online unter https://palma-1904.github.io/iptv/ (GitHub Pages, Workflow `.github/workflows/deploy.yml`).
   - Uhr oben: 5× tippen → Code `1904` = Hauptansicht, `04` = Seniorenansicht (`config.js` → `codes`).
-  - Geräteerkennung in `js/m3u.js` (ios → Outplayer, mac → `vlc://` (VLC muss installiert sein),
+  - Geräteerkennung in `js/m3u.js` (ios → Outplayer, mac → IINA `iina://weblink?url=` (iina.io; VLC-mac spielt vlc://-Links nicht),
     tv/web → `player.html`, app → eingebauter Player).
   - Einrichtungs-Link `#liste=BENUTZER/GIST/name` bzw. `#m3u=…` + `&ansicht=komplett|senioren`, wird im localStorage gespeichert.
   - Reiter Live/Filme/Serien/Programm (EPG aus `<liste>.epg.json`), Sprachfassungen über `x-work`/`x-lang`,

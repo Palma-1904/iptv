@@ -77,12 +77,15 @@ Alte öffentliche Repos `tv`/`tv2` wurden gelöscht; deren Zugänge existieren n
 TRX (Xtream, Server `http://line.trxdnscloud.ru`): **nur 1 gleichzeitige Verbindung**. Abo bis 26.10.2026.
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
-## Stand / nächste Schritte (3.10.2026)
-1. GitHub-Token (nur „gist“) im Editor eintragen, Webapp-Adresse `https://palma-1904.github.io/iptv/`, Playlist „ASW“ veröffentlichen.
-2. Fire TV: VLC + Downloader installieren, `palma-1904.github.io/iptv/app.apk` laden, Einrichtungs-Link eingeben.
-   App wurde gebaut und geprüft, aber **noch nie auf echtem Stick getestet** → gemeinsam testen.
-3. Offen/ideen: EPG täglich automatisch veröffentlichen (EPG reicht 36 h); iPad mit Outplayer testen
-   (`outplayer://`-Link noch unbestätigt).
+## Stand / nächste Schritte (4.10.2026)
+- Fire-TV-App Version 34 läuft auf Thomas' Stick (Fire OS 8): Player (libVLC), Senioren-Player mit Autostart,
+  Home-Rückkehr, Fernwartung, Auto-Update, 50-Hz-Anpassung – laut Thomas funktioniert alles.
+- Zugänge: TKH, ASW, KMH (je 1 Verbindung). Playlist ASW nutzt noch Zugang TKH → im Editor „Zugang“ auf ASW
+  umstellen und veröffentlichen, damit ASW- und TKH-Geräte gleichzeitig schauen können.
+- Offen: Senioren-Stick bei ASW (130 km) einmalig vor Ort: App-Update, „Autostart erlauben“, „Updates erlauben“.
+  Fernwartung im Editor einschalten (falls noch nicht). Samsung: Smarters zeigt aus M3U keine Serien/Filme
+  → Fire-TV-Stick oder Smarters per Xtream-Login. iPad mit Outplayer noch ungetestet.
+- Änderungen an der App gesammelt pushen (jeder Push = Update-Frage auf allen Sticks).
 
 ## Arbeitsweise über mehrere Macs (MacBook Neo, Büro-Mac, …)
 - **Die SSD ist die einzige Arbeitskopie.** Projekt, `.git`, `editor/data/` liegen darauf; GitHub dient nur zum

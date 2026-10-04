@@ -177,7 +177,7 @@ public class MainActivity extends Activity {
                 .setTitle("Einrichtung")
                 .setMessage("Einrichtungs-Link aus dem Playlist-Editor eingeben und Ansicht wählen.\n\n"
                         + "Tipp: Mit der Amazon-Fire-TV-App auf dem Handy kann man bequem tippen oder einfügen.\n"
-                        + "Später erneut: Menü-Taste (☰) auf der Fernbedienung – im Fernsehbild 3 Sekunden gedrückt halten.")
+                        + "Später erneut: Menü-Taste (☰) auf der Fernbedienung 3 Sekunden gedrückt halten.")
                 .setView(input)
                 .setPositiveButton("Komplett", (d, w) -> applySetup(input.getText().toString(), "komplett"))
                 .setNegativeButton("Senioren", (d, w) -> applySetup(input.getText().toString(), "senioren"))
@@ -211,13 +211,31 @@ public class MainActivity extends Activity {
         load(hash);
     }
 
+    // ☰ nur nach 3 Sekunden Halten: Einrichtung (gegen versehentliches Drücken)
+    private final Runnable menuHint = () -> Toast.makeText(this,
+            "Für die Einrichtung ☰ weiter gedrückt halten …", Toast.LENGTH_SHORT).show();
+    private final Runnable menuSetup = this::showSetup;
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU) {
-            showSetup();
+            if (event.getRepeatCount() == 0) {
+                handler.postDelayed(menuHint, 1200);
+                handler.postDelayed(menuSetup, 3000);
+            }
             return true;
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            handler.removeCallbacks(menuHint);
+            handler.removeCallbacks(menuSetup);
+            return true;
+        }
+        return super.onKeyUp(keyCode, event);
     }
 
     /**

@@ -56,50 +56,16 @@
 
   // ---------- Sprachfassungen (vom Editor: x-work = gleiches Werk, x-lang = Sprache) ----------
 
-  var LANG_NAMES = {
-    DE: 'Deutsch', AT: 'Deutsch (AT)', CH: 'Deutsch (CH)', MULTI: 'Mehrsprachig', EN: 'Englisch',
-    US: 'Englisch (US)', UK: 'Englisch (UK)', FR: 'Französisch', QFR: 'Französisch (CA)', ES: 'Spanisch',
-    LAT: 'Spanisch (Lateinam.)', IT: 'Italienisch', NL: 'Niederländisch', PL: 'Polnisch', TR: 'Türkisch',
-    GR: 'Griechisch', PT: 'Portugiesisch', BR: 'Portugiesisch (BR)', RU: 'Russisch', SE: 'Schwedisch',
-    NO: 'Norwegisch', DK: 'Dänisch', FI: 'Finnisch', AL: 'Albanisch', EX: 'Ex-Jugoslawisch',
-    EXYU: 'Ex-Jugoslawisch', BG: 'Bulgarisch', HU: 'Ungarisch', RO: 'Rumänisch', CZ: 'Tschechisch',
-    IN: 'Indisch', AR: 'Arabisch', IR: 'Persisch', NF: 'Netflix (mehrsprachig)'
-  };
-  var PREFERRED = ['DE', 'AT', 'CH', 'MULTI'];
-
-  // Fassungen aus dem Editor: "DE", "DE 4K", "DE 4K HDR" (normale Qualität zuerst)
-  var QUALITY_RANK = { '': 0, '4K': 1, 'HDR': 2, '4K HDR': 3 };
-  function langParts(l) {
-    var p = String(l || '').split(' ');
-    return { lang: p[0], q: p.slice(1).join(' ') };
+  // Alte index.html aus dem Zwischenspeicher (ohne js/tree.js) nach einem Update: einmal neu laden
+  if (!IPTV.lib) {
+    var reloaded = null;
+    try { reloaded = sessionStorage.getItem('iptv-reload'); sessionStorage.setItem('iptv-reload', '1'); } catch (err) { /* ignorieren */ }
+    if (!reloaded) location.reload();
+    return;
   }
-  function langRank(l) {
-    var p = langParts(l);
-    var i = PREFERRED.indexOf(p.lang);
-    return (i < 0 ? PREFERRED.length : i) * 10 + (QUALITY_RANK[p.q] || 0);
-  }
-  function langName(l) {
-    if (!l) return 'Standard';
-    var p = langParts(l);
-    return (LANG_NAMES[p.lang] || p.lang) + (p.q ? ' ' + p.q : '');
-  }
-  function byLang(a, b) { return langRank(a.lang) - langRank(b.lang); }
-
-  // Filme mit gleicher x-work-Kennung werden ein Eintrag; Deutsch ist die Standardfassung.
-  function units(list) {
-    var out = [];
-    var byWork = new Map();
-    list.forEach(function (e) {
-      if (e.type !== 'movie' || !e.work) { out.push({ entry: e }); return; }
-      var u = byWork.get(e.work);
-      if (!u) { u = { entry: e, variants: [] }; byWork.set(e.work, u); out.push(u); }
-      u.variants.push(e);
-    });
-    out.forEach(function (u) {
-      if (u.variants) { u.variants.sort(byLang); u.entry = u.variants[0]; }
-    });
-    return out;
-  }
+  var lib = IPTV.lib;   // gemeinsame Hilfen (js/tree.js)
+  var LANG_NAMES = lib.LANG_NAMES, langRank = lib.langRank, langName = lib.langName, byLang = lib.byLang;
+  var units = lib.units;
 
   function unitEl(u, showMeta, list) {
     var a = itemEl(u.entry, showMeta, list);
@@ -160,22 +126,7 @@
     box.querySelector('.lang-btn').focus();
   }
 
-  // Serie in mehreren Sprachen: Sprachknöpfe über den Folgen, Deutsch vorausgewählt.
-  function seriesLangs(items) {
-    var langs = [];
-    items.forEach(function (e) { if (e.lang && langs.indexOf(e.lang) < 0) langs.push(e.lang); });
-    return langs.sort(function (a, b) { return langRank(a) - langRank(b); });
-  }
-
-  // Gruppen nach Reihenfolge des ersten Auftretens in der M3U.
-  function groupsOf(list) {
-    var map = new Map();
-    list.forEach(function (e) {
-      if (!map.has(e.group)) map.set(e.group, []);
-      map.get(e.group).push(e);
-    });
-    return map;
-  }
+  var seriesLangs = lib.seriesLangs, groupsOf = lib.groupsOf;
 
   function renderType(type) {
     content.textContent = '';
@@ -654,89 +605,21 @@
     });
   }
 
-  // Player der App: ganze Playlist als Baum – Live TV › Gruppen › Sender, Filme › Gruppen › Film
-  // (› Sprache), Serien › Serie (› Sprache) › Folgen, Suche. Pfad = Indizes bis zum Eintrag.
+  // Player der App: ganze Playlist als Baum (js/tree.js), mit Favoriten dieses Geräts
   var pageId = Date.now();   // neu geladene Seite = neuer Baum (die App merkt sich den alten)
   var dataVersion = 0;
   var tree = null;
   IPTV.setTreeProvider(function () {
     var version = pageId + ':' + dataVersion + ':' + Math.floor(Date.now() / 3600000) + ':' + favs.movie.length + ':' + favs.series.length;
     if (tree && tree.version === version) return tree;
-    var paths = new Map();
-    var root = [];
-    var leaf = IPTV.nativeLeaf;
-
-    if (byType.live.length) {
-      var live = [];
-      groupsOf(byType.live).forEach(function (items, name) {
-        var gi = live.length;
-        live.push({ n: name, c: items.map(function (e, i) { paths.set(e, [root.length, gi, i]); return leaf(e); }) });
-      });
-      root.push({ n: 'Live TV', c: live });
-    }
-
-    if (byType.movie.length) {
-      var ai = root.length;
-      var movies = [];
-      var favUnits = favMovies();
-      // Favoriten-Kennung für den Player: fk = Schlüssel, ft = Art, fv = ist Favorit
-      var mark = function (o, e) {
-        o.fk = favKey(e);
-        o.ft = e.type;
-        if (isFav(e)) o.fv = 1;
-        return o;
-      };
-      var unitNode = function (u, path) {
-        if (!u.variants || u.variants.length < 2) {
-          if (path) paths.set(u.entry, path);
-          return mark(leaf(u.entry), u.entry);
-        }
-        return mark({
-          n: u.entry.name + '  ·  ' + u.variants.map(function (v) { return v.lang || '?'; }).join(' '),
-          v: 1,
-          c: u.variants.map(function (v, vi) {
-            if (path) paths.set(v, path.concat(vi));
-            return leaf(v, langName(v.lang), u.entry.name + ' (' + langName(v.lang) + ')');
-          })
-        }, u.entry);
-      };
-      if (favUnits.length) movies.push({ n: '★ Meine Favoriten', c: favUnits.map(function (u) { return unitNode(u, null); }) });
-      groupsOf(byType.movie).forEach(function (items, name) {
-        var gi = movies.length;
-        movies.push({ n: name, c: units(items).map(function (u, ui) { return unitNode(u, [ai, gi, ui]); }) });
-      });
-      root.push({ n: 'Filme', c: movies });
-    }
-
-    if (byType.series.length) {
-      var si = root.length;
-      var series = [];
-      var episode = function (e, name) {
-        var label = e.name.indexOf(name) === 0 ? e.name.slice(name.length).replace(/^[\s–:-]+/, '') : e.name;
-        return leaf(e, label || e.name, e.name);
-      };
-      favSeriesFirst(groupsOf(byType.series)).forEach(function (items, name) {
-        var gi = series.length;
-        var langs = seriesLangs(items);
-        var fav = { fk: name, ft: 'series' };
-        if (favs.series.indexOf(name) >= 0) fav.fv = 1;
-        if (langs.length > 1) {
-          series.push(Object.assign({ n: name, c: langs.map(function (l, li) {
-            var eps = items.filter(function (e) { return e.lang === l; });
-            return { n: langName(l), c: eps.map(function (e, ei) { paths.set(e, [si, gi, li, ei]); return episode(e, name); }) };
-          }) }, fav));
-        } else {
-          series.push(Object.assign({ n: name, c: items.map(function (e, ei) { paths.set(e, [si, gi, ei]); return episode(e, name); }) }, fav));
-        }
-      });
-      root.push({ n: 'Serien', c: series });
-    }
-
-    root.push({ n: '🔍 Suche', s: 1 });
+    var t = IPTV.buildTree(all, {
+      favKey: favKey, isFav: isFav, favMovies: favMovies, favSeriesFirst: favSeriesFirst,
+      isFavSeries: function (name) { return favs.series.indexOf(name) >= 0; }
+    });
     tree = {
       version: version,
-      build: function () { return { n: 'Übersicht', c: root }; },
-      pathOf: function (e) { return paths.get(e) || null; }
+      build: function () { return { n: 'Übersicht', c: t.root }; },
+      pathOf: function (e) { return t.paths.get(e) || null; }
     };
     return tree;
   });

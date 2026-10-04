@@ -41,7 +41,10 @@
     });
   }
 
+  var allEntries = [];
+
   function show(entries) {
+    allEntries = entries;
     // Index über Name, tvg-name und tvg-id; Live-Sender haben Vorrang, erster Treffer gewinnt.
     var index = new Map();
     var ordered = entries.filter(function (e) { return e.type === 'live'; })
@@ -79,13 +82,23 @@
     // Für den Player der App: Sender mit dem hier angezeigten Namen
     var entries = found.map(function (x) { return Object.assign({}, x.entry, { name: x.label }); });
     IPTV.setLiveGroups(function () { return [{ name: 'Sender', items: entries }]; });
-    var version = 'sen:' + Date.now();
+    // Player der App: oben „Meine Sender“, mit ◀ darüber die ganze Playlist wie in der Hauptansicht
+    var base = 'sen:' + Date.now();
+    var cache = null;
     IPTV.setTreeProvider(function () {
-      return {
-        version: version + ':' + Math.floor(Date.now() / 3600000),
-        build: function () { return { n: 'Sender', c: entries.map(function (e) { return IPTV.nativeLeaf(e); }) }; },
-        pathOf: function (e) { var i = entries.indexOf(e); return i < 0 ? null : [i]; }
+      if (!IPTV.buildTree) return null;   // alte senioren.html ohne js/tree.js: ältere Übergabe
+      var version = base + ':' + Math.floor(Date.now() / 3600000);
+      if (cache && cache.version === version) return cache;
+      var t = IPTV.buildTree(allEntries, {
+        first: [{ n: 'Meine Sender', c: entries.map(function (e) { return IPTV.nativeLeaf(e); }) }]
+      });
+      entries.forEach(function (e, i) { t.paths.set(e, [0, i]); });
+      cache = {
+        version: version,
+        build: function () { return { n: 'Übersicht', c: t.root }; },
+        pathOf: function (e) { return t.paths.get(e) || null; }
       };
+      return cache;
     });
     found.forEach(function (x, i) {
       var a = document.createElement('a');

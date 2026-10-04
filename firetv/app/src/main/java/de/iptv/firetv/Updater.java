@@ -28,6 +28,8 @@ import java.net.URL;
  * „Später“ fragt einen Tag lang nicht mehr.
  * Per Fernwartung: still im Hintergrund laden, dann direkt das „Installieren“-Fenster von Fire OS
  * (das schreibt Fire OS vor); danach startet die App von selbst wieder (UpdateReceiver).
+ * Mit Wächter: keine Frage, der Wächter drückt „Installieren“ selbst – aber nicht, während jemand schaut
+ * (dann beim nächsten Öffnen der App oder wenn der Schlaf-Timer die Wiedergabe angehalten hat).
  */
 final class Updater {
 
@@ -64,12 +66,12 @@ final class Updater {
         }
     }
 
-    /** atStart: beim Öffnen der App immer prüfen (sonst höchstens alle 6 Stunden). */
-    static void check(Activity a, boolean atStart) {
+    /** force: auf jeden Fall prüfen (beim Öffnen der App), sonst höchstens alle 6 Stunden. */
+    static void check(Activity a, boolean force) {
         if (running || a.isFinishing()) return;
         SharedPreferences prefs = a.getSharedPreferences("iptv", Context.MODE_PRIVATE);
         long now = System.currentTimeMillis();
-        if (!atStart && now - prefs.getLong("updateChecked", 0) < CHECK_EVERY) return;
+        if (!force && now - prefs.getLong("updateChecked", 0) < CHECK_EVERY) return;
         if (now < prefs.getLong("updateSnooze", 0)) return;
         running = true;
         prefs.edit().putLong("updateChecked", now).apply();
@@ -77,15 +79,29 @@ final class Updater {
             int v = latestVersion();
             main.post(() -> {
                 running = false;
-                if (v > BuildConfig.VERSION_CODE && !a.isFinishing()) ask(a, prefs);
+                if (v <= BuildConfig.VERSION_CODE || a.isFinishing()) return;
+                if (Waechter.running() && installAllowed(a)) {
+                    // Wächter bestätigt selbst – nur nicht mitten in eine laufende Sendung hinein
+                    if (a instanceof PlayerActivity && ((PlayerActivity) a).watching()) {
+                        prefs.edit().remove("updateChecked").apply();
+                        return;
+                    }
+                    fetchAndInstall(a, false);
+                } else {
+                    ask(a, prefs);
+                }
             });
         }).start();
     }
 
-    /** Fernwartung: ohne Rückfragen laden, dann nur noch „Installieren“ am Gerät. */
+    /** Fernwartung: ohne Rückfragen laden, dann „Installieren“ (drückt der Wächter, sonst jemand vor Ort). */
     static void remoteUpdate(Activity a) {
+        fetchAndInstall(a, true);
+    }
+
+    private static void fetchAndInstall(Activity a, boolean report) {
         if (running) {
-            Remote.report("Update läuft bereits");
+            if (report) Remote.report("Update läuft bereits");
             return;
         }
         running = true;
@@ -93,13 +109,13 @@ final class Updater {
             int v = latestVersion();
             if (v == 0 || v <= BuildConfig.VERSION_CODE) {
                 main.post(() -> running = false);
-                Remote.report(v == 0 ? "Versionsprüfung fehlgeschlagen (Internet?)"
+                if (report) Remote.report(v == 0 ? "Versionsprüfung fehlgeschlagen (Internet?)"
                         : "Schon aktuell (Version " + BuildConfig.VERSION_CODE + ")");
                 return;
             }
             if (!installAllowed(a)) {
                 main.post(() -> running = false);
-                Remote.report("Installieren noch nicht erlaubt – einmalig vor Ort: ☰ 3 s halten → „Updates erlauben“");
+                if (report) Remote.report("Installieren noch nicht erlaubt – einmalig vor Ort: ☰ 3 s halten → „Updates erlauben“");
                 return;
             }
             Remote.report("Version " + v + " wird im Hintergrund geladen …");
@@ -110,7 +126,8 @@ final class Updater {
                     Remote.report("Neue Version noch nicht abrufbar (GitHub-Zwischenspeicher) – in 10 Minuten erneut versuchen");
                     return;
                 }
-                Remote.report("Version " + v + " geladen – wartet am Gerät auf „Installieren“");
+                Remote.report("Version " + v + " geladen – " + (Waechter.running()
+                        ? "der Wächter installiert sie jetzt" : "wartet am Gerät auf „Installieren“"));
                 install(a, apk);
             });
         }).start();
@@ -235,6 +252,7 @@ final class Updater {
     private static void install(Activity a, File apk) {
         a.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit().putBoolean("restartAfterUpdate", true).apply();
         AutostartService.suppress(10 * 60 * 1000L);   // Installieren-Fenster nicht verdrängen
+        Waechter.expectInstall(a);                     // Wächter drückt „Installieren“
         Uri uri = FileProvider.getUriForFile(a, a.getPackageName() + ".files", apk);
         Intent i = new Intent(Intent.ACTION_VIEW);
         i.setDataAndType(uri, "application/vnd.android.package-archive");

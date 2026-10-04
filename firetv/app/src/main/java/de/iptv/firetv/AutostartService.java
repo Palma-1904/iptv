@@ -53,6 +53,12 @@ public class AutostartService extends Service {
 
     static void hidden() { if (visible > 0) visible--; }
 
+    /** Ist gerade ein Bildschirm der App vorne? */
+    static boolean isVisible() { return visible > 0; }
+
+    /** Hat die App gerade selbst etwas Fremdes geöffnet (Installer, Einstellungen, VLC)? */
+    static boolean suppressed() { return System.currentTimeMillis() < suppressUntil; }
+
     /** Die App öffnet selbst etwas Fremdes (Installer, Einstellungen, VLC): nicht zurückholen. */
     static void suppress(long ms) {
         suppressUntil = System.currentTimeMillis() + ms;

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Fernsehen</string>
+    <string name="waechter_beschreibung">Wächter: hält „Fernsehen“ im Vordergrund (Home-Taste führt zurück zur App) und bestätigt eigene Updates.</string>
 </resources>

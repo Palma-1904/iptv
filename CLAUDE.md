@@ -67,6 +67,21 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Quelle um (`/api/switch-source`, gleiche Stream-Nummer, sonst Name). Jeder Zugang = eigene Verbindung.
   Kennungen ohne Zugang: x-work = `typ:id`, App-Speicher `Memory.norm(url)` → Favoriten/Weiterschauen bleiben.
 - **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.
+- **Wächter** (`Waechter.java`, Bedienungshilfe/AccessibilityService, `res/xml/waechter.xml`): fängt Home/Einstellungen/
+  Alle-Apps-Taste ab und holt die App sofort zurück, wenn ein fremder Bildschirm (Activity/Startseite) erscheint –
+  nur wenn „Home-Taste holt die App zurück“ an ist; duldet systemui/android/Installer/Erlaubnis-/VPN-Dialoge; gibt bei
+  >10 Rückholungen/min 5 min auf. Drückt bei eigenem Update im Installer „Installieren“ (`autoInstallUntil`, nur wenn
+  „Fernsehen“ im Fenster steht). Mit Wächter fragt `Updater.check` nicht mehr, installiert aber nicht während jemand
+  schaut (dann beim App-Start oder wenn der Schlaf-Timer anhält). Pause 10 min (☰ 3 s → Weitere Einstellungen oder
+  Fernwartung `pause`). Einschalten nur per ADB; mit `WRITE_SECURE_SETTINGS` (per ADB erteilt) schaltet die App ihn
+  selbst ein/aus (`Waechter.ensure` beim Start, z. B. nach „Beenden erzwingen“, das ihn in Android austrägt).
+  Kein echter Kiosk möglich: Fire OS erlaubt keinen Geräteinhaber (device owner); Updates ohne Klick erst ab Android 12.
+- **`Stick-einrichten.command`** (vor Ort, Mac im selben WLAN, adb aus `werkzeuge/`): verbindet (ADB-Schlüssel in
+  `editor/data/adb/.android`, gilt an jedem Mac), installiert app.apk (oder Datei-Argument), setzt appops
+  SYSTEM_ALERT_WINDOW + REQUEST_INSTALL_PACKAGES, `pm grant … WRITE_SECURE_SETTINGS`, trägt den Wächter ein,
+  überträgt Einrichtungs-Link/Ansicht per `am broadcast -n de.iptv.firetv/.SetupReceiver` (nur ADB darf senden).
+- **Neue Geräte**: nur Fire TV Stick 4K Plus/4K Max/Cube (Fire OS). Stick HD (2026), 4K Select und der neue
+  Fire TV Stick 4K (2026) laufen mit Vega OS → keine APKs, App läuft dort nicht.
 
 ## Geheimnisse – nie ins Repo
 `editor/data/` (Zugangsdaten, GitHub-Token, Caches) und `lokal/` (Listen mit Zugangsdaten) sind in `.gitignore`.

@@ -1164,6 +1164,29 @@ async function renderRemote() {
       cfg.appendChild(el('span', d.cfg.overlay ? 'ok' : 'warn', d.cfg.overlay ? '✓ Autostart erlaubt' : '✕ Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)'));
       cfg.appendChild(el('span', d.cfg.install ? 'ok' : 'warn', d.cfg.install ? '✓ Updates erlaubt' : '✕ Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)'));
       box.appendChild(cfg);
+      // Wächter (ab App mit Wächter): hält die App vorne und drückt bei Updates selbst „Installieren“
+      if (d.cfg.waechter !== undefined) {
+        const w = el('div', 'dev-acts dev-cfg');
+        if (d.cfg.waechterSwitch) {
+          const b = el('button', d.cfg.waechter ? 'on' : '', `Wächter: ${d.cfg.waechter ? 'AN' : 'AUS'}`);
+          b.type = 'button';
+          b.title = 'Hält die App vorne (Home-Taste führt zurück) und installiert Updates ohne Klick vor Ort';
+          b.onclick = () => remoteCmd(d.id, 'setting', { key: 'waechter', on: !d.cfg.waechter }, `Wächter ${d.cfg.waechter ? 'aus' : 'an'}`);
+          w.appendChild(b);
+        } else {
+          w.appendChild(el('span', d.cfg.waechter ? 'ok' : 'warn', d.cfg.waechter ? '✓ Wächter aktiv'
+            : '✕ Wächter nicht eingerichtet (vor Ort einmalig: „Stick-einrichten.command“ auf der SSD)'));
+        }
+        if (d.cfg.waechter) {
+          const p = d.cfg.pause || 0;
+          const b = el('button', p ? 'on' : '', p ? `Pausiert – noch ${p} Min. (beenden)` : 'Wächter 10 Min. pausieren');
+          b.type = 'button';
+          b.title = 'In der Pause führt die Home-Taste zum Fire-TV-Startbildschirm (z. B. WLAN ändern)';
+          b.onclick = () => remoteCmd(d.id, 'pause', { min: p ? 0 : 10 }, p ? 'Pause beenden' : 'Wächter-Pause');
+          w.appendChild(b);
+        }
+        box.appendChild(w);
+      }
     }
 
     const acts = el('div', 'dev-acts');
@@ -1192,7 +1215,7 @@ async function renderRemote() {
     box.appendChild(acts);
     body.appendChild(box);
   }
-  body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. „Update“ lädt die neue App still im Hintergrund; danach muss vor Ort einmal „Installieren“ gedrückt werden (Vorgabe von Fire OS), dann startet die App von selbst wieder. Rückmeldungen erscheinen unter „Letzte Rückmeldung“.'));
+  body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. „Update“ lädt die neue App still im Hintergrund. Mit aktivem Wächter installiert sie sich ganz von selbst; ohne Wächter muss vor Ort einmal „Installieren“ gedrückt werden (Vorgabe von Fire OS). Danach startet die App von selbst wieder. Rückmeldungen erscheinen unter „Letzte Rückmeldung“.'));
 }
 
 function openRemote() {

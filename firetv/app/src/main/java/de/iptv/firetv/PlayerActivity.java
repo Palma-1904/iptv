@@ -899,6 +899,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 player.stop();
                 sleeping = true;
                 Remote.status("sleep", "", "");
+                if (Waechter.running()) Updater.check(PlayerActivity.this, true);   // ruhiger Moment für ein Update
                 sleepWarned = false;
                 closeList();
                 info.setVisibility(View.GONE);
@@ -938,6 +939,11 @@ public class PlayerActivity extends Activity implements Remote.Target {
         } else {
             finish();
         }
+    }
+
+    /** Schaut gerade jemand? (Automatische Updates warten dann.) */
+    boolean watching() {
+        return player != null && player.isPlaying() && !sleeping;
     }
 
     @Override

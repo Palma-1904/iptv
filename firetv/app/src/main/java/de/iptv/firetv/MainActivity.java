@@ -56,6 +56,7 @@ public class MainActivity extends Activity implements Remote.Target {
         Remote.init(this);
         Remote.main_target = this;
         AutostartService.start(this);
+        Waechter.ensure(this);   // falls Fire OS den Wächter abgeschaltet hat
 
         web = new WebView(this);
         setContentView(web);
@@ -91,7 +92,9 @@ public class MainActivity extends Activity implements Remote.Target {
         web.requestFocus();
 
         handler.postDelayed(() -> Updater.check(this, true), 8000);   // neue App-Version? (bei jedem Start)
-        if (prefs.getBoolean(PREF_CONFIGURED, false)) {
+        if (takePendingSetup()) {
+            return;
+        } else if (prefs.getBoolean(PREF_CONFIGURED, false)) {
             load(null);
         } else {
             showSetup();
@@ -102,6 +105,19 @@ public class MainActivity extends Activity implements Remote.Target {
         String url = BuildConfig.START_URL;
         if (hash != null && !hash.isEmpty()) url += "#" + hash;
         web.loadUrl(url);
+    }
+
+    /** Vom Computer vorgemerkte Einrichtung übernehmen (Stick-einrichten.command → SetupReceiver). */
+    private boolean takePendingSetup() {
+        if (!prefs.contains("pendingView")) return false;
+        String link = prefs.getString("pendingLink", "");
+        String view = prefs.getString("pendingView", "");
+        prefs.edit().remove("pendingLink").remove("pendingView").apply();
+        if (!"senioren".equals(view) && !"komplett".equals(view)) {
+            view = "senioren".equals(prefs.getString("view", "")) ? "senioren" : "komplett";
+        }
+        applySetup(link, view);
+        return true;
     }
 
     /** Normale Seiten bleiben in der App; intent://-Links (Streams) gehen an VLC. */
@@ -255,6 +271,32 @@ public class MainActivity extends Activity implements Remote.Target {
             prefs.edit().putBoolean("homeReturns", !home).apply();
             showSettings();
         });
+        final long pause = Waechter.pausedFor(this);
+        if (Waechter.running()) {
+            labels.add("Wächter:  AKTIV" + (pause > 0 ? " – pausiert bis " + clock(pause) : ""));
+            actions.add(() -> {
+                if (Waechter.set(this, false)) Toast.makeText(this, "Wächter ausgeschaltet.", Toast.LENGTH_LONG).show();
+                else explainWaechter();
+                handler.postDelayed(this::showSettings, 800);
+            });
+            labels.add(pause > 0 ? "Wächter-Pause beenden" : "Wächter 10 Minuten pausieren (Fire-TV-Menü nutzen)");
+            actions.add(() -> {
+                Waechter.pause(this, pause > 0 ? 0 : Waechter.PAUSE_MS);
+                if (pause == 0) Toast.makeText(this, "Wächter pausiert bis " + clock(Waechter.PAUSE_MS)
+                        + " – die Home-Taste führt jetzt zum Fire-TV-Startbildschirm.", Toast.LENGTH_LONG).show();
+                closeSetup();
+            });
+        } else if (Waechter.canSwitch(this)) {
+            labels.add("Wächter:  AUS – einschalten");
+            actions.add(() -> {
+                Waechter.set(this, true);
+                Toast.makeText(this, "Wächter wird eingeschaltet …", Toast.LENGTH_SHORT).show();
+                handler.postDelayed(this::showSettings, 1500);
+            });
+        } else {
+            labels.add("Wächter:  nicht eingerichtet – was ist das?");
+            actions.add(this::explainWaechter);
+        }
         if (!overlay) {
             labels.add("⚠ Erlaubnis für Autostart fehlt – was tun?");
             actions.add(this::explainOverlay);
@@ -269,6 +311,23 @@ public class MainActivity extends Activity implements Remote.Target {
                 .setTitle("Weitere Einstellungen  ·  Version " + BuildConfig.VERSION_CODE)
                 .setItems(labels.toArray(new String[0]), (d, i) -> actions.get(i).run())
                 .setOnCancelListener(d -> closeSetup())
+                .show();
+    }
+
+    /** Uhrzeit in ms von jetzt an, z. B. „14:35“. */
+    private static String clock(long fromNow) {
+        return new java.text.SimpleDateFormat("HH:mm", java.util.Locale.GERMANY)
+                .format(new java.util.Date(System.currentTimeMillis() + fromNow));
+    }
+
+    private void explainWaechter() {
+        new AlertDialog.Builder(this)
+                .setTitle("Wächter")
+                .setMessage("Der Wächter hält „Fernsehen“ im Vordergrund: Die Home-Taste führt sofort zurück zur App, "
+                        + "und Updates installiert er selbst (ohne „Installieren“ drücken).\n\n"
+                        + "Fire OS hat dafür keinen Schalter. Er wird einmalig vom Computer aus eingeschaltet "
+                        + "(„Stick-einrichten“ auf der SSD) – Thomas fragen.")
+                .setPositiveButton("Zurück", (d, w) -> showSettings())
                 .show();
     }
 
@@ -380,6 +439,7 @@ public class MainActivity extends Activity implements Remote.Target {
         super.onResume();
         AutostartService.shown();
         web.onResume();
+        if (takePendingSetup()) return;
         // Zurück aus dem Player: im Player geänderte Favoriten an die Webapp geben
         if (!PlayerActivity.favChanges.isEmpty()) {
             JSONObject changes = new JSONObject(PlayerActivity.favChanges);
@@ -436,7 +496,16 @@ public class MainActivity extends Activity implements Remote.Target {
                 } else if ("home".equals(key)) {
                     prefs.edit().putBoolean("homeReturns", on).apply();
                     Remote.report("Home-Rückkehr " + (on ? "an" : "aus"));
+                } else if ("waechter".equals(key)) {
+                    Remote.report(Waechter.set(this, on) ? "Wächter " + (on ? "an" : "aus")
+                            : "Wächter: Recht fehlt – einmalig vor Ort mit „Stick-einrichten“ einrichten");
                 }
+                break;
+            }
+            case "pause": {
+                int min = Math.max(0, Math.min(120, arg.optInt("min", 10)));
+                Waechter.pause(this, min * 60 * 1000L);
+                Remote.report(min > 0 ? "Wächter pausiert für " + min + " Minuten" : "Wächter-Pause beendet");
                 break;
             }
             case "view":

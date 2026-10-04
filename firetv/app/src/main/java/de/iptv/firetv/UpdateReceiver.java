@@ -10,6 +10,7 @@ public class UpdateReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (!Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) return;
+        Waechter.installDone(context);
         SharedPreferences p = context.getSharedPreferences("iptv", Context.MODE_PRIVATE);
         if (!p.getBoolean("restartAfterUpdate", false)) return;
         p.edit().putBoolean("restartAfterUpdate", false).apply();

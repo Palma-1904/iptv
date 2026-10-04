@@ -164,14 +164,18 @@
   var N = window.IPTVNative;
   var appPlayer = IPTV.platform === 'app' && N && typeof N.lastSeniorUrl === 'function' && typeof N.playPath === 'function';
   var lastAuto = 0;
+  var quickFails = 0;
 
   function autoStart() {
     if (!allEntries.length) return;
-    // Schutz gegen Endlosschleife, wenn der Player sofort wieder zugeht
+    // Player ging gleich wieder zu (z. B. Update-Fenster von Fire OS davor): Ladebildschirm stehen
+    // lassen, beim nächsten Öffnen erneut starten. Erst nach 3 Fehlstarts die Kacheln zeigen.
     if (Date.now() - lastAuto < 15000) {
-      document.documentElement.classList.remove('appplayer');
+      quickFails++;
+      if (quickFails >= 3) document.documentElement.classList.remove('appplayer');
       return;
     }
+    if (Date.now() - lastAuto > 120000) quickFails = 0;
     lastAuto = Date.now();
     var tiles = box.querySelectorAll('.channel');
     var tp = IPTV.nativeTree();

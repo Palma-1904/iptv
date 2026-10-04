@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 9; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 10; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -99,10 +99,22 @@ function lookup(key) {
 
 // ---------- Quellen ----------
 
-async function loadCatalog(id, force) {
+// Alle Schlüssel einer Quelle, die in Playlists vorkommen (auch Sprachfassungen)
+function sourceKeys(sid) {
+  const keys = [];
+  state.playlists.forEach((p) => p.groups.forEach((g) => g.items.forEach((i) => {
+    [i.key, ...(i.variants || []).map((v) => v.key)].forEach((k) => { if (k.startsWith(sid + ':')) keys.push(k); });
+  })));
+  return keys;
+}
+
+// Ohne keys: ganzer Katalog der Quelle. Mit keys: nur diese Einträge (für Playlist-Anzeige
+// anderer Quellen – ganze Kataloge sind je ~70 MB, mehrere gleichzeitig überfordern den Browser).
+async function loadCatalog(id, force, keys) {
   if (!id) return null;
-  if (catalogs[id] && !force) return catalogs[id];
-  const data = await api('/api/catalog?id=' + encodeURIComponent(id));
+  if (catalogs[id] && !force && (keys || !catalogs[id].partial)) return catalogs[id];
+  const data = keys ? await api('/api/catalog-part', { id, keys })
+    : await api('/api/catalog?id=' + encodeURIComponent(id));
   const byKey = new Map();
   const works = new Map(); // Werk-Schlüssel -> alle Sprachfassungen (nur Filme/Serien)
   const years = new Map(); // Titel ohne Jahr -> gefundene Jahre
@@ -139,7 +151,7 @@ async function loadCatalog(id, force) {
     if (!works.has(it.wk)) works.set(it.wk, []);
     works.get(it.wk).push(it);
   });
-  catalogs[id] = { items: data.items || [], byKey, works, updated: data.updated };
+  catalogs[id] = { items: data.items || [], byKey, works, updated: data.updated, partial: !!keys };
   return catalogs[id];
 }
 
@@ -1268,6 +1280,12 @@ async function openEpgOrder() {
     });
   };
   render();
+  $('#epg-tv').onclick = () => {
+    const pos = new Map(list.map((c, i) => [c, i]));
+    const rank = (c) => { const k = sortKey(c.name); return TV_RANK.has(k) ? TV_RANK.get(k) : 1e6 + pos.get(c); };
+    list.sort((a, b) => rank(a) - rank(b) || qualityRank(a.name) - qualityRank(b.name));
+    render();
+  };
 
   const dlg = $('#dlg-epg');
   dlg.onclose = () => {
@@ -1605,10 +1623,15 @@ function renderAll() {
 function bind() {
   bindPlayer();
   $('#source').onchange = async (ev) => {
+    const prev = ui.sourceId;
     ui.sourceId = ev.target.value;
     ui.group = null;
     ui.selected.clear();
     await busy(() => loadCatalog(ui.sourceId)).catch((e) => toast(e.message, true));
+    // vorherige Quelle wieder auf die Playlist-Einträge verkleinern (Speicher)
+    if (prev && prev !== ui.sourceId && catalogs[prev] && !catalogs[prev].partial) {
+      await loadCatalog(prev, true, sourceKeys(prev)).catch(() => null);
+    }
     renderAll();
     if (!sourceInfos[ui.sourceId]) loadSourceInfo(ui.sourceId);
   };
@@ -1734,8 +1757,15 @@ async function start() {
     state.playlists = state.playlists || [];
     ui.sourceId = state.sources[0] ? state.sources[0].id : null;
     ui.playlistId = state.playlists[0] ? state.playlists[0].id : null;
-    // Kataloge aller Quellen laden (für Anzeige der Playlist-Einträge)
-    await busy(() => Promise.all(state.sources.map((s) => loadCatalog(s.id).catch(() => null))));
+    // Gewählte Quelle ganz laden, von den anderen nur die Einträge der Playlists (nacheinander)
+    await busy(async () => {
+      await loadCatalog(ui.sourceId).catch((e) => toast(e.message, true));
+      for (const s of state.sources) {
+        if (s.id === ui.sourceId) continue;
+        const keys = sourceKeys(s.id);
+        if (keys.length) await loadCatalog(s.id, false, keys).catch(() => null);
+      }
+    });
   } catch (e) {
     toast(e.message, true);
   }
@@ -1744,6 +1774,8 @@ async function start() {
   let langFixed = 0;
   state.playlists.forEach((pl) => pl.groups.forEach((g) => g.items.forEach((i) => {
     if (!i.variants) return;
+    const c = catalogs[i.key.split(':', 1)[0]];
+    if (!c || c.partial) return;   // Fassungen nur mit vollständigem Katalog neu ermitteln
     const it = [i.key, ...i.variants.map((v) => v.key)].map(lookup).find((x) => x && x.wk);
     if (it) {
       const vs = variantsOf(it).map((v) => ({ key: v.key, lang: variantLabel(v) }));

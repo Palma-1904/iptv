@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 9   # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 10  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -1282,6 +1282,14 @@ class Handler(SimpleHTTPRequestHandler):
                         x['ext'] = m.group(1).lower()
                     items.append(x)
                 return self.send_json({'updated': cat['updated'], 'items': items})
+            if method == 'POST' and path == '/api/catalog-part':
+                # Nur bestimmte Einträge (z. B. die in Playlists verwendeten) – statt 70 MB je Quelle
+                b = self.body()
+                cat = load_catalog(b.get('id', '')) or {'items': [], 'updated': None}
+                want = set(b.get('keys') or [])
+                items = [{k: v for k, v in it.items() if k != 'url' and v not in ('', False)}
+                         for it in cat['items'] if it['key'] in want]
+                return self.send_json({'updated': cat.get('updated'), 'items': items, 'partial': True})
             if method == 'POST' and path == '/api/source-info':
                 src = find(load_state()['sources'], self.body().get('id'), 'Quelle')
                 info = source_info(src)

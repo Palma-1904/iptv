@@ -17,6 +17,10 @@
     try { localStorage.setItem(KEY, m); } catch (err) { /* privat-Modus: gilt nur für diesen Aufruf */ }
   }
 
+  // Fire-TV-App, Seniorenansicht: Kachelseite gar nicht erst zeigen (startet direkt im Player).
+  // Läuft im <head>, also vor dem ersten Zeichnen; senioren.js nimmt es zurück, falls nötig.
+  if (page === 'senior' && /IPTVApp/.test(navigator.userAgent)) document.documentElement.classList.add('appplayer');
+
   var wanted = new URLSearchParams(location.hash.slice(1)).get('ansicht');
   if (wanted === 'senioren') setMode('senior');
   if (wanted === 'komplett') setMode('main');

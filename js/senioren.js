@@ -185,6 +185,7 @@
     IPTV.openNativePath(path || []);
   }
 
+  if (!appPlayer) document.documentElement.classList.remove('appplayer');   // z. B. ältere App
   if (appPlayer) {
     document.documentElement.classList.add('appplayer');
     // Die App ruft das beim erneuten Öffnen auf (z. B. nach der Home-Taste)

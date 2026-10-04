@@ -11,7 +11,8 @@ let settings = {};
 const catalogs = {}; // sourceId -> { items, byKey, updated }
 const ui = {
   sourceId: null, type: 'live', group: null, search: '',
-  selected: new Set(), playlistId: null, targetGroupId: null, collapsed: new Set()
+  selected: new Set(), playlistId: null, targetGroupId: null, collapsed: new Set(),
+  plSel: new Set(), plLast: null   // Auswahl in der Playlist (Einträge), letzter Klick für ⇧-Bereich
 };
 
 // ---------- Hilfen ----------
@@ -532,6 +533,7 @@ function renderPlaylist() {
   }
   const total = pl.groups.reduce((n, g) => n + g.items.length, 0);
   $('#pl-summary').textContent = `${pl.groups.length} Gruppen · ${total} Einträge`;
+  renderSelBar(pl);
   if (!pl.groups.length) box.appendChild(el('div', 'empty-msg', 'Sender links auswählen und „Zur Playlist →“ oder hierher ziehen.'));
 
   pl.groups.forEach((g, gi) => {
@@ -542,6 +544,11 @@ function renderPlaylist() {
     head.appendChild(el('span', 'tg', ui.collapsed.has(g.id) ? '▸' : '▾'));
     head.appendChild(el('span', 'name', g.name));
     head.appendChild(el('span', 'count', g.items.length));
+    const sortBtn = el('button', 'sort', '⇅');
+    sortBtn.type = 'button';
+    sortBtn.title = 'Gruppe automatisch sortieren';
+    sortBtn.onclick = (ev) => { ev.stopPropagation(); openSort(g); };
+    head.appendChild(sortBtn);
     const del = el('button', '', '✕');
     del.type = 'button';
     del.title = 'Gruppe löschen';
@@ -575,7 +582,8 @@ function renderPlaylist() {
     g.items.forEach((item, ii) => {
       const ch = lookup(item.key);
       const row = el('div', 'it' + (catalogs[item.key.split(':', 1)[0]] && !ch ? ' missing' : '')
-        + (isDead(pl.id, item.key) ? ' dead' : ''));
+        + (isDead(pl.id, item.key) ? ' dead' : '') + (ui.plSel.has(item) ? ' sel' : ''));
+      row.onclick = (ev) => { if (!ev.target.closest('button')) selectItem(pl, g, item, ev); };
       row.draggable = true;
       row.appendChild(el('span', 'handle', '⠿'));
       row.appendChild(logo(ch && ch.logo));
@@ -612,6 +620,182 @@ function renderPlaylist() {
     wrap.appendChild(itemsBox);
     box.appendChild(wrap);
   });
+}
+
+// ---------- Sortieren (je Gruppe) ----------
+
+// Übliche Senderfolge im deutschen Fernsehen (Vergleichsschlüssel, siehe sortKey)
+const TV_ORDER = ['daserste', 'zdf', 'rtl', 'sat1', 'prosieben', 'vox', 'kabeleins', 'rtlzwei', 'superrtl',
+  'ntv', 'welt', 'tagesschau24', 'phoenix', 'zdfinfo', 'zdfneo', 'one', '3sat', 'arte', 'kika', 'ardalpha',
+  'br', 'ndr', 'wdr', 'swr', 'mdr', 'hr', 'rbb', 'sr', 'radiobremen', 'rtlup', 'nitro', 'voxup', 'sixx',
+  'prosiebenmaxx', 'sat1gold', 'kabeleinsdoku', 'kabeleinsclassics', 'dmax', 'tlc', 'tele5', 'servustv',
+  'n24doku', 'weltdoku', 'ntvdoku', 'sport1', 'eurosport1', 'eurosport2', 'skysportnews', 'dazn1', 'dazn2',
+  'comedycentral', 'nickelodeon', 'disneychannel', 'toggoplus', 'deluxemusic', 'mtv', 'bildtv', 'qvc', 'hse'];
+const TV_ALIAS = {
+  ard: 'daserste', daserste: 'daserste', pro7: 'prosieben', prosieben: 'prosieben', kabel1: 'kabeleins',
+  rtl2: 'rtlzwei', rtlii: 'rtlzwei', rtlnitro: 'nitro', brfernsehen: 'br', bayerischesfernsehen: 'br',
+  hrfernsehen: 'hr', swrbw: 'swr', swrrp: 'swr', swrfernsehen: 'swr', srfernsehen: 'sr', ndrfernsehen: 'ndr',
+  wdrfernsehen: 'wdr', mdrfernsehen: 'mdr', rbbfernsehen: 'rbb', kabel1doku: 'kabeleinsdoku', welttv: 'welt',
+  eurosport: 'eurosport1', sat1emotions: 'sat1emotions', prosiebenfun: 'prosiebenfun', disney: 'disneychannel'
+};
+const TV_RANK = new Map(TV_ORDER.map((k, i) => [k, i]));
+
+// "DE| SAT.1 GOLD FHD" -> "sat1gold" (ohne Land, Qualität und Satzzeichen)
+function sortKey(name) {
+  let k = String(name || '').toLowerCase()
+    .replace(/^\s*[a-z]{2,4}\s*[|:]\s*/, '')
+    .replace(/\(.*?\)|\[.*?\]/g, ' ')
+    .replace(/(^|[^a-z0-9])(4k|uhd|fhd|hd|sd|hevc|h\.?265|raw|50fps|60fps|backup|[ᴴᴰᴿᴬᵂ⁶⁰ᶠᵖˢ]+)(?=[^a-z0-9]|$)/g, ' ')
+    .replace(/[^a-z0-9äöüß]+/g, '');
+  return TV_ALIAS[k] || k;
+}
+
+// Qualität aus dem Namen: kleiner = besser
+function qualityRank(name) {
+  const n = String(name || '').toUpperCase();
+  if (/4K|UHD|2160/.test(n)) return 0;
+  if (/FHD|1080/.test(n)) return 1;
+  if (/HEVC|H\.?265/.test(n)) return 2;
+  if (/\bSD\b/.test(n)) return 4;
+  return 3;
+}
+
+function itemName(item) {
+  const ch = lookup(item.key);
+  return item.name || (item.variants ? item.label : ch && ch.name) || item.label || '';
+}
+
+function sortGroup(g, how, dedupe) {
+  const rows = g.items.map((item, i) => {
+    const name = itemName(item);
+    return { item, i, name, key: sortKey(name), q: qualityRank(name) };
+  });
+  const first = new Map();
+  rows.forEach((r) => { if (!first.has(r.key)) first.set(r.key, r.i); });
+  const cmp = {
+    tv: (a, b) => {
+      const ra = TV_RANK.has(a.key) ? TV_RANK.get(a.key) : 1e6 + first.get(a.key);
+      const rb = TV_RANK.has(b.key) ? TV_RANK.get(b.key) : 1e6 + first.get(b.key);
+      return ra - rb || a.q - b.q || a.i - b.i;
+    },
+    az: (a, b) => a.key.localeCompare(b.key, 'de') || a.q - b.q || a.i - b.i,
+    quality: (a, b) => first.get(a.key) - first.get(b.key) || a.q - b.q || a.i - b.i
+  }[how];
+  rows.sort(cmp);
+  let removed = 0;
+  if (dedupe) {
+    const seen = new Set();
+    const keep = [];
+    rows.forEach((r) => {
+      if (!r.item.variants && seen.has(r.key)) { removed++; return; }
+      seen.add(r.key);
+      keep.push(r);
+    });
+    rows.length = 0;
+    rows.push(...keep);
+  }
+  g.items = rows.map((r) => r.item);
+  return removed;
+}
+
+function openSort(g) {
+  const dlg = $('#dlg-sort');
+  const f = $('#form-sort');
+  $('#sort-title').textContent = `„${g.name}“ sortieren (${g.items.length} Einträge)`;
+  f.reset();
+  dlg.returnValue = '';
+  dlg.onclose = () => {
+    if (dlg.returnValue !== 'ok') return;
+    const removed = sortGroup(g, f.elements.how.value, f.elements.dedupe.checked);
+    save();
+    renderPlaylist();
+    toast(`„${g.name}“ sortiert` + (removed ? `, ${removed} doppelte entfernt` : '') + ' – zum Übernehmen „Veröffentlichen“');
+  };
+  dlg.showModal();
+}
+
+// ---------- Auswahl in der Playlist: mehrere Einträge verschieben ----------
+
+function selectItem(pl, g, item, ev) {
+  if (ev.shiftKey && ui.plLast && ui.plLast.g === g) {
+    const a = g.items.indexOf(ui.plLast.item), b = g.items.indexOf(item);
+    for (let i = Math.min(a, b); i <= Math.max(a, b); i++) ui.plSel.add(g.items[i]);
+  } else if (ui.plSel.has(item)) {
+    ui.plSel.delete(item);
+  } else {
+    ui.plSel.add(item);
+  }
+  ui.plLast = { g, item };
+  renderPlaylist();
+}
+
+function renderSelBar(pl) {
+  const bar = $('#pl-selbar');
+  // nur Einträge zählen, die es noch gibt
+  const all = new Set(pl ? pl.groups.flatMap((g) => g.items) : []);
+  [...ui.plSel].forEach((i) => { if (!all.has(i)) ui.plSel.delete(i); });
+  bar.hidden = !ui.plSel.size;
+  if (!ui.plSel.size) return;
+  $('#pl-selcount').textContent = `${ui.plSel.size} ausgewählt`;
+  const sel = $('#sel-move');
+  sel.textContent = '';
+  sel.appendChild(el('option', '', 'Verschieben nach …'));
+  pl.groups.forEach((g) => {
+    const o = el('option', '', g.name);
+    o.value = g.id;
+    sel.appendChild(o);
+  });
+  sel.value = '';
+  sel.selectedIndex = 0;
+}
+
+// Ausgewählte innerhalb ihrer Gruppe ganz nach oben/unten (Reihenfolge untereinander bleibt)
+function moveSelToEdge(top) {
+  const pl = playlist();
+  if (!pl || !ui.plSel.size) return;
+  pl.groups.forEach((g) => {
+    const sel = g.items.filter((i) => ui.plSel.has(i));
+    if (!sel.length) return;
+    const rest = g.items.filter((i) => !ui.plSel.has(i));
+    g.items = top ? sel.concat(rest) : rest.concat(sel);
+  });
+  save();
+  renderPlaylist();
+}
+
+// Ausgewählte um eine Position verschieben
+function moveSelStep(dir) {
+  const pl = playlist();
+  if (!pl || !ui.plSel.size) return;
+  pl.groups.forEach((g) => {
+    const it = g.items;
+    const order = dir < 0 ? it.map((_, i) => i) : it.map((_, i) => it.length - 1 - i);
+    order.forEach((i) => {
+      const j = i + dir;
+      if (ui.plSel.has(it[i]) && j >= 0 && j < it.length && !ui.plSel.has(it[j])) [it[i], it[j]] = [it[j], it[i]];
+    });
+  });
+  save();
+  renderPlaylist();
+  const first = document.querySelector('#pl-groups .it.sel');
+  if (first) first.scrollIntoView({ block: 'nearest' });
+}
+
+function moveSelToGroup(gid) {
+  const pl = playlist();
+  const target = pl && pl.groups.find((g) => g.id === gid);
+  if (!target) return;
+  const moving = [];
+  pl.groups.forEach((g) => {
+    g.items = g.items.filter((i) => {
+      if (ui.plSel.has(i) && g !== target) { moving.push(i); return false; }
+      return true;
+    });
+  });
+  target.items.push(...moving);
+  save();
+  renderPlaylist();
+  toast(`${moving.length} nach „${target.name}“ verschoben (ans Ende)`);
 }
 
 // ---------- Ziehen & Ablegen ----------
@@ -1503,6 +1687,35 @@ function bind() {
   $('#publish').onclick = () => publish(false);
   $('#publish-all').onclick = () => publish(true);
   $('#check').onclick = checkPlaylist;
+  $('#sel-top').onclick = () => moveSelToEdge(true);
+  $('#sel-bottom').onclick = () => moveSelToEdge(false);
+  $('#sel-move').onchange = (ev) => { if (ev.target.value) moveSelToGroup(ev.target.value); };
+  $('#sel-remove').onclick = () => {
+    const pl = playlist();
+    if (!pl || !confirm(`${ui.plSel.size} Einträge aus der Playlist entfernen?`)) return;
+    pl.groups.forEach((g) => { g.items = g.items.filter((i) => !ui.plSel.has(i)); });
+    ui.plSel.clear();
+    save();
+    renderPlaylist();
+    renderChannels();
+  };
+  $('#sel-clear').onclick = () => { ui.plSel.clear(); renderPlaylist(); };
+  // Tastatur: ⌥↑/⌥↓ eine Position, ⌥⇧↑/⌥⇧↓ ganz nach oben/unten, Esc = Auswahl aufheben
+  document.addEventListener('keydown', (ev) => {
+    if (!ui.plSel.size || (ev.target.closest && ev.target.closest('input, select, textarea, dialog'))) return;
+    if (ev.key === 'Escape') { ui.plSel.clear(); renderPlaylist(); return; }
+    if (!ev.altKey || (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown')) return;
+    ev.preventDefault();
+    const up = ev.key === 'ArrowUp';
+    if (ev.shiftKey) moveSelToEdge(up); else moveSelStep(up ? -1 : 1);
+  });
+  // Beim Ziehen am oberen/unteren Rand der Playlist mitscrollen
+  $('#pl-groups').addEventListener('dragover', (ev) => {
+    const box = $('#pl-groups');
+    const r = box.getBoundingClientRect();
+    if (ev.clientY < r.top + 50) box.scrollTop -= 18;
+    else if (ev.clientY > r.bottom - 50) box.scrollTop += 18;
+  });
   $('#links').onclick = showLinks;
   $('#settings').onclick = openSettings;
   $('#epg-order').onclick = openEpgOrder;

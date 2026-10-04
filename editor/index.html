@@ -74,8 +74,16 @@
         <button id="epg-order" type="button" title="Reihenfolge der Sender im Reiter „Programm“ der Webapp">Programm-Reihenfolge</button>
         <button id="group-add" type="button">＋ Gruppe</button>
       </div>
+      <div id="pl-selbar" class="selbar" hidden>
+        <span id="pl-selcount"></span>
+        <button id="sel-top" type="button" title="Ganz nach oben (⌥⇧↑)">⤒ Ganz oben</button>
+        <button id="sel-bottom" type="button" title="Ganz nach unten (⌥⇧↓)">⤓ Ganz unten</button>
+        <select id="sel-move" title="In eine andere Gruppe verschieben"></select>
+        <button id="sel-remove" type="button" class="danger">Entfernen</button>
+        <button id="sel-clear" type="button" title="Auswahl aufheben (Esc)">✕</button>
+      </div>
       <div id="pl-warning" class="warnbox" hidden></div>
-      <div class="hint pad">Ziehen zum Sortieren · Doppelklick zum Umbenennen · Gruppe anklicken = Ziel für „Zur Playlist“</div>
+      <div class="hint pad">Klick = auswählen (⇧ = Bereich) · ⌥↑/⌥↓ verschieben · Ziehen zum Sortieren · ⇅ am Gruppenkopf = automatisch sortieren · Doppelklick = umbenennen</div>
       <div id="pl-groups" class="scroll"></div>
     </aside>
   </main>
@@ -140,6 +148,24 @@
         <span class="spacer"></span>
         <button value="cancel" type="submit" formnovalidate>Abbrechen</button>
         <button value="save" type="submit" class="primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Gruppe automatisch sortieren -->
+  <dialog id="dlg-sort">
+    <form method="dialog" id="form-sort">
+      <h2 id="sort-title">Gruppe sortieren</h2>
+      <div class="sortopts">
+        <label><input type="radio" name="how" value="tv" checked> <b>Wie im deutschen Fernsehen</b> – Das Erste, ZDF, RTL, SAT.1, ProSieben, VOX … dann Dritte, Nachrichten, Sport; Unbekannte danach</label>
+        <label><input type="radio" name="how" value="az"> <b>A–Z</b> nach Namen</label>
+        <label><input type="radio" name="how" value="quality"> <b>Nur Qualität</b> – Reihenfolge bleibt, je Sender beste Fassung zuerst (4K/UHD, FHD, HEVC, HD, SD)</label>
+        <label class="check-row"><input type="checkbox" name="dedupe"> Doppelte Sender entfernen (nur die beste Fassung behalten)</label>
+      </div>
+      <div class="actions">
+        <span class="spacer"></span>
+        <button value="cancel" type="submit" formnovalidate>Abbrechen</button>
+        <button value="ok" type="submit" class="primary">Sortieren</button>
       </div>
     </form>
   </dialog>

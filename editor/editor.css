@@ -339,3 +339,13 @@ dialog#dlg-epg { width: min(560px, 94vw); }
 .it.dead .nm::before { content: "✕ "; font-weight: 700; }
 dialog .check-row { flex-direction: row; align-items: center; gap: 8px; }
 dialog .check-row input { width: auto; }
+
+/* Auswahl in der Playlist */
+.it.sel { background: var(--accent-soft); }
+.it { cursor: default; }
+.selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 12px; background: var(--accent-soft); border-bottom: 1px solid var(--border); }
+.selbar span { flex: 1; font-weight: 600; min-width: 90px; }
+.selbar select { max-width: 160px; }
+.sortopts label { display: block; margin-bottom: 10px; font-weight: 400; }
+.sortopts input[type=radio] { width: auto; margin-right: 6px; }
+.pg-head .sort { color: var(--accent); }

@@ -16,6 +16,7 @@ import shutil
 import ssl
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -34,7 +35,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 7   # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 8   # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -43,6 +44,12 @@ EPG_TTL = 6 * 3600          # EPG-Download höchstens alle 6 Stunden
 SERIES_TTL = 24 * 3600      # Episodenlisten einen Tag zwischenspeichern
 EPG_PAST = 1 * 3600         # EPG-Fenster: 1 Stunde zurück ...
 EPG_FUTURE = 36 * 3600      # ... bis 36 Stunden voraus
+# Zusätzliche Programmquellen (XMLTV): füllen nur Lücken, das EPG des Anbieters hat immer Vorrang.
+# Zuordnung über tvg-id oder Sendernamen (Sender ohne tvg-id bekommen die Kennung der Zusatzquelle).
+EXTRA_EPG = [
+    'https://epgshare01.online/epgshare01/epg_ripper_DE1.xml.gz',
+    'https://www.open-epg.com/files/germany.xml.gz',
+]
 
 for d in (DATA, CACHE, OUT, LOCAL_OUT, os.path.join(CACHE, 'series')):
     os.makedirs(d, exist_ok=True)
@@ -498,6 +505,7 @@ def build_playlist(pl, state, warnings):
 
     lines = ['#EXTM3U']
     epg_ids = {}  # source_id -> set(tvgId)
+    live = []     # Live-Sender: Zeile, tvg-id, Namen (für Zusatz-EPG)
     count = 0
     for g in pl.get('groups', []):
         gname = g.get('name') or 'Sonstige'
@@ -549,6 +557,8 @@ def build_playlist(pl, state, warnings):
                     count += 1
                 continue
             parts = ['#EXTINF:-1']
+            if ch['type'] == 'live':
+                live.append({'line': len(lines), 'tvgId': ch.get('tvgId') or '', 'names': [ch['name'], name]})
             if ch.get('tvgId'):
                 parts.append(f'tvg-id="{attr(ch["tvgId"])}"')
                 epg_ids.setdefault(sid, set()).add(ch['tvgId'])
@@ -560,7 +570,7 @@ def build_playlist(pl, state, warnings):
             lines.append(' '.join(parts) + ',' + name.replace('\n', ' '))
             lines.append(ch['url'])
             count += 1
-    return '\n'.join(lines) + '\n', epg_ids, catalogs, count
+    return lines, epg_ids, catalogs, count, live
 
 
 def parse_xmltv_time(s):
@@ -637,6 +647,114 @@ def epg_for_source(source_id, epg_url, wanted, warnings):
     return result
 
 
+def epg_name_key(s):
+    """Sendername -> Vergleichsschlüssel: "DE| SKY SPORT BUNDESLIGA 1 HEVC" -> "skysportbundesliga1"."""
+    s = unicodedata.normalize('NFKC', s or '').lower()
+    s = re.sub(r'^\s*(de|ger|germany|deutschland)\s*[:|\-]\s*', '', s)
+    s = re.sub(r'\(.*?\)|\[.*?\]', ' ', s)
+    s = re.sub(r'\b(full ?hd|fhd|uhd|hd|sd|4k|hevc|h\.?265|h\.?264|raw|50fps|60fps|backup|live|\.de|de)\b', ' ', s)
+    s = s.replace('&', 'und').replace('+', 'plus').replace('*', '')
+    return re.sub(r'[^a-z0-9äöüß]+', '', s)
+
+
+# Häufige Namensunterschiede zwischen Anbieter und Programmquellen
+EPG_ALIASES = [
+    (r'^skybundesliga', 'skysportbundesliga'), (r'^skysports', 'skysport'), (r'^ard$', 'daserste'),
+    (r'^swrbw$', 'swrbadenwürttemberg'), (r'^swrrp$', 'swrrheinlandpfalz'), (r'^sr$', 'srfernsehen'),
+    (r'^skycinemahighlight$', 'skycinemahighlights'), (r'^eurosport2xtra$', 'eurosport2'),
+    (r'^pro7', 'prosieben'), (r'^kabel1', 'kabeleins'), (r'^rtl2$', 'rtlzwei'), (r'^ntv$', 'ntv'),
+]
+
+
+def epg_name_keys(name):
+    k = epg_name_key(name)
+    keys = [k]
+    for pat, rep_ in EPG_ALIASES:
+        a = re.sub(pat, rep_, k)
+        if a != k and a not in keys:
+            keys.append(a)
+    return [x for x in keys if x]
+
+
+def load_extra_epg(url, warnings):
+    """Zusatzquelle laden (Cache 6 h): ({id_klein: id}, {namensschlüssel: id}, {id: [[start, ende, titel]]})."""
+    path = os.path.join(CACHE, 'epg_extra_' + hashlib.sha1(url.encode()).hexdigest()[:12] + '.xml')
+    if not fresh(path, EPG_TTL):
+        try:
+            download(url, path)
+        except UserError as e:
+            if not os.path.exists(path):
+                warnings.append(f'Zusatz-EPG nicht ladbar ({url.split("/")[2]}): {e}')
+                return {}, {}, {}
+    with open(path, 'rb') as f:
+        gz = f.read(2) == b'\x1f\x8b'
+    now = time.time()
+    lo, hi = now - EPG_PAST, now + EPG_FUTURE
+    names, progs = {}, {}
+    try:
+        stream = gzip.open(path, 'rb') if gz else open(path, 'rb')
+        with stream:
+            for _, el in ET.iterparse(stream, events=('end',)):
+                if el.tag == 'channel':
+                    cid = el.get('id') or ''
+                    names[cid] = [d.text or '' for d in el.findall('display-name')] + [cid]
+                    el.clear()
+                elif el.tag == 'programme':
+                    start, stop = parse_xmltv_time(el.get('start')), parse_xmltv_time(el.get('stop'))
+                    if start and stop and stop > lo and start < hi:
+                        title = (el.findtext('title') or '').strip()
+                        progs.setdefault(el.get('channel') or '', []).append([start, stop, title])
+                    el.clear()
+    except (ET.ParseError, OSError, EOFError) as e:
+        warnings.append(f'Zusatz-EPG fehlerhaft ({url.split("/")[2]}): {e}')
+    by_id = {cid.lower(): cid for cid in progs}
+    by_name = {}
+    for cid, ns in names.items():
+        if cid not in progs:
+            continue
+        for n in ns:
+            by_name.setdefault(epg_name_key(n), cid)
+    return by_id, by_name, progs
+
+
+def fill_from_extra_epg(lines, live, epg, warnings):
+    """Sender ohne Programm vom Anbieter aus den Zusatzquellen ergänzen (Anbieter-EPG bleibt unverändert)."""
+    todo = [c for c in live if not (c['tvgId'] and c['tvgId'] in epg)]
+    if not todo:
+        return 0
+    filled = 0
+    for url in EXTRA_EPG:
+        if not todo:
+            break
+        by_id, by_name, progs = load_extra_epg(url, warnings)
+        if not progs:
+            continue
+        rest = []
+        for c in todo:
+            cid = by_id.get(c['tvgId'].lower()) if c['tvgId'] else None
+            if not cid:
+                for n in c['names']:
+                    cid = next((by_name[k] for k in epg_name_keys(n) if k in by_name), None)
+                    if cid:
+                        break
+            if not cid:
+                rest.append(c)
+                continue
+            key = c['tvgId']
+            if not key:
+                # Sender ohne tvg-id: Kennung der Zusatzquelle in die Playlist schreiben
+                key = 'x:' + cid
+                lines[c['line']] = lines[c['line']].replace('#EXTINF:-1 ', f'#EXTINF:-1 tvg-id="{attr(key)}" ', 1)
+                c['tvgId'] = key
+            if key not in epg:
+                epg[key] = clean_programmes([list(p) for p in progs[cid]])
+                filled += 1
+        todo = rest
+    if filled:
+        warnings.append(f'Programm aus Zusatzquellen für {filled} weitere Sender ergänzt.')
+    return filled
+
+
 def gist_upload(files, settings):
     token = settings.get('token')
     if not token:
@@ -666,10 +784,12 @@ def publish(ids):
             continue
         warnings = []
         slug = slugify(pl.get('slug') or pl.get('name') or pl['id'])
-        m3u, epg_ids, catalogs, count = build_playlist(pl, state, warnings)
+        lines, epg_ids, catalogs, count, live = build_playlist(pl, state, warnings)
         epg = {}
         for sid, wanted in epg_ids.items():
             epg.update(epg_for_source(sid, catalogs.get(sid, {}).get('epg'), wanted, warnings))
+        fill_from_extra_epg(lines, live, epg, warnings)
+        m3u = '\n'.join(lines) + '\n'
         # Eigene Reihenfolge für den Reiter „Programm“ (sonst wie in der Playlist)
         order = [i for i in pl.get('epgOrder') or [] if i in epg]
         epg_json = json.dumps({'v': 1, 'generated': int(time.time()), 'channels': epg, 'order': order},

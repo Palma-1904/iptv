@@ -106,7 +106,7 @@ final class Updater {
             main.post(() -> {
                 running = false;
                 if (apk == null) {
-                    Remote.report("Laden fehlgeschlagen – später erneut versuchen");
+                    Remote.report("Neue Version noch nicht abrufbar (GitHub-Zwischenspeicher) – in 10 Minuten erneut versuchen");
                     return;
                 }
                 Remote.report("Version " + v + " geladen – wartet am Gerät auf „Installieren“");
@@ -148,8 +148,10 @@ final class Updater {
             main.post(() -> {
                 dlg.dismiss();
                 if (apk == null) {
-                    Toast.makeText(a, "Die neue Version konnte nicht geladen werden. Später erneut versuchen.",
+                    Toast.makeText(a, "Die neue Version ist noch nicht abrufbar – die App fragt später erneut.",
                             Toast.LENGTH_LONG).show();
+                    a.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit()
+                            .putLong("updateSnooze", System.currentTimeMillis() + 15 * 60 * 1000L).apply();
                     return;
                 }
                 install(a, apk);
@@ -207,9 +209,24 @@ final class Updater {
                 }
             }
             c.disconnect();
-            return apk.length() > 1024 * 1024 ? apk : null;
+            if (apk.length() < 1024 * 1024) return null;
+            // GitHub liefert kurz nach einer neuen Version teils noch die alte Datei aus:
+            // nur installieren, wenn die geladene Datei wirklich neuer ist als die installierte
+            return archiveVersion(a, apk) > BuildConfig.VERSION_CODE ? apk : null;
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /** Versionsnummer der geladenen APK-Datei (0 = unlesbar). */
+    @SuppressWarnings("deprecation")
+    private static long archiveVersion(Context c, File apk) {
+        try {
+            android.content.pm.PackageInfo pi = c.getPackageManager().getPackageArchiveInfo(apk.getPath(), 0);
+            if (pi == null) return 0;
+            return Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
+        } catch (Exception e) {
+            return 0;
         }
     }
 

@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 14; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 15; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -1256,6 +1256,44 @@ function openRemote() {
   dlg.onclose = () => { clearInterval(remoteTimer); clearInterval(remoteWatch); };
 }
 
+// ---------- Stand der App (oben in der Leiste) ----------
+
+let appStatusTimer = null;
+
+async function renderAppStatus() {
+  const b = $('#appver');
+  let st;
+  try { st = await api('/api/app-status'); } catch (e) { b.hidden = true; return; }
+  const r = st.run;
+  let text = st.online ? `App ${st.online}` : 'App ?';
+  let cls = '';
+  let tip = 'Klicken: Bau-Läufe auf GitHub ansehen';
+  if (r && r.status !== 'completed') {
+    text = `App ${r.number} wird gebaut …`; cls = 'busy';
+    tip = `GitHub baut gerade: „${r.msg}“ (dauert etwa 5–10 Minuten)`;
+  } else if (r && r.conclusion && r.conclusion !== 'success') {
+    text = `App-Bau ${r.number} fehlgeschlagen`; cls = 'bad';
+    tip = `Bau-Lauf ${r.number} („${r.msg}“) ist fehlgeschlagen – Claude fragen`;
+  } else if (r && st.online && st.online < r.number) {
+    text = `App ${r.number} wird veröffentlicht …`; cls = 'busy';
+    tip = `Gebaut, GitHub Pages verteilt sie noch (online noch ${st.online})`;
+  } else if (st.online) {
+    text = `App ${st.online} ✓`; cls = 'ok';
+    tip = `Neueste App online: Version ${st.online}` + (r ? ` („${r.msg}“)` : '');
+  }
+  if (st.ahead) {
+    text += ` · ${st.ahead} nicht gepusht`;
+    tip += `\n${st.ahead} lokale Änderung(en) noch nicht gepusht – in GitHub Desktop „Push origin“`;
+  }
+  b.textContent = text;
+  b.className = 'appver ' + cls;
+  b.title = tip;
+  b.hidden = false;
+  b.onclick = () => window.open(st.actionsUrl, '_blank');
+  clearTimeout(appStatusTimer);
+  appStatusTimer = setTimeout(renderAppStatus, cls === 'busy' ? 20000 : 60000);
+}
+
 // ---------- Sender prüfen ----------
 
 const checks = {};   // Playlist-ID -> Ergebnis von /api/check
@@ -2060,6 +2098,7 @@ function bind() {
   $('#check').onclick = checkPlaylist;
   $('#dupes').onclick = openDupes;
   $('#remote').onclick = openRemote;
+  renderAppStatus();
   $('#remote-off').onclick = async () => {
     if (!confirm('Fernwartung ausschalten? Die Geräte melden sich dann nicht mehr.')) return;
     try { await api('/api/remote/enable', { on: false }); renderRemote(); } catch (e) { toast(e.message, true); }

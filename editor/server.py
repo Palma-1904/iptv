@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 14  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 15  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -631,6 +631,46 @@ def check_playlist(pl_id, keys=None):
     return {'checked': len(results), 'total': len(items), 'bad': len(bad), 'cancelled': out['cancelled'],
             'withAlt': sum(1 for v in bad if v.get('alt')),
             'events': sum(1 for v in results.values() if not v['ok'] and v['event'])}
+
+
+# ---------- Stand der App: online, GitHub-Bau, nicht gepushte Änderungen ----------
+
+APP_STATUS = {'t': 0, 'data': None}
+
+
+def app_status():
+    """Für die Anzeige im Editor (alle 20 s neu): Version online (app-version.txt), letzter Bau-Lauf auf GitHub
+    (öffentliche API, ohne Token) und lokale Commits, die noch nicht gepusht sind."""
+    if APP_STATUS['data'] and time.time() - APP_STATUS['t'] < 20:
+        return APP_STATUS['data']
+    pages = (load_settings().get('pagesUrl') or 'https://palma-1904.github.io/iptv/').strip()
+    if not pages.endswith('/'):
+        pages += '/'
+    m = re.match(r'https?://([^.]+)\.github\.io/([^/]+)/', pages)
+    repo = f'{m.group(1)}/{m.group(2)}' if m else 'Palma-1904/iptv'
+    out = {'actionsUrl': f'https://github.com/{repo}/actions', 'online': None, 'run': None, 'ahead': None}
+    try:
+        out['online'] = int(fetch(f'{pages}app-version.txt?t={int(time.time())}', timeout=10).decode().strip())
+    except Exception:
+        pass
+    try:
+        runs = json.loads(fetch(f'https://api.github.com/repos/{repo}/actions/runs?per_page=1', timeout=10))
+        r = (runs.get('workflow_runs') or [None])[0]
+        if r:
+            out['run'] = {'number': r['run_number'], 'status': r['status'], 'conclusion': r['conclusion'],
+                          'url': r['html_url'], 'msg': ((r.get('head_commit') or {}).get('message') or '').split('\n')[0]}
+    except Exception:
+        pass
+    try:
+        import subprocess
+        res = subprocess.run(['git', '-C', os.path.dirname(HERE), 'rev-list', '--count', '@{u}..HEAD'],
+                             capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            out['ahead'] = int(res.stdout.strip() or 0)
+    except Exception:
+        pass
+    APP_STATUS.update(t=time.time(), data=out)
+    return out
 
 
 # ---------- Nachts automatisch veröffentlichen ----------
@@ -1551,6 +1591,8 @@ class Handler(SimpleHTTPRequestHandler):
                 keys = set(keys) if isinstance(keys, list) else None
                 name = find(load_state()['playlists'], pid, 'Playlist').get('name')
                 return self.send_json(start_job('check', f'Sender prüfen „{name}“', lambda: check_playlist(pid, keys)))
+            if method == 'GET' and path == '/api/app-status':
+                return self.send_json(app_status())
             if method == 'GET' and path == '/api/check':
                 return self.send_json(read_json(os.path.join(DATA, f'check_{q.get("id", "")}.json'), {}))
             self.send_error(404)

@@ -493,6 +493,22 @@
     if (target && window.TV) TV.focusFirst(null, target);
   }
 
+  // Der Player der App meldet beim Schließen geänderte Favoriten: { movie: {Schlüssel: true|false}, series: {…} }
+  window.IPTV.applyNativeFavs = function (changes) {
+    var n = 0;
+    ['movie', 'series'].forEach(function (type) {
+      var c = (changes && changes[type]) || {};
+      Object.keys(c).forEach(function (k) {
+        var i = favs[type].indexOf(k);
+        if (c[k] && i < 0) { favs[type].unshift(k); n++; }
+        if (!c[k] && i >= 0) { favs[type].splice(i, 1); n++; }
+      });
+    });
+    if (!n) return;
+    try { localStorage.setItem(FAV_STORE, JSON.stringify(favs)); } catch (err) { /* privat-Modus */ }
+    refresh(all);
+  };
+
   var toastTimer;
   function toast(text) {
     var t = document.getElementById('toast');
@@ -663,19 +679,26 @@
       var ai = root.length;
       var movies = [];
       var favUnits = favMovies();
+      // Favoriten-Kennung für den Player: fk = Schlüssel, ft = Art, fv = ist Favorit
+      var mark = function (o, e) {
+        o.fk = favKey(e);
+        o.ft = e.type;
+        if (isFav(e)) o.fv = 1;
+        return o;
+      };
       var unitNode = function (u, path) {
         if (!u.variants || u.variants.length < 2) {
           if (path) paths.set(u.entry, path);
-          return leaf(u.entry);
+          return mark(leaf(u.entry), u.entry);
         }
-        return {
+        return mark({
           n: u.entry.name + '  ·  ' + u.variants.map(function (v) { return v.lang || '?'; }).join(' '),
           v: 1,
           c: u.variants.map(function (v, vi) {
             if (path) paths.set(v, path.concat(vi));
             return leaf(v, langName(v.lang), u.entry.name + ' (' + langName(v.lang) + ')');
           })
-        };
+        }, u.entry);
       };
       if (favUnits.length) movies.push({ n: '★ Meine Favoriten', c: favUnits.map(function (u) { return unitNode(u, null); }) });
       groupsOf(byType.movie).forEach(function (items, name) {
@@ -695,14 +718,15 @@
       favSeriesFirst(groupsOf(byType.series)).forEach(function (items, name) {
         var gi = series.length;
         var langs = seriesLangs(items);
-        var star = favs.series.indexOf(name) >= 0 ? '★ ' : '';
+        var fav = { fk: name, ft: 'series' };
+        if (favs.series.indexOf(name) >= 0) fav.fv = 1;
         if (langs.length > 1) {
-          series.push({ n: star + name, c: langs.map(function (l, li) {
+          series.push(Object.assign({ n: name, c: langs.map(function (l, li) {
             var eps = items.filter(function (e) { return e.lang === l; });
             return { n: langName(l), c: eps.map(function (e, ei) { paths.set(e, [si, gi, li, ei]); return episode(e, name); }) };
-          }) });
+          }) }, fav));
         } else {
-          series.push({ n: star + name, c: items.map(function (e, ei) { paths.set(e, [si, gi, ei]); return episode(e, name); }) });
+          series.push(Object.assign({ n: name, c: items.map(function (e, ei) { paths.set(e, [si, gi, ei]); return episode(e, name); }) }, fav));
         }
       });
       root.push({ n: 'Serien', c: series });

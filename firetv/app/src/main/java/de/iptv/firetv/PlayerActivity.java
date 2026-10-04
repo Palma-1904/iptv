@@ -64,6 +64,8 @@ public class PlayerActivity extends Activity {
     static volatile Node treeRoot;
     static volatile String treeVersion;
     static String pendingPath;
+    /** Im Player geänderte Favoriten (Art -> Schlüssel -> an/aus); MainActivity gibt sie an die Webapp. */
+    static final java.util.Map<String, java.util.Map<String, Boolean>> favChanges = new java.util.HashMap<>();
     /** Zuletzt gesehener Eintrag – die Webapp setzt dort den Fokus. */
     static String lastUrl;
 
@@ -108,6 +110,8 @@ public class PlayerActivity extends Activity {
         Item item;
         boolean search;
         boolean variants;   // Film mit mehreren Sprachfassungen
+        String favKey, favType;  // Favoriten-Kennung (Film = Werk, Serie = Titel)
+        boolean fav;
 
         Node(String name) {
             this.name = name;
@@ -126,6 +130,13 @@ public class PlayerActivity extends Activity {
             for (Node c : children) n += c.count();
             return n;
         }
+    }
+
+    private static void readFav(Node n, JSONObject j) {
+        if (!j.has("fk")) return;
+        n.favKey = j.optString("fk");
+        n.favType = j.optString("ft");
+        n.fav = j.optInt("fv") == 1;
     }
 
     static Node parseTree(JSONObject j) throws Exception {
@@ -150,10 +161,12 @@ public class PlayerActivity extends Activity {
                 it.title[i] = p.optString(2);
             }
             n.item = it;
+            readFav(n, j);
             return n;
         }
         n.search = j.optInt("s") == 1;
         n.variants = j.optInt("v") == 1;
+        readFav(n, j);
         JSONArray c = j.optJSONArray("c");
         if (c != null) for (int i = 0; i < c.length(); i++) n.add(parseTree(c.getJSONObject(i)));
         return n;
@@ -834,6 +847,11 @@ public class PlayerActivity extends Activity {
             if (n.item != null) jumpTo(n);
             else open(n);
         });
+        // OK lange drücken: Film bzw. Serie als Favorit markieren oder entfernen
+        list.setOnItemLongClickListener((parent, view, position, id) -> {
+            toggleFav(browse.children.get(position));
+            return true;
+        });
         list.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -909,9 +927,11 @@ public class PlayerActivity extends Activity {
         listTitle.setText(n.parent == null ? "Übersicht" : n.name);
         boolean leaves = !n.children.isEmpty() && n.children.get(0).item != null;
         String up = n.parent != null ? "   ◀ zurück" : "";
-        listHint.setText(leaves
+        boolean favs = hasFav(n);
+        listHint.setText((leaves
                 ? "▲ ▼ auswählen   OK abspielen" + up + "   ↩ schließen"
-                : "▲ ▼ auswählen   OK / ▶ öffnen" + up + "   ↩ schließen");
+                : "▲ ▼ auswählen   OK / ▶ öffnen" + up + "   ↩ schließen")
+                + (favs ? "\nOK lange drücken = Favorit ★ an/aus" : ""));
         adapter.notifyDataSetChanged();
         int sel = select == null ? 0 : Math.max(0, n.children.indexOf(select));
         list.setSelectionFromTop(sel, dp(120));
@@ -1006,6 +1026,30 @@ public class PlayerActivity extends Activity {
         previewEpg.setText(sb);
     }
 
+    /** Favorit des Eintrags (oder des Films/der Serie darüber) umschalten, überall im Baum anzeigen. */
+    private void toggleFav(Node n) {
+        Node f = n;
+        while (f != null && f.favKey == null) f = f.parent;
+        if (f == null) {
+            Toast.makeText(this, "Favoriten gibt es für Filme und Serien.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean on = !f.fav;
+        markFav(rootNode, f.favType, f.favKey, on);
+        f.fav = on;
+        java.util.Map<String, Boolean> m = favChanges.get(f.favType);
+        if (m == null) favChanges.put(f.favType, m = new java.util.HashMap<>());
+        m.put(f.favKey, on);
+        adapter.notifyDataSetChanged();
+        Toast.makeText(this, on ? "★ Zu den Favoriten hinzugefügt" : "☆ Aus den Favoriten entfernt", Toast.LENGTH_SHORT).show();
+    }
+
+    private static void markFav(Node n, String type, String key, boolean on) {
+        if (n == null) return;
+        if (key.equals(n.favKey) && type.equals(n.favType)) n.fav = on;
+        for (Node c : n.children) markFav(c, type, key, on);
+    }
+
     /** „97 Sender“, „12 Filme“, „3 Fassungen“ … */
     private static String countText(Node n) {
         if (n.search) return "";
@@ -1045,7 +1089,7 @@ public class PlayerActivity extends Activity {
                 row.num.setText(inside ? "▶" : n.search ? "" : "›");
                 row.num.setTextColor(inside ? ROYAL_LIGHT : MUTED);
                 row.logo.setVisibility(View.GONE);
-                row.name.setText(n.name);
+                row.name.setText(n.fav ? "★ " + n.name : n.name);
                 String sub = countText(n);
                 row.now.setText(sub);
                 row.now.setVisibility(sub.isEmpty() ? View.GONE : View.VISIBLE);
@@ -1056,13 +1100,22 @@ public class PlayerActivity extends Activity {
             row.num.setText(isPlaying ? "▶" : String.valueOf(position + 1));
             row.num.setTextColor(isPlaying ? ROYAL_LIGHT : MUTED);
             row.logo.setVisibility(it.logo == null || it.logo.isEmpty() ? View.GONE : View.VISIBLE);
-            row.name.setText(n.name);
+            row.name.setText(n.fav ? "★ " + n.name : n.name);
             String now = it.nowTitle();
             row.now.setText(now);
             row.now.setVisibility(now.isEmpty() ? View.GONE : View.VISIBLE);
             images.load(it.logo, row.logo);
             return row.view;
         }
+    }
+
+    /** Gibt es in dieser Ebene Filme/Serien (Favoriten möglich)? */
+    private static boolean hasFav(Node n) {
+        for (Node c : n.children) {
+            if (c.favKey != null) return true;
+            if (c.item != null && n.favKey != null) return true;
+        }
+        return n.favKey != null;
     }
 
     private static boolean contains(Node n, Item it) {

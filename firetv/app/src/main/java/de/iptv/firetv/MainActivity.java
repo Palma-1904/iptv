@@ -243,7 +243,13 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
-        // Zurück aus dem Player: Fokus auf den zuletzt gesehenen Sender setzen
+        // Zurück aus dem Player: im Player geänderte Favoriten an die Webapp geben
+        if (!PlayerActivity.favChanges.isEmpty()) {
+            JSONObject changes = new JSONObject(PlayerActivity.favChanges);
+            PlayerActivity.favChanges.clear();
+            web.evaluateJavascript("window.IPTV&&IPTV.applyNativeFavs&&IPTV.applyNativeFavs(" + changes + ")", null);
+        }
+        // Fokus auf den zuletzt gesehenen Sender setzen
         String last = PlayerActivity.lastUrl;
         if (last != null) {
             PlayerActivity.lastUrl = null;

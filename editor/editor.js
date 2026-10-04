@@ -1087,6 +1087,22 @@ async function renderRemote() {
     box.appendChild(head);
     box.appendChild(el('p', 'dev-now', (STATE_TEXT[d.state] || d.state || '') + (d.title ? ': ' + d.title : '')));
     if (d.lastNote) box.appendChild(el('p', 'hint', 'Letzte Rückmeldung: ' + d.lastNote));
+    // Einstellungen des Geräts (ab App mit Fernwartungs-Einstellungen)
+    if (d.cfg) {
+      const cfg = el('div', 'dev-acts dev-cfg');
+      const toggle = (key, label, on) => {
+        const b = el('button', on ? 'on' : '', `${label}: ${on ? 'AN' : 'AUS'}`);
+        b.type = 'button';
+        b.title = on ? 'Ausschalten' : 'Einschalten';
+        b.onclick = () => remoteCmd(d.id, 'setting', { key, on: !on }, `${label} ${on ? 'aus' : 'an'}`);
+        cfg.appendChild(b);
+      };
+      toggle('autostart', 'Autostart beim Einschalten', d.cfg.autostart);
+      toggle('home', 'Home-Taste: App kommt zurück', d.cfg.home);
+      cfg.appendChild(el('span', d.cfg.overlay ? 'ok' : 'warn', d.cfg.overlay ? '✓ Autostart erlaubt' : '✕ Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)'));
+      cfg.appendChild(el('span', d.cfg.install ? 'ok' : 'warn', d.cfg.install ? '✓ Updates erlaubt' : '✕ Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)'));
+      box.appendChild(cfg);
+    }
 
     const acts = el('div', 'dev-acts');
     const sel = el('select');

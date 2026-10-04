@@ -362,3 +362,8 @@ dialog#dlg-remote { width: min(900px, 96vw); }
 .dev-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .dev-acts select { max-width: 280px; }
 .dev .hint { margin: 4px 0 0; }
+
+.dev-cfg { margin-top: 6px; font-size: 12px; }
+.dev-cfg button.on { background: var(--accent-soft); border-color: var(--accent); }
+.dev-cfg .ok { color: var(--ok); }
+.dev-cfg .warn { color: var(--danger); }

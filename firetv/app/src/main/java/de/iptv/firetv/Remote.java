@@ -145,7 +145,12 @@ final class Remote {
                 .put("id", deviceId).put("name", deviceName).put("list", list).put("view", view)
                 .put("state", state).put("title", title).put("type", type)
                 .put("ver", BuildConfig.VERSION_CODE).put("t", System.currentTimeMillis() / 1000)
-                .put("note", note);
+                .put("note", note)
+                .put("cfg", new JSONObject()
+                        .put("autostart", AutostartService.enabled(app))
+                        .put("home", AutostartService.homeReturns(app))
+                        .put("overlay", Build.VERSION.SDK_INT < 23 || android.provider.Settings.canDrawOverlays(app))
+                        .put("install", Updater.installAllowed(app)));
         note = "";
         post(NTFY + topic + "-status", o.toString());
     }

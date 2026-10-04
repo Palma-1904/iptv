@@ -252,7 +252,7 @@ public class MainActivity extends Activity implements Remote.Target {
                 .setMessage("Einrichtungs-Link aus dem Playlist-Editor eingeben und Ansicht wählen.\n\n"
                         + "Tipp: Mit der Amazon-Fire-TV-App auf dem Handy kann man bequem tippen oder einfügen.\n"
                         + "Später erneut: Menü-Taste (☰) auf der Fernbedienung 3 Sekunden gedrückt halten.")
-                .setView(box)
+                .setView(scroll(box))
                 .setPositiveButton("Komplett", (d, w) -> applySetup(input.getText().toString(), "komplett"))
                 .setNegativeButton("Senioren", (d, w) -> applySetup(input.getText().toString(), "senioren"))
                 .setNeutralButton("Abbrechen", (d, w) -> {
@@ -283,6 +283,13 @@ public class MainActivity extends Activity implements Remote.Target {
         hash = (hash.isEmpty() ? "" : hash + "&") + "ansicht=" + view;
         prefs.edit().putBoolean(PREF_CONFIGURED, true).apply();
         load(hash);
+    }
+
+    /** Einrichtungsfenster scrollbar, damit auf kleinen Bildschirmen kein Knopf unten verschwindet. */
+    private android.widget.ScrollView scroll(android.view.View v) {
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(v);
+        return sv;
     }
 
     // ☰ nur nach 3 Sekunden Halten: Einrichtung (gegen versehentliches Drücken)
@@ -388,6 +395,20 @@ public class MainActivity extends Activity implements Remote.Target {
             case "update":
                 Updater.remoteUpdate(this);   // still laden, dann nur „Installieren“ am Gerät
                 break;
+            case "setting": {
+                String key = arg.optString("key");
+                boolean on = arg.optBoolean("on");
+                if ("autostart".equals(key)) {
+                    prefs.edit().putBoolean("autostart", on).apply();
+                    if (on) AutostartService.start(this);
+                    else stopService(new Intent(this, AutostartService.class));
+                    Remote.report("Autostart " + (on ? "an" : "aus"));
+                } else if ("home".equals(key)) {
+                    prefs.edit().putBoolean("homeReturns", on).apply();
+                    Remote.report("Home-Rückkehr " + (on ? "an" : "aus"));
+                }
+                break;
+            }
             case "view":
                 if (player != null) player.remote("close", arg);
                 String v = "senioren".equals(arg.optString("view")) ? "senioren" : "komplett";

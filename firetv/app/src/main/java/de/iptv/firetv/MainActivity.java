@@ -55,6 +55,7 @@ public class MainActivity extends Activity implements Remote.Target {
         instance = this;
         Remote.init(this);
         Remote.main_target = this;
+        AutostartService.start(this);
 
         web = new WebView(this);
         setContentView(web);
@@ -199,6 +200,33 @@ public class MainActivity extends Activity implements Remote.Target {
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
         box.setPadding(48, 8, 48, 0);
         box.addView(input);
+        // Autostart beim Einschalten: an/aus und (ab Fire OS 8) einmalig erlauben
+        final boolean auto = AutostartService.enabled(this);
+        android.widget.Button autoBtn = new android.widget.Button(this);
+        autoBtn.setText(auto ? "Autostart beim Einschalten: AN (ausschalten)" : "Autostart beim Einschalten: AUS (einschalten)");
+        autoBtn.setOnClickListener(v -> {
+            prefs.edit().putBoolean("autostart", !auto).apply();
+            if (!auto) AutostartService.start(this);
+            else stopService(new Intent(this, AutostartService.class));
+            Toast.makeText(this, !auto ? "Autostart eingeschaltet" : "Autostart ausgeschaltet", Toast.LENGTH_SHORT).show();
+            autoBtn.setText(!auto ? "Autostart beim Einschalten: AN" : "Autostart beim Einschalten: AUS");
+            autoBtn.setEnabled(false);
+        });
+        box.addView(autoBtn);
+        if (auto && android.os.Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(this)) {
+            android.widget.Button allowAuto = new android.widget.Button(this);
+            allowAuto.setText("Autostart erlauben (einmalig: „Über anderen Apps einblenden“)");
+            allowAuto.setOnClickListener(v -> {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:" + getPackageName())));
+                } catch (Exception e) {
+                    Toast.makeText(this, "Diese Einstellung gibt es auf diesem Stick nicht – Autostart funktioniert dann nur nach dem Hochfahren.",
+                            Toast.LENGTH_LONG).show();
+                }
+            });
+            box.addView(allowAuto);
+        }
         // Einmalig erlauben, damit Updates (auch per Fernwartung) nur noch „Installieren“ brauchen
         if (!Updater.installAllowed(this)) {
             android.widget.Button allow = new android.widget.Button(this);

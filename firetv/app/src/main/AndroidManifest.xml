@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Automatische Updates: neue Version selbst installieren lassen -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Autostart beim Einschalten (Aufwachen aus dem Standby): App aus dem Hintergrund öffnen -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Fire TV / Android TV: keine Touch-Bedienung nötig -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -48,6 +52,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Bemerkt das Einschalten (Standby → an) und öffnet die App -->
+        <service
+            android:name=".AutostartService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="App beim Einschalten des Fernsehers öffnen" />
+        </service>
 
         <!-- Nach einem Update über die App: gleich wieder öffnen -->
         <receiver android:name=".UpdateReceiver" android:exported="false">

@@ -33,7 +33,8 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   OK Info. Filme/Serien: ◀▶ spulen, OK Pause, ▲▼ Folge. Fehler → OK = VLC. Escape = Zurück (Handy-Fernbedienung).
   App-Symbol/Banner als PNG (`mipmap-*/icon.png`, `drawable-xhdpi/banner.png`) – Fire-TV-Startseite zeigt keine Vektorgrafik.
   Übersicht auf dem TV: nur eine Gruppe offen, Zurück klappt sie zu (`IPTV.handleBack`).
-  Menü-Taste = Einrichtung, Autostart nach Boot. Wird im GitHub-Workflow gebaut → https://palma-1904.github.io/iptv/app.apk
+  Menü-Taste = Einrichtung. Autostart: `AutostartService` (Vordergrund-Dienst, SCREEN_ON = Aufwachen aus Standby)
+  + `BootReceiver`; ab Fire OS 8 nötig: „Über anderen Apps einblenden“ (Knopf in der Einrichtung), an/aus dort. Wird im GitHub-Workflow gebaut → https://palma-1904.github.io/iptv/app.apk
   Signatur: `firetv/signing/iptv.p12` (fest, damit Updates drüber installieren).
   **Lokal bauen** (Werkzeuge in `werkzeuge/`, gitignored; `firetv/local.properties` zeigt aufs SDK):
   `cd firetv && JAVA_HOME=../werkzeuge/jdk/Contents/Home GRADLE_USER_HOME=../werkzeuge/gradle-home ../werkzeuge/gradle-8.7/bin/gradle --no-daemon assembleRelease -PstartUrl=https://palma-1904.github.io/iptv/`

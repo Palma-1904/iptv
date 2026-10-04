@@ -575,6 +575,12 @@ public class PlayerActivity extends Activity implements Remote.Target {
         // Vorrat gegen Ruckeln bei schwankendem WLAN/Anbieter (Live 5 s, Filme 8 s; Umschalten etwas langsamer)
         media.addOption(":network-caching=" + (it.live() ? 5000 : 8000));
         media.addOption(":live-caching=5000");
+        if (it.url.split("\\?")[0].toLowerCase(Locale.ROOT).endsWith(".m3u8")) {
+            // HLS: Anbieter liefert ~10-s-Stücke und ist zeitweise langsamer als Echtzeit (gemessen
+            // bei RTL Crime: 12 s für 10 s Film) -> 20 s hinter live bleiben, bis 40 s Vorrat halten
+            media.addOption(":adaptive-livedelay=20000");
+            media.addOption(":adaptive-maxbuffer=40000");
+        }
         player.setMedia(media);
         media.release();
         player.play();

@@ -286,7 +286,7 @@ button.link { height: auto; padding: 0; border: 0; background: none; color: var(
 .player video { flex: 1; min-height: 0; width: 100%; background: #000; }
 .player-msg { position: absolute; left: 0; right: 0; bottom: 40px; margin: 0 12px; padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, .8); color: #fff; font-size: 12px; }
 
-dialog#dlg-publish { width: min(680px, 94vw); }
+dialog#dlg-publish { width: min(760px, 94vw); }
 .qrrow { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
 .qr { text-align: center; font-size: 12px; color: var(--muted); }
 .qr img { display: block; width: 150px; height: 150px; margin: 0 auto 4px; background: #fff; padding: 6px; border-radius: 8px; image-rendering: pixelated; }
@@ -301,3 +301,29 @@ dialog#dlg-epg { width: min(560px, 94vw); }
 .epg-row img.empty { visibility: hidden; }
 .epg-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .epg-row button { height: 24px; padding: 0; }
+
+/* Geräte-Links: klar getrennte Karten */
+.lcard { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; background: var(--surface); }
+.lcard h3 { margin: 0; font-size: 16px; }
+.lcard > p { margin: 8px 0 0; }
+.appcard { border-color: var(--accent); background: var(--accent-soft); }
+.lcard-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chip { font-size: 11px; color: var(--muted); background: var(--pane); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+.lsec { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--pane); border: 1px solid var(--border); }
+.lsec h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 2px; font-size: 14px; }
+.lsec-icon { font-size: 18px; }
+.lsec .hint { margin: 0 0 8px; }
+.bigvalue { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.bigvalue code {
+  flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px; overflow-wrap: anywhere;
+  background: var(--pane); border: 1px solid var(--border);
+  font: 600 17px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .02em; user-select: all;
+}
+.lsec .bigvalue code { background: var(--surface); }
+.lcols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.lcol { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; border-radius: 8px; background: var(--surface); }
+.lcol .qr img { width: 140px; height: 140px; margin: 0; }
+.lbtns { display: flex; gap: 6px; }
+.ltest { margin-top: 12px; }
+.ltest summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.ltest .hint { margin: 8px 0 0; }

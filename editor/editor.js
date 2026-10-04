@@ -708,8 +708,9 @@ async function publish() {
       ? 'Hochladen fehlgeschlagen – Details bei den Playlists.'
       : 'Nur lokal erzeugt. Zum Hochladen in den Einstellungen ein GitHub-Token eintragen.'));
   }
-  res.results.forEach((r) => body.appendChild(linksBox(r)));
   await loadSettings();
+  body.appendChild(appCard());
+  res.results.forEach((r) => body.appendChild(linksBox(r)));
 }
 
 function qrEl(text, label) {
@@ -723,42 +724,107 @@ function qrEl(text, label) {
     img.alt = 'QR-Code ' + label;
     wrap.appendChild(img);
   }
-  wrap.appendChild(document.createTextNode(label));
+  if (label) wrap.appendChild(document.createTextNode(label));
   return wrap;
+}
+
+// Großer, gut lesbarer Wert mit „Kopieren“ (z. B. zum Abtippen auf dem Fernseher)
+function bigValue(value) {
+  const row = el('div', 'bigvalue');
+  row.appendChild(el('code', '', value));
+  const copy = el('button', '', 'Kopieren');
+  copy.type = 'button';
+  copy.onclick = () => { navigator.clipboard.writeText(value); toast('Kopiert'); };
+  row.appendChild(copy);
+  return row;
+}
+
+function section(icon, title, sub) {
+  const sec = el('section', 'lsec');
+  const h = el('h4');
+  h.appendChild(el('span', 'lsec-icon', icon));
+  h.appendChild(document.createTextNode(title));
+  sec.appendChild(h);
+  if (sub) sec.appendChild(el('p', 'hint', sub));
+  return sec;
+}
+
+// Oben im Fenster: wo es die Fire-TV-App gibt
+function appCard() {
+  const card = el('div', 'lcard appcard');
+  card.appendChild(el('h3', '', '① Fire-TV-App installieren'));
+  const pages = (settings.pagesUrl || '').trim();
+  if (!pages) {
+    card.appendChild(el('p', 'hint', 'Adresse der Webapp in den Einstellungen eintragen, dann steht hier der Download-Link.'));
+    return card;
+  }
+  const apk = pages.replace(/^https?:\/\//, '').replace(/\/?$/, '/') + 'app.apk';
+  card.appendChild(el('p', '', 'Auf dem Fire-TV-Stick in der App „Downloader“ eingeben (Feld vorher ganz leeren):'));
+  card.appendChild(bigValue(apk));
+  card.appendChild(el('p', 'hint', 'Gleicher Link für Updates – die neue Version wird einfach drüber installiert. Vorher einmalig: VLC installieren und bei „Apps unbekannter Herkunft“ Downloader erlauben.'));
+  return card;
 }
 
 // Links einer Playlist (nach Veröffentlichen oder über "Geräte-Links")
 function linksBox(r) {
-    const box = el('div', 'result');
-    box.appendChild(el('h3', '', r.entries !== undefined
-      ? `${r.name} – ${r.entries} Einträge, EPG für ${r.epgChannels} Sender, ${r.sizeKb} KB`
-      : r.name + (r.published ? '' : ' – noch nicht veröffentlicht')));
-    if (r.webLinks) {
-      box.appendChild(el('h4', '', 'Für alle Geräte (über GitHub) – Link einmal auf dem Gerät öffnen'));
-      box.appendChild(linkRow('Komplett:', r.webLinks.komplett));
-      box.appendChild(linkRow('Senioren:', r.webLinks.senioren));
-      const qrs = el('div', 'qrrow');
-      qrs.appendChild(qrEl(r.webLinks.komplett, 'Komplett – mit iPhone-Kamera scannen'));
-      qrs.appendChild(qrEl(r.webLinks.senioren, 'Senioren – mit iPhone-Kamera scannen'));
-      box.appendChild(qrs);
-      box.appendChild(linkRow('Kurzform für die Fire-TV-App (Einrichtung):', r.setupRef));
-    } else if (r.setupRef) {
-      box.appendChild(linkRow('Gerätekennung (Webapp-Adresse in den Einstellungen fehlt):', '#liste=' + r.setupRef));
-    }
-    if (r.lanLinks) {
-      box.appendChild(el('h4', '', 'Test im WLAN (iPad, iPhone, Fire TV) – „Start-Webapp“ muss auf dem Mac laufen'));
-      box.appendChild(linkRow('Komplett:', r.lanLinks.komplett));
-      box.appendChild(linkRow('Senioren:', r.lanLinks.senioren));
-    }
-    box.appendChild(el('h4', '', 'Test auf diesem Mac'));
-    box.appendChild(linkRow('Komplett:', r.macLinks.komplett));
-    box.appendChild(linkRow('Senioren:', r.macLinks.senioren));
-    if (r.warnings && r.warnings.length) {
-      const ul = el('ul', 'warn');
-      r.warnings.forEach((w) => ul.appendChild(el('li', '', w)));
-      box.appendChild(ul);
-    }
-    return box;
+  const card = el('div', 'lcard');
+  const head = el('div', 'lcard-head');
+  head.appendChild(el('h3', '', '② Playlist „' + r.name + '“ einrichten'));
+  head.appendChild(el('span', 'chip', r.entries !== undefined
+    ? `${r.entries} Einträge · EPG ${r.epgChannels} Sender · ${r.sizeKb} KB`
+    : (r.published ? 'veröffentlicht' : 'noch nicht veröffentlicht')));
+  card.appendChild(head);
+
+  if (r.setupRef) {
+    const tv = section('📺', 'Fire-TV-App', 'Beim ersten Start der App eingeben, dann „Komplett“ oder „Senioren“ wählen. Später erneut: Menü-Taste ☰ auf der Fernbedienung.');
+    tv.appendChild(bigValue(r.setupRef));
+    card.appendChild(tv);
+  }
+
+  if (r.webLinks) {
+    const web = section('📱', 'iPhone, iPad, Computer', 'QR-Code mit der Kamera scannen oder Link auf dem Gerät öffnen. Fürs iPhone danach in Safari: Teilen → „Zum Home-Bildschirm“.');
+    const cols = el('div', 'lcols');
+    [['Komplett', r.webLinks.komplett], ['Senioren', r.webLinks.senioren]].forEach(([name, url]) => {
+      const col = el('div', 'lcol');
+      col.appendChild(el('strong', '', name));
+      col.appendChild(qrEl(url, ''));
+      const btns = el('div', 'lbtns');
+      const copy = el('button', '', 'Link kopieren');
+      copy.type = 'button';
+      copy.onclick = () => { navigator.clipboard.writeText(url); toast('Kopiert'); };
+      const open = el('button', '', 'Öffnen');
+      open.type = 'button';
+      open.onclick = () => window.open(url, '_blank');
+      btns.append(copy, open);
+      col.appendChild(btns);
+      cols.appendChild(col);
+    });
+    web.appendChild(cols);
+    card.appendChild(web);
+  } else if (r.setupRef) {
+    card.appendChild(el('p', 'hint', 'Für Links und QR-Codes fürs iPhone die Adresse der Webapp in den Einstellungen eintragen.'));
+  } else {
+    card.appendChild(el('p', 'hint', 'Noch nicht über GitHub veröffentlicht – Token in den Einstellungen eintragen und „Veröffentlichen“.'));
+  }
+
+  const test = el('details', 'ltest');
+  test.appendChild(el('summary', '', '🔧 Zum Testen (WLAN / dieser Mac)'));
+  if (r.lanLinks) {
+    test.appendChild(el('p', 'hint', 'Im WLAN – „Start-Webapp“ muss auf dem Mac laufen:'));
+    test.appendChild(linkRow('Komplett:', r.lanLinks.komplett));
+    test.appendChild(linkRow('Senioren:', r.lanLinks.senioren));
+  }
+  test.appendChild(el('p', 'hint', 'Auf diesem Mac:'));
+  test.appendChild(linkRow('Komplett:', r.macLinks.komplett));
+  test.appendChild(linkRow('Senioren:', r.macLinks.senioren));
+  card.appendChild(test);
+
+  if (r.warnings && r.warnings.length) {
+    const ul = el('ul', 'warn');
+    r.warnings.forEach((w) => ul.appendChild(el('li', '', w)));
+    card.appendChild(ul);
+  }
+  return card;
 }
 
 async function showLinks() {
@@ -770,6 +836,7 @@ async function showLinks() {
   try { res = await api('/api/links'); } catch (e) { return toast(e.message, true); }
   if (!res.results.length) body.appendChild(el('p', '', 'Noch keine Playlist angelegt.'));
   if (!settings.hasToken) body.appendChild(el('p', 'hint', 'Für Links „über GitHub“ in den Einstellungen ein Token eintragen und einmal veröffentlichen.'));
+  body.appendChild(appCard());
   res.results.forEach((r) => body.appendChild(linksBox(r)));
   body.appendChild(el('p', 'hint', 'Die Links bleiben gleich. Nach Änderungen an einer Playlist nur „Veröffentlichen“ – die Geräte holen sich die neue Fassung selbst.'));
   dlg.showModal();

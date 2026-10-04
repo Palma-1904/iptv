@@ -16,7 +16,6 @@ import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
-import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -30,27 +29,23 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.media3.common.C;
-import androidx.media3.common.MediaItem;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
-import androidx.media3.common.VideoSize;
-import androidx.media3.datasource.DefaultHttpDataSource;
-import androidx.media3.datasource.HttpDataSource;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
-
 import org.json.JSONArray;
+import org.videolan.libvlc.LibVLC;
+import org.videolan.libvlc.Media;
+import org.videolan.libvlc.MediaPlayer;
+import org.videolan.libvlc.util.VLCVideoLayout;
+
 import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * Eingebauter Player (ExoPlayer) für die Fire-TV-App.
+ * Eingebauter Player (libVLC – gleiche Technik wie VLC, spielt alle Tonformate) für die Fire-TV-App.
  *
  * Live:   ▲/▼ Sender davor/danach (innerhalb der Gruppe), ◀/▶ oder ☰ Senderliste, OK Info.
  *         Senderliste: links neben dem verkleinerten Bild, darunter das Programm des markierten
@@ -119,10 +114,11 @@ public class PlayerActivity extends Activity {
     private boolean failed;
     private float textScale = 1f;
 
-    private ExoPlayer player;
+    private LibVLC vlc;
+    private MediaPlayer player;
     private FrameLayout root;
-    private SurfaceView surface;
-    private int videoW, videoH;
+    private VLCVideoLayout surface;
+    private long position, length;   // Filme/Serien: Stand und Länge in ms
     private ProgressBar spinner;
     private TextView status;
     private LinearLayout info;
@@ -172,38 +168,37 @@ public class PlayerActivity extends Activity {
         images = new ImageLoader();
         buildViews();
 
-        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
-                .setUserAgent(USER_AGENT)
-                .setAllowCrossProtocolRedirects(true)
-                .setConnectTimeoutMs(15000)
-                .setReadTimeoutMs(20000);
-        player = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(http))
-                .build();
-        player.setVideoSurfaceView(surface);
-        player.addListener(new Player.Listener() {
-            @Override
-            public void onPlaybackStateChanged(int state) {
-                spinner.setVisibility(state == Player.STATE_BUFFERING ? View.VISIBLE : View.GONE);
-                if (state == Player.STATE_READY) {
+        vlc = new LibVLC(this, new ArrayList<>(Arrays.asList(
+                "--http-reconnect",
+                "--audio-language=de,deu,ger",
+                "--audio-time-stretch")));
+        player = new MediaPlayer(vlc);
+        player.attachViews(surface, null, false, false);
+        player.setEventListener(event -> {
+            switch (event.type) {
+                case MediaPlayer.Event.Buffering:
+                    spinner.setVisibility(event.getBuffering() < 100f ? View.VISIBLE : View.GONE);
+                    break;
+                case MediaPlayer.Event.Playing:
                     retries = 0;
                     failed = false;
+                    spinner.setVisibility(View.GONE);
                     status.setVisibility(View.GONE);
-                } else if (state == Player.STATE_ENDED) {
+                    break;
+                case MediaPlayer.Event.TimeChanged:
+                    position = event.getTimeChanged();
+                    break;
+                case MediaPlayer.Event.LengthChanged:
+                    length = event.getLengthChanged();
+                    break;
+                case MediaPlayer.Event.EndReached:
                     onEnded();
-                }
-            }
-
-            @Override
-            public void onPlayerError(PlaybackException error) {
-                onError(error);
-            }
-
-            @Override
-            public void onVideoSizeChanged(VideoSize size) {
-                videoW = Math.round(size.width * size.pixelWidthHeightRatio);
-                videoH = size.height;
-                layoutVideo();
+                    break;
+                case MediaPlayer.Event.EncounteredError:
+                    onError();
+                    break;
+                default:
+                    break;
             }
         });
 
@@ -281,11 +276,21 @@ public class PlayerActivity extends Activity {
         failed = false;
         status.setVisibility(View.GONE);
         spinner.setVisibility(View.VISIBLE);
-        player.setMediaItem(MediaItem.fromUri(it.url));
-        player.prepare();
-        player.setPlayWhenReady(true);
+        position = 0;
+        length = 0;
+        start(it);
         if (!listOpen()) showInfo();
         if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    private void start(Item it) {
+        Media media = new Media(vlc, Uri.parse(it.url));
+        media.setHWDecoderEnabled(true, false);
+        media.addOption(":http-user-agent=" + USER_AGENT);
+        media.addOption(":network-caching=" + (it.live() ? 2000 : 3000));
+        player.setMedia(media);
+        media.release();
+        player.play();
     }
 
     /** Sender/Folge wechseln: alten Stream sofort beenden, neuen erst nach kurzer Ruhe laden. */
@@ -327,7 +332,7 @@ public class PlayerActivity extends Activity {
     private void onEnded() {
         Item it = items().get(index);
         if (it.live()) {
-            onError(null);
+            onError();
         } else if (index < items().size() - 1) {
             step(1);                       // nächste Folge
         } else {
@@ -335,19 +340,8 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    private void onError(PlaybackException error) {
+    private void onError() {
         Item it = items().get(index);
-        // Live-Stream zu weit zurück: einfach an die aktuelle Stelle springen
-        if (error != null && error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-            player.seekToDefaultPosition();
-            player.prepare();
-            return;
-        }
-        int code = 0;
-        Throwable cause = error == null ? null : error.getCause();
-        if (cause instanceof HttpDataSource.InvalidResponseCodeException) {
-            code = ((HttpDataSource.InvalidResponseCodeException) cause).responseCode;
-        }
         if (retries < 2) {
             retries++;
             showStatus("Verbindung wird erneut aufgebaut …");
@@ -355,32 +349,30 @@ public class PlayerActivity extends Activity {
             final int atGroup = group, at = index;
             handler.postDelayed(() -> {
                 if (atGroup == group && at == index && pendingIndex < 0) {
-                    player.prepare();
-                    player.setPlayWhenReady(true);
+                    player.stop();
+                    start(it);
                 }
             }, 2500);
             return;
         }
         failed = true;
         spinner.setVisibility(View.GONE);
-        String why = code == 403 || code == 458 || code == 509 || code == 429
-                ? "Der Anbieter erlaubt nur ein Gerät gleichzeitig.\nBitte auf den anderen Geräten das Fernsehen beenden."
-                : "„" + it.name + "“ kann gerade nicht abgespielt werden.";
         String keys = it.live() || items().size() > 1
                 ? "\n\n▲ ▼ anderen Sender wählen  ·  OK = in VLC öffnen" : "\n\nOK = in VLC öffnen";
-        showStatus(why + keys);
+        showStatus("„" + it.name + "“ kann gerade nicht abgespielt werden.\n"
+                + "Läuft auf einem anderen Gerät schon Fernsehen? Der Anbieter erlaubt nur eines." + keys);
     }
 
     private void togglePause() {
-        player.setPlayWhenReady(!player.getPlayWhenReady());
-        showInfo();
+        if (player.isPlaying()) player.pause(); else player.play();
+        handler.postDelayed(this::showInfo, 150);
     }
 
     private void seek(long ms) {
-        long dur = player.getDuration();
-        long pos = Math.max(0, player.getCurrentPosition() + ms);
-        if (dur != C.TIME_UNSET) pos = Math.min(pos, Math.max(0, dur - 1000));
-        player.seekTo(pos);
+        long pos = Math.max(0, position + ms);
+        if (length > 0) pos = Math.min(pos, Math.max(0, length - 1000));
+        position = pos;
+        player.setTime(pos);
         showInfo();
     }
 
@@ -507,8 +499,14 @@ public class PlayerActivity extends Activity {
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
         if (player != null) {
+            player.stop();
+            player.detachViews();
             player.release();
             player = null;
+        }
+        if (vlc != null) {
+            vlc.release();
+            vlc = null;
         }
         if (images != null) images.shutdown();
         super.onDestroy();
@@ -535,7 +533,7 @@ public class PlayerActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
         setContentView(root);
 
-        surface = new SurfaceView(this);
+        surface = new VLCVideoLayout(this);
         root.addView(surface, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> layoutVideo());
@@ -562,40 +560,34 @@ public class PlayerActivity extends Activity {
     }
 
     /**
-     * Video im Seitenverhältnis einpassen (schwarze Ränder statt Verzerrung).
-     * Bei offener Senderliste: verkleinert rechts neben der Liste, darunter die Programmvorschau.
+     * Bildbereich: ganzer Bildschirm, bei offener Senderliste verkleinert rechts neben der Liste
+     * (darunter die Programmvorschau). VLC passt das Seitenverhältnis darin selbst an.
      */
     private void layoutVideo() {
         int w = root.getWidth(), h = root.getHeight();
         if (w == 0 || h == 0) return;
-        int bx = 0, by = 0, bw = w, bh = h;
+        FrameLayout.LayoutParams lp;
         if (listOpen()) {
             int pw = listPanel.getLayoutParams().width;
-            bx = pw + dp(32);
-            by = dp(40);
-            bw = Math.max(dp(160), w - bx - dp(40));
-            bh = Math.round(bw * 9f / 16f);
-        }
-        float aspect = videoW > 0 && videoH > 0 ? (float) videoW / videoH : 16f / 9f;
-        int vw = bw, vh = Math.round(bw / aspect);
-        if (vh > bh) {
-            vh = bh;
-            vw = Math.round(bh * aspect);
-        }
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(vw, vh, Gravity.TOP | Gravity.START);
-        lp.leftMargin = bx + (bw - vw) / 2;
-        lp.topMargin = by + (bh - vh) / 2;
-        FrameLayout.LayoutParams old = (FrameLayout.LayoutParams) surface.getLayoutParams();
-        if (old.width != vw || old.height != vh || old.leftMargin != lp.leftMargin || old.topMargin != lp.topMargin
-                || old.gravity != lp.gravity) {
-            surface.setLayoutParams(lp);
-        }
-        if (listOpen()) {
+            int bx = pw + dp(32), by = dp(40);
+            int bw = Math.max(dp(160), w - bx - dp(40));
+            int bh = Math.round(bw * 9f / 16f);
+            lp = new FrameLayout.LayoutParams(bw, bh, Gravity.TOP | Gravity.START);
+            lp.leftMargin = bx;
+            lp.topMargin = by;
             FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(bw, ViewGroup.LayoutParams.WRAP_CONTENT,
                     Gravity.TOP | Gravity.START);
             pl.leftMargin = bx;
             pl.topMargin = by + bh + dp(20);
             preview.setLayoutParams(pl);
+        } else {
+            lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP | Gravity.START);
+        }
+        FrameLayout.LayoutParams old = (FrameLayout.LayoutParams) surface.getLayoutParams();
+        if (old.width != lp.width || old.height != lp.height || old.leftMargin != lp.leftMargin
+                || old.topMargin != lp.topMargin) {
+            surface.setLayoutParams(lp);
         }
     }
 
@@ -689,9 +681,9 @@ public class PlayerActivity extends Activity {
                     ? "▲ ▼  Sender wechseln     ◀ ▶  Senderliste     OK  Info     ↩  Übersicht"
                     : "OK  Info     ↩  Übersicht");
         } else {
-            long pos = player.getCurrentPosition(), dur = player.getDuration();
-            boolean known = dur != C.TIME_UNSET && dur > 0;
-            infoNow.setText((player.getPlayWhenReady() ? "▶  " : "❚❚  Pause   ")
+            long pos = position, dur = length;
+            boolean known = dur > 0;
+            infoNow.setText((player.isPlaying() ? "▶  " : "❚❚  Pause   ")
                     + duration(pos) + (known ? "  /  " + duration(dur) : ""));
             infoProgress.setVisibility(known ? View.VISIBLE : View.GONE);
             if (known) infoProgress.setProgress((int) (1000 * pos / dur));

@@ -67,11 +67,22 @@
   };
   var PREFERRED = ['DE', 'AT', 'CH', 'MULTI'];
 
-  function langRank(l) {
-    var i = PREFERRED.indexOf(l);
-    return i < 0 ? PREFERRED.length : i;
+  // Fassungen aus dem Editor: "DE", "DE 4K", "DE 4K HDR" (normale Qualität zuerst)
+  var QUALITY_RANK = { '': 0, '4K': 1, 'HDR': 2, '4K HDR': 3 };
+  function langParts(l) {
+    var p = String(l || '').split(' ');
+    return { lang: p[0], q: p.slice(1).join(' ') };
   }
-  function langName(l) { return LANG_NAMES[l] || l || 'Standard'; }
+  function langRank(l) {
+    var p = langParts(l);
+    var i = PREFERRED.indexOf(p.lang);
+    return (i < 0 ? PREFERRED.length : i) * 10 + (QUALITY_RANK[p.q] || 0);
+  }
+  function langName(l) {
+    if (!l) return 'Standard';
+    var p = langParts(l);
+    return (LANG_NAMES[p.lang] || p.lang) + (p.q ? ' ' + p.q : '');
+  }
   function byLang(a, b) { return langRank(a.lang) - langRank(b.lang); }
 
   // Filme mit gleicher x-work-Kennung werden ein Eintrag; Deutsch ist die Standardfassung.

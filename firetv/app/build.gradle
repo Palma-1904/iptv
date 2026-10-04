@@ -17,6 +17,17 @@ android {
         versionCode((project.findProperty('versionCode') ?: '1').toString().toInteger())
         versionName '1.' + ((project.findProperty('versionCode') ?: '1').toString())
         buildConfigField 'String', 'START_URL', "\"${startUrl}\""
+        // Fire-TV-Sticks: 32 Bit (ältere) und 64 Bit (neuere) – x86 wird nicht gebraucht
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
+    }
+
+    // Native Bibliotheken komprimiert ins APK (kleinerer Download)
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
     }
 
     buildFeatures {
@@ -47,9 +58,7 @@ android {
     }
 }
 
-// Eingebauter Player (ExoPlayer) für Live-TV, Filme und Serien
+// Eingebauter Player: libVLC (spielt alle Tonformate der Sender: MP2, AC3, E-AC3, AAC)
 dependencies {
-    def media3 = '1.4.1'
-    implementation "androidx.media3:media3-exoplayer:$media3"
-    implementation "androidx.media3:media3-exoplayer-hls:$media3"
+    implementation 'org.videolan.android:libvlc-all:3.6.5'
 }

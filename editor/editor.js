@@ -115,6 +115,7 @@ async function loadCatalog(id, force) {
       const t = parseTitle(it.name);
       it.title = t.title;
       it.lang = t.lang || (it.cc !== '—' && it.cc) || t.suffix || '?';
+      it.q = qualityOf(it);
       it._t = t;
       vod.push(it);
       if (t.year) {
@@ -152,13 +153,20 @@ function langRank(cc) {
 
 // "EN - Dune: Part Two (2024)", "Dark Hearts (2023) (FR)" -> Titel, Jahr, Sprache, Vergleichsschlüssel
 // "[SE] Titel", "|DE| Titel", "EN - Titel", "SE-4K - Titel", "DE-4K-BLURAY-DV - Titel"
-const LANG_PRE = /^\s*-?\s*(?:[[(|]\s*([A-Z]{2,5})\s*[\])|]\s*[-–:|]?\s*|([A-Z]{2,5})(?:[-+][A-Z0-9+]{1,10})*\s*[-–:|]\s+)/;
+const LANG_PRE = /^\s*-?\s*(?:[[(|]\s*([A-Z]{2,5})\s*[\])|]\s*[-–:|]?\s*|([A-Z]{2,5})(?:[-+][A-Z0-9+]{1,10}|\s*-?\s*\[[^\]]{1,20}\])*\s*[-–:|]\s+)/;
+const KNOWN_LANGS = new Set(('DE AT CH EN US UK GB FR ES IT NL PL TR GR PT BR RU SE NO DK FI AL EX EXYU BG HU RO CZ '
+  + 'SK SI HR RS BA IN AR IR KU NF MULTI SC SCA LAT QFR KR JP CN TH VN ID PH IL UA LT LV EE').split(' '));
+// Qualität vor der Sprache: "4K-DE - Titel", "4K - Titel", "[4K] Titel"
+const QUALITY_PRE = /^\s*(?:\[?(?:4K|UHD|FHD)\]?\s*[-–:|]?\s*)+(?=\S)/;
 const LANG_SUF = /\s*[([]([A-Z]{2,3})[)\]]\s*$/;
 function parseTitle(name) {
   let n = name || '';
   let lang = null;      // Kürzel vorne = Sprache der Fassung
   let suffix = null;    // Kürzel hinten = oft nur Produktionsland, daher nachrangig
+  n = n.replace(QUALITY_PRE, '');
   let m = LANG_PRE.exec(n);
+  // "NCIS: Los Angeles", "CSI: Miami": Doppelpunkt nur bei bekannten Sprachkürzeln als Trenner werten
+  if (m && /:\s*$/.test(m[0]) && !KNOWN_LANGS.has(m[1] || m[2])) m = null;
   if (m) { lang = m[1] || m[2]; n = n.slice(m[0].length); }
   while ((m = LANG_SUF.exec(n))) { suffix = suffix || m[1]; n = n.slice(0, m.index); }
   const year = (/\((\d{4})\)/.exec(n) || [])[1] || '';
@@ -170,15 +178,29 @@ function parseTitle(name) {
   return { title: clean + (year ? ` (${year})` : ''), lang, suffix, key: base + '|' + year, base, year };
 }
 
-// Sichtbare Sprachfassungen eines Werks (ausgeblendete Sprachen weg), Deutsch zuerst.
+// Qualität einer Fassung aus Name und Gruppe: "" (normal), "4K", "HDR", "4K HDR"
+function qualityOf(it) {
+  const s = (it.name + ' ' + it.group).toUpperCase();
+  const q = [];
+  if (/(^|[^A-Z0-9])(4K|UHD|2160P?)([^A-Z0-9]|$)/.test(s)) q.push('4K');
+  if (/(^|[^A-Z0-9])(DV|HDR10?\+?|DOLBY VISION)([^A-Z0-9]|$)/.test(s)) q.push('HDR');
+  return q.join(' ');
+}
+const QUALITY_RANK = { '': 0, '4K': 1, 'HDR': 2, '4K HDR': 3 };
+
+// Bezeichnung einer Fassung: Sprache plus Qualität, z. B. "DE", "DE 4K"
+const variantLabel = (v) => v.lang + (v.q ? ' ' + v.q : '');
+
+// Sichtbare Fassungen eines Werks (ausgeblendete Sprachen weg): Deutsch zuerst, je Sprache
+// die normale Qualität vor 4K/HDR (läuft auf mehr Geräten). Je Sprache+Qualität eine Fassung.
 function variantsOf(it) {
   const c = catalogs[it.key.split(':', 1)[0]];
   const hidden = new Set((state.sources.find((s) => it.key.startsWith(s.id + ':')) || {}).hiddenCountries || []);
   const all = (c && it.wk && c.works.get(it.wk)) || [it];
   const seen = new Set();
   return all.filter((v) => !hidden.has(v.lang) && !hidden.has(v.cc))
-    .sort((a, b) => langRank(a.lang) - langRank(b.lang))
-    .filter((v) => !seen.has(v.lang) && seen.add(v.lang)); // je Sprache eine Fassung
+    .sort((a, b) => langRank(a.lang) - langRank(b.lang) || (QUALITY_RANK[a.q || ''] || 0) - (QUALITY_RANK[b.q || ''] || 0))
+    .filter((v) => !seen.has(variantLabel(v)) && seen.add(variantLabel(v)));
 }
 
 const grouping = () => ui.type !== 'live' && $('#by-title').checked;
@@ -389,12 +411,12 @@ function renderChannels() {
     cb.type = 'checkbox';
     cb.checked = ui.selected.has(it.key);
     row.appendChild(cb);
-    row.appendChild(playButton(vs && vs[0] ? vs[0] : it, vs ? `${it.title} (${(vs[0] || it).lang})` : it.name));
+    row.appendChild(playButton(vs && vs[0] ? vs[0] : it, vs ? `${it.title} (${variantLabel(vs[0] || it)})` : it.name));
     row.appendChild(logo(it.logo));
     row.appendChild(el('span', 'nm', vs ? it.title : it.name));
     const meta = el('span', 'meta');
     if (ui.search && !vs) meta.appendChild(document.createTextNode(it.group + ' '));
-    if (vs) vs.forEach((v) => meta.appendChild(el('span', 'lang' + (langRank(v.lang) < PREFERRED.length ? ' pref' : ''), v.lang)));
+    if (vs) vs.forEach((v) => meta.appendChild(el('span', 'lang' + (langRank(v.lang) < PREFERRED.length ? ' pref' : ''), variantLabel(v))));
     if (it.tvgId) meta.appendChild(el('span', 'epg', 'EPG'));
     row.appendChild(meta);
     row.onclick = () => {
@@ -555,7 +577,7 @@ function renderPlaylist() {
       row.appendChild(nm);
       if (item.variants) {
         const langs = el('span', 'meta');
-        item.variants.forEach((v) => langs.appendChild(el('span', 'lang' + (langRank(v.lang) < PREFERRED.length ? ' pref' : ''), v.lang)));
+        item.variants.forEach((v) => langs.appendChild(el('span', 'lang' + (langRank(v.lang.split(' ')[0]) < PREFERRED.length ? ' pref' : ''), v.lang)));
         row.appendChild(langs);
       } else {
         row.appendChild(ch && ch.tvgId ? el('span', 'epg', 'EPG') : el('span'));
@@ -624,7 +646,7 @@ function toPlaylistItem(it) {
   if (!grouping() || !it.wk) return { key: it.key, label: it.name, sg: it.group };
   const vs = variantsOf(it);
   if (!vs.length) return null; // alle Sprachen ausgeblendet
-  return { key: vs[0].key, label: it.title, variants: vs.map((v) => ({ key: v.key, lang: v.lang })) };
+  return { key: vs[0].key, label: it.title, variants: vs.map((v) => ({ key: v.key, lang: variantLabel(v) })) };
 }
 
 function catalogEntries(keys) {
@@ -1128,7 +1150,7 @@ function repairPlaylists(sid) {
       const work = c.works.get(typeOf(item.key) + '|' + t.base + '|' + t.year) || [];
       item.variants.forEach((v) => {
         if (c.byKey.has(v.key)) return;
-        const hit = work.find((w) => w.lang === v.lang);
+        const hit = work.find((w) => variantLabel(w) === v.lang) || work.find((w) => w.lang === v.lang.split(' ')[0]);
         if (hit) { v.key = hit.key; fixed++; } else missing++;
       });
       item.variants = item.variants.filter((v) => c.byKey.has(v.key));
@@ -1373,14 +1395,20 @@ async function start() {
   } catch (e) {
     toast(e.message, true);
   }
-  // Bestehende Einträge an die aktuelle Erkennung anpassen: Sprachkürzel und Titel ("-DE - Titel" -> "Titel")
+  // Bestehende Einträge an die aktuelle Erkennung anpassen: Titel ("-DE - Titel" -> "Titel") und
+  // Fassungen neu ermitteln (alle Qualitäten je Sprache, z. B. "DE" und "DE 4K")
   let langFixed = 0;
   state.playlists.forEach((pl) => pl.groups.forEach((g) => g.items.forEach((i) => {
     if (!i.variants) return;
-    i.variants.forEach((v) => {
-      const it = lookup(v.key);
-      if (it && it.lang && it.lang !== v.lang) { v.lang = it.lang; langFixed++; }
-    });
+    const it = [i.key, ...i.variants.map((v) => v.key)].map(lookup).find((x) => x && x.wk);
+    if (it) {
+      const vs = variantsOf(it).map((v) => ({ key: v.key, lang: variantLabel(v) }));
+      if (vs.length && JSON.stringify(vs) !== JSON.stringify(i.variants)) {
+        i.variants = vs;
+        i.key = vs[0].key;
+        langFixed++;
+      }
+    }
     if (i.label && LANG_PRE.test(i.label)) { i.label = parseTitle(i.label).title; langFixed++; }
   })));
   if (langFixed) save();

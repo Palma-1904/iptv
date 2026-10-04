@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 10  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 11  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -571,6 +571,37 @@ def auto_publish_loop():
             print('Automatisch veröffentlichen fehlgeschlagen:', e)
 
 
+def switch_source_map(keys, target_id):
+    """Playlist-Einträge auf einen anderen Zugang desselben Anbieters umstellen:
+    gleiche Stream-Nummer im Ziel-Katalog, sonst gleicher Name und Typ. Liefert {alt: neu} und Fehlende."""
+    target = load_catalog(target_id)
+    if not target:
+        raise UserError('Den Ziel-Zugang bitte zuerst laden („Aktualisieren“).')
+    by_key = {it['key']: it for it in target['items']}
+    by_name = {}
+    for it in target['items']:
+        by_name.setdefault((it['type'], (it['name'] or '').strip().lower()), it['key'])
+    olds = {}
+    mapping, missing = {}, []
+    for k in keys:
+        sid, rest = k.split(':', 1)
+        if sid == target_id:
+            continue
+        nk = f'{target_id}:{rest}'
+        if nk in by_key:
+            mapping[k] = nk
+            continue
+        if sid not in olds:
+            olds[sid] = {it['key']: it for it in (load_catalog(sid) or {'items': []})['items']}
+        old = olds[sid].get(k)
+        hit = old and by_name.get((old['type'], (old['name'] or '').strip().lower()))
+        if hit:
+            mapping[k] = hit
+        else:
+            missing.append(old['name'] if old else k)
+    return {'mapping': mapping, 'missing': missing}
+
+
 def load_catalog(source_id):
     return read_json(os.path.join(CACHE, f'catalog_{source_id}.json'), None)
 
@@ -679,7 +710,7 @@ def build_playlist(pl, state, warnings):
             if item.get('variants'):
                 # Ein Werk in mehreren Sprachen: gleiche x-work-Kennung, je Fassung x-lang.
                 title = item.get('name') or item.get('label') or ch['name']
-                work = attr(item['key'])
+                work = attr(item['key'].split(':', 1)[1])   # ohne Quelle: Favoriten bleiben beim Zugangswechsel
                 for v in item['variants']:
                     vch = lookup(v['key'])
                     if not vch:
@@ -1282,6 +1313,10 @@ class Handler(SimpleHTTPRequestHandler):
                         x['ext'] = m.group(1).lower()
                     items.append(x)
                 return self.send_json({'updated': cat['updated'], 'items': items})
+            if method == 'POST' and path == '/api/switch-source':
+                b = self.body()
+                find(load_state()['sources'], b.get('source'), 'Quelle')
+                return self.send_json(switch_source_map(b.get('keys') or [], b['source']))
             if method == 'POST' and path == '/api/catalog-part':
                 # Nur bestimmte Einträge (z. B. die in Playlists verwendeten) – statt 70 MB je Quelle
                 b = self.body()

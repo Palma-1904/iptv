@@ -361,6 +361,8 @@
   try {
     var savedFavs = JSON.parse(localStorage.getItem(FAV_STORE));
     if (savedFavs) favs = { movie: savedFavs.movie || [], series: savedFavs.series || [] };
+    // Film-Kennung früher mit Zugang ("abc123:movie:42"), jetzt ohne ("movie:42")
+    favs.movie = favs.movie.map(function (k) { return String(k).replace(/^[a-z0-9]+:(movie|series):/, '$1:'); });
   } catch (err) { /* privat-Modus */ }
 
   // Film: gleiches Werk in allen Sprachen; Serie: Gruppe = Serientitel

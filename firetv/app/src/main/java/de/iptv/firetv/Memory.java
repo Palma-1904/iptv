@@ -27,6 +27,13 @@ final class Memory {
     private final List<String> recent = new ArrayList<>();
     private final LinkedHashSet<String> favLive = new LinkedHashSet<>();
 
+    /** Adresse ohne Server und Zugangsdaten: ".../movie/USER/PASS/42.mkv" -> "movie/42.mkv".
+     *  So bleibt alles erhalten, wenn eine Playlist auf einen anderen Zugang umgestellt wird. */
+    static String norm(String url) {
+        if (url == null) return "";
+        return url.replaceFirst("^https?://[^/]+/(live|movie|series)/[^/]+/[^/]+/", "$1/");
+    }
+
     static synchronized Memory get(Context c) {
         if (instance == null) instance = new Memory(c.getApplicationContext());
         return instance;
@@ -34,17 +41,23 @@ final class Memory {
 
     private Memory(Context c) {
         prefs = c.getSharedPreferences("iptv", Context.MODE_PRIVATE);
-        JSONObject r;
+        JSONObject r = new JSONObject();
         try {
-            r = new JSONObject(prefs.getString("resume", "{}"));
-        } catch (Exception e) {
-            r = new JSONObject();
+            JSONObject raw = new JSONObject(prefs.getString("resume", "{}"));
+            for (Iterator<String> it = raw.keys(); it.hasNext(); ) {
+                String k = it.next();
+                r.put(norm(k), raw.get(k));
+            }
+        } catch (Exception ignored) {
+            // leer anfangen
         }
         resume = r;
-        readList("recent", recent);
+        List<String> rec = new ArrayList<>();
+        readList("recent", rec);
+        for (String u : rec) if (!recent.contains(norm(u))) recent.add(norm(u));
         List<String> f = new ArrayList<>();
         readList("favLive", f);
-        favLive.addAll(f);
+        for (String u : f) favLive.add(norm(u));
     }
 
     private void readList(String key, List<String> into) {
@@ -66,7 +79,7 @@ final class Memory {
 
     /** [Stelle, Länge, Zeitpunkt] oder null. */
     long[] resume(String url) {
-        JSONArray a = resume.optJSONArray(url);
+        JSONArray a = resume.optJSONArray(norm(url));
         if (a == null) return null;
         return new long[]{a.optLong(0), a.optLong(1), a.optLong(2)};
     }
@@ -80,7 +93,7 @@ final class Memory {
         if (url == null || len <= 0 || pos < 0) return;
         if (pos < 60000 && !finished(new long[]{pos, len, 0})) return;   // unter 1 Minute: nicht merken
         try {
-            resume.put(url, new JSONArray().put(Math.min(pos, len)).put(len).put(System.currentTimeMillis()));
+            resume.put(norm(url), new JSONArray().put(Math.min(pos, len)).put(len).put(System.currentTimeMillis()));
             prune();
             prefs.edit().putString("resume", resume.toString()).apply();
         } catch (Exception ignored) {
@@ -110,6 +123,7 @@ final class Memory {
     }
 
     void addRecent(String url) {
+        url = norm(url);
         recent.remove(url);
         recent.add(0, url);
         while (recent.size() > MAX_RECENT) recent.remove(recent.size() - 1);
@@ -119,7 +133,7 @@ final class Memory {
     // ---------- Lieblingssender ----------
 
     boolean isFavLive(String url) {
-        return favLive.contains(url);
+        return favLive.contains(norm(url));
     }
 
     Iterable<String> favLive() {
@@ -128,6 +142,7 @@ final class Memory {
 
     /** Umschalten; liefert den neuen Zustand. */
     boolean toggleFavLive(String url) {
+        url = norm(url);
         boolean on = !favLive.remove(url);
         if (on) favLive.add(url);
         writeList("favLive", favLive);

@@ -98,7 +98,9 @@
       build: function () { return { n: 'Übersicht', c: t.root }; },
       pathOf: function (e) { return t.paths.get(e) || null; },
       pathOfUrl: function (url) {
-        var hit = allEntries.find(function (e) { return e.url === url; });
+        // Zugangsdaten in der Adresse ignorieren (Playlist kann auf anderen Zugang umgestellt sein)
+        var norm = function (u) { return String(u || '').replace(/^https?:\/\/[^/]+\/(live|movie|series)\/[^/]+\/[^/]+\//, '$1/'); };
+        var hit = allEntries.find(function (e) { return norm(e.url) === norm(url); });
         return hit ? t.paths.get(hit) || null : null;
       }
     };

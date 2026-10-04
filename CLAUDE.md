@@ -51,6 +51,9 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   lädt app.apk und öffnet den Installer (FileProvider `de.iptv.firetv.files`, Recht „unbekannte Apps installieren“).
 - **Auffrischen im Player**: alle 2 h ruft der Player `MainActivity.requestRefresh()` → Webapp `IPTV.nativeRefresh()`
   lädt Liste+EPG neu und schickt einen neuen Baum; der Player übernimmt ihn ohne Unterbrechung (`adopt`).
+- **Zugang je Playlist**: Auswahlfeld „Zugang“ in der Toolbar stellt alle Einträge einer Playlist auf eine andere
+  Quelle um (`/api/switch-source`, gleiche Stream-Nummer, sonst Name). Jeder Zugang = eigene Verbindung.
+  Kennungen ohne Zugang: x-work = `typ:id`, App-Speicher `Memory.norm(url)` → Favoriten/Weiterschauen bleiben.
 - **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.
 
 ## Geheimnisse – nie ins Repo

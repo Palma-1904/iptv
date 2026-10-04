@@ -275,8 +275,9 @@ public class PlayerActivity extends Activity {
         }
     };
 
+    /** Eintrag zu einer Adresse (Zugangsdaten werden ignoriert, siehe Memory.norm). */
     private static Node findLeaf(Node n, String url) {
-        if (n.item != null) return url.equals(n.item.url) ? n : null;
+        if (n.item != null) return Memory.norm(url).equals(Memory.norm(n.item.url)) ? n : null;
         for (Node c : n.children) {
             Node f = findLeaf(c, url);
             if (f != null) return f;

@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 10; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 11; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -98,6 +98,62 @@ function lookup(key) {
 }
 
 // ---------- Quellen ----------
+
+// ---------- Zugang (Quelle) einer Playlist ----------
+
+function plKeys(pl) {
+  const keys = [];
+  pl.groups.forEach((g) => g.items.forEach((i) => {
+    keys.push(i.key);
+    (i.variants || []).forEach((v) => keys.push(v.key));
+  }));
+  return keys;
+}
+
+// Auswahlfeld: Zugang, über den die Playlist läuft („gemischt“, wenn mehrere)
+function renderPlSource() {
+  const sel = $('#pl-source');
+  const pl = playlist();
+  sel.textContent = '';
+  sel.disabled = !pl;
+  if (!pl) return;
+  const used = new Set(plKeys(pl).map((k) => k.split(':', 1)[0]));
+  if (used.size !== 1) sel.appendChild(el('option', '', used.size ? 'gemischt' : '–'));
+  state.sources.forEach((s) => {
+    const o = el('option', '', s.name);
+    o.value = s.id;
+    sel.appendChild(o);
+  });
+  sel.value = used.size === 1 ? [...used][0] : '';
+  if (used.size !== 1) sel.selectedIndex = 0;
+}
+
+async function switchPlSource(target) {
+  const pl = playlist();
+  const src = state.sources.find((s) => s.id === target);
+  if (!pl || !src) return;
+  if (!confirm(`Playlist „${pl.name}“ auf den Zugang „${src.name}“ umstellen?\n\n`
+    + 'Gruppen, Reihenfolge und Fassungen bleiben gleich; die Geräte nutzen danach die Verbindung von „'
+    + src.name + '“. Zum Übernehmen danach „Veröffentlichen“.')) return renderPlSource();
+  let res;
+  try {
+    res = await busy(() => api('/api/switch-source', { source: target, keys: plKeys(pl) }));
+  } catch (e) {
+    renderPlSource();
+    return toast(e.message, true);
+  }
+  const m = res.mapping;
+  pl.groups.forEach((g) => g.items.forEach((i) => {
+    if (m[i.key]) i.key = m[i.key];
+    (i.variants || []).forEach((v) => { if (m[v.key]) v.key = m[v.key]; });
+  }));
+  save();
+  if (target !== ui.sourceId) await loadCatalog(target, true, sourceKeys(target)).catch(() => null);
+  renderAll();
+  toast(`${Object.keys(m).length} Einträge auf „${src.name}“ umgestellt`
+    + (res.missing.length ? ` – ${res.missing.length} gibt es dort nicht (bleiben beim alten Zugang): ${res.missing.slice(0, 5).join(', ')}` : '')
+    + '. Jetzt „Veröffentlichen“.', !!res.missing.length);
+}
 
 // Alle Schlüssel einer Quelle, die in Playlists vorkommen (auch Sprachfassungen)
 function sourceKeys(sid) {
@@ -1616,6 +1672,7 @@ function renderAll() {
   renderPlaylist();
   renderSrcInfo();
   renderDeviceWarning();
+  renderPlSource();
   $('#pl-devices').value = (playlist() || {}).devices || 1;
   $('#pl-devices').disabled = !playlist();
 }
@@ -1658,6 +1715,7 @@ function bind() {
     renderDeviceWarning();
   };
   $('#pl-add').onclick = newPlaylist;
+  $('#pl-source').onchange = (ev) => { if (ev.target.value) switchPlSource(ev.target.value); };
   $('#pl-rename').onclick = () => {
     const pl = playlist();
     if (!pl) return;

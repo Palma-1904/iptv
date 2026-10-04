@@ -39,6 +39,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   SharedPreferences, sonst erster), Zurück verlässt den Player nicht, ☰ kurz = Senderliste, ☰ 3 s = Einrichtung
   (überall in der App, auch auf dem Startbildschirm). Im Browser bleibt die Kachelansicht.
   Ohne Live-Sender (z. B. nur Serien) öffnet der Player die Übersicht zur Auswahl (Pfad zu einer Ebene statt Eintrag).
+- **Gerätespeicher** (`Memory.java`, SharedPreferences): Weiterschauen-Stellen (ab 1 min, ✓ ab 95 %, nächste Folge
+  wird in der Liste vorgewählt), „🕘 Zuletzt gesehen“ (12) und „★ Lieblingssender“ (OK lange in der Liste) oben in der Übersicht.
+  Zifferntasten = Sendernummer in der Gruppe. Schlaf-Timer: 3 h ohne Taste → Vorwarnung, nach 1 min Stopp.
+- **Auto-Update** (`Updater.java`): Workflow schreibt `app-version.txt` (= run_number = versionCode); App prüft alle 6 h,
+  lädt app.apk und öffnet den Installer (FileProvider `de.iptv.firetv.files`, Recht „unbekannte Apps installieren“).
 - **Auffrischen im Player**: alle 2 h ruft der Player `MainActivity.requestRefresh()` → Webapp `IPTV.nativeRefresh()`
   lädt Liste+EPG neu und schickt einen neuen Baum; der Player übernimmt ihn ohne Unterbrechung (`adopt`).
 - **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.

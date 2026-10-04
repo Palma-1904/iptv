@@ -44,7 +44,10 @@ jobs:
         working-directory: firetv
         run: gradle --no-daemon assembleRelease -PstartUrl="${{ steps.pages.outputs.base_url }}/" -PversionCode=${{ github.run_number }}
       - name: App zur Seite legen
-        run: cp firetv/app/build/outputs/apk/release/app-release.apk _site/app.apk
+        run: |
+          cp firetv/app/build/outputs/apk/release/app-release.apk _site/app.apk
+          # Versionsnummer für das automatische Update der App
+          echo "${{ github.run_number }}" > _site/app-version.txt
 
       - uses: actions/upload-pages-artifact@v3
         with:

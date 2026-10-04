@@ -214,6 +214,16 @@ public class PlayerActivity extends Activity {
     private ListView list;
     private ListAdapter adapter;
     private Node browse;            // Ebene, die die Liste gerade zeigt
+    private Node displayRoot;       // Übersicht mit „Zuletzt gesehen“ und „Lieblingssender“ davor
+    private Memory mem;
+    private long pendingSeek = -1;  // Weiterschauen: nach dem Start an diese Stelle springen
+    private long lastSave;
+    private String digits = "";     // Zifferntasten: eingegebene Sendernummer
+    private TextView digitBox;
+    private long lastInput = System.currentTimeMillis();
+    private boolean sleeping, sleepWarned;
+    private static final long SLEEP_MS = 3 * 3600 * 1000L;   // Schlaf-Timer: 3 Stunden ohne Taste
+    private static final long SLEEP_GRACE = 60 * 1000L;      // dann 1 Minute Vorwarnung
     private Node browseStart;       // Start ohne laufenden Eintrag: Liste an dieser Stelle öffnen
     private String treeSeen;        // Fassung des Baums, mit der der Player arbeitet
     private LinearLayout preview;
@@ -296,6 +306,7 @@ public class PlayerActivity extends Activity {
             return;
         }
         images = new ImageLoader();
+        mem = Memory.get(this);
         buildViews();
 
         vlc = new LibVLC(this, new ArrayList<>(Arrays.asList(
@@ -314,9 +325,15 @@ public class PlayerActivity extends Activity {
                     failed = false;
                     spinner.setVisibility(View.GONE);
                     status.setVisibility(View.GONE);
+                    if (pendingSeek > 0) {            // Weiterschauen
+                        player.setTime(pendingSeek);
+                        position = pendingSeek;
+                        pendingSeek = -1;
+                    }
                     break;
                 case MediaPlayer.Event.TimeChanged:
                     position = event.getTimeChanged();
+                    if (System.currentTimeMillis() - lastSave > 15000) saveResume();
                     break;
                 case MediaPlayer.Event.LengthChanged:
                     length = event.getLengthChanged();
@@ -341,6 +358,8 @@ public class PlayerActivity extends Activity {
         handler.post(tick);
         handler.postDelayed(refresh, REFRESH_MS);
         handler.postDelayed(adopt, ADOPT_MS);
+        handler.postDelayed(sleepCheck, 60000);
+        handler.postDelayed(() -> Updater.check(this), 20000);
     }
 
     private static Item readItem(JSONObject j) throws Exception {
@@ -461,9 +480,47 @@ public class PlayerActivity extends Activity {
         spinner.setVisibility(View.VISIBLE);
         position = 0;
         length = 0;
-        start(it);
+        pendingSeek = -1;
+        sleeping = false;
+        mem.addRecent(it.url);
+        long[] r = it.live() ? null : mem.resume(it.url);
+        if (r != null && r[0] > 60000 && !Memory.finished(r)) askResume(it, r[0]);
+        else start(it);
         if (!listOpen()) showInfo();
         if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    /** Film/Folge schon angefangen: fortsetzen oder von vorne? */
+    private void askResume(Item it, long pos) {
+        spinner.setVisibility(View.GONE);
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle("Weiterschauen?")
+                .setMessage("„" + (it.heading != null ? it.heading : it.name) + "“\nzuletzt bei " + duration(pos))
+                .setPositiveButton("Fortsetzen", (d, w) -> {
+                    pendingSeek = pos;
+                    spinner.setVisibility(View.VISIBLE);
+                    start(it);
+                })
+                .setNegativeButton("Von vorne", (d, w) -> {
+                    spinner.setVisibility(View.VISIBLE);
+                    start(it);
+                })
+                .setOnCancelListener(d -> {
+                    spinner.setVisibility(View.VISIBLE);
+                    start(it);
+                })
+                .create();
+        dlg.show();
+        android.widget.Button b = dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE);
+        if (b != null) b.requestFocus();
+    }
+
+    /** Stelle des laufenden Films/der laufenden Folge merken. */
+    private void saveResume() {
+        lastSave = System.currentTimeMillis();
+        if (idle() || pendingIndex >= 0) return;
+        Item it = items().get(index);
+        if (!it.live() && length > 0) mem.putResume(it.url, position, length);
     }
 
     private void start(Item it) {
@@ -491,6 +548,7 @@ public class PlayerActivity extends Activity {
             showInfo();
             return;
         }
+        saveResume();
         pendingIndex = to;
         player.stop();
         spinner.setVisibility(View.VISIBLE);
@@ -504,6 +562,7 @@ public class PlayerActivity extends Activity {
     private void jumpTo(Node leaf) {
         if (!idle() && leaf.parent == ctx && leaf.item == items().get(index) && pendingIndex < 0 && !failed) return;
         handler.removeCallbacks(tune);
+        saveResume();
         player.stop();
         pendingIndex = -1;
         retries = 0;
@@ -516,6 +575,7 @@ public class PlayerActivity extends Activity {
         if (it.live()) {
             onError();
         } else if (index < items().size() - 1) {
+            if (length > 0) mem.putResume(it.url, length, length);   // gesehen
             step(1);                       // nächste Folge
         } else {
             finish();
@@ -578,6 +638,19 @@ public class PlayerActivity extends Activity {
     /** Manche Fernbedienungen (z. B. Fire-TV-App auf dem Handy) senden Escape statt Zurück. */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        lastInput = System.currentTimeMillis();
+        if (sleepWarned && !sleeping) {            // Vorwarnung: jede Taste = „ich schaue noch“
+            sleepWarned = false;
+            status.setVisibility(View.GONE);
+        }
+        if (sleeping) {                            // angehalten: jede Taste startet wieder
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                sleeping = false;
+                status.setVisibility(View.GONE);
+                if (!idle()) play();
+            }
+            return true;
+        }
         if (event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE) {
             if (event.getAction() == KeyEvent.ACTION_UP) onBackPressed();
             return true;
@@ -615,6 +688,11 @@ public class PlayerActivity extends Activity {
                 default:
                     return super.onKeyDown(keyCode, event);
             }
+        }
+        int digit = digitOf(keyCode);
+        if (digit >= 0 && current() != null && current().live()) {
+            enterDigit(digit);
+            return true;
         }
         if (idle()) {             // noch nichts gewählt: jede Taste öffnet die Auswahl
             openList();
@@ -667,6 +745,64 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    private static int digitOf(int keyCode) {
+        if (keyCode >= KeyEvent.KEYCODE_0 && keyCode <= KeyEvent.KEYCODE_9) return keyCode - KeyEvent.KEYCODE_0;
+        if (keyCode >= KeyEvent.KEYCODE_NUMPAD_0 && keyCode <= KeyEvent.KEYCODE_NUMPAD_9) return keyCode - KeyEvent.KEYCODE_NUMPAD_0;
+        return -1;
+    }
+
+    /** Zifferntasten: Sendernummer in der aktuellen Gruppe; nach 1,5 s Pause wird umgeschaltet. */
+    private final Runnable digitGo = () -> {
+        int n;
+        try {
+            n = Integer.parseInt(digits);
+        } catch (NumberFormatException e) {
+            n = 0;
+        }
+        digits = "";
+        digitBox.setVisibility(View.GONE);
+        if (n < 1 || n > items().size()) {
+            Toast.makeText(this, "Keinen Sender mit dieser Nummer", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (n - 1 == index && pendingIndex < 0) return;
+        Node leaf = null;
+        for (Node c : ctx.children) if (c.item == items().get(n - 1)) leaf = c;
+        if (leaf != null) jumpTo(leaf);
+    };
+
+    private void enterDigit(int d) {
+        if (digits.length() >= 4) digits = "";
+        digits += d;
+        digitBox.setText(digits);
+        digitBox.setVisibility(View.VISIBLE);
+        handler.removeCallbacks(digitGo);
+        handler.postDelayed(digitGo, 1500);
+    }
+
+    /** Schlaf-Timer: 3 Stunden ohne Taste -> Vorwarnung, nach 1 Minute Wiedergabe anhalten (Verbindung frei). */
+    private final Runnable sleepCheck = new Runnable() {
+        @Override
+        public void run() {
+            handler.postDelayed(this, 30000);
+            if (sleeping || idle() || !player.isPlaying()) return;
+            long quiet = System.currentTimeMillis() - lastInput;
+            if (quiet >= SLEEP_MS + SLEEP_GRACE) {
+                saveResume();
+                player.stop();
+                sleeping = true;
+                sleepWarned = false;
+                closeList();
+                info.setVisibility(View.GONE);
+                showStatus("Wiedergabe angehalten – seit 3 Stunden wurde keine Taste gedrückt.\n\n"
+                        + "Zum Weiterschauen eine beliebige Taste drücken.");
+            } else if (quiet >= SLEEP_MS && !sleepWarned) {
+                sleepWarned = true;
+                showStatus("Läuft noch jemand?\n\nBitte eine Taste drücken –\nsonst endet die Wiedergabe in einer Minute.");
+            }
+        }
+    };
+
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU) {
@@ -706,6 +842,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (mem != null && player != null) saveResume();
         handler.removeCallbacksAndMessages(null);
         if (player != null) {
             player.stop();
@@ -766,6 +903,18 @@ public class PlayerActivity extends Activity {
 
         buildInfo();
         buildList();
+
+        digitBox = text(44, Color.WHITE, true);
+        digitBox.setPadding(dp(24), dp(8), dp(24), dp(8));
+        GradientDrawable db = new GradientDrawable();
+        db.setColor(PANEL);
+        db.setCornerRadius(dp(12));
+        digitBox.setBackground(db);
+        digitBox.setVisibility(View.GONE);
+        FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
+        dlp.setMargins(0, dp(32), dp(40), 0);
+        root.addView(digitBox, dlp);
     }
 
     /**
@@ -1034,7 +1183,59 @@ public class PlayerActivity extends Activity {
     }
 
     /** Liste zeigt die Einträge von n; Auswahl auf select (oder dem ersten). */
+    /** Übersicht: davor „Zuletzt gesehen“ und „Lieblingssender“ (aus dem Gerätespeicher). */
+    private Node buildDisplayRoot() {
+        Node d = new Node(rootNode.name);
+        Node fav = new Node("★ Lieblingssender");
+        for (String url : mem.favLive()) {
+            Node leaf = findLeaf(rootNode, url);
+            if (leaf != null) fav.add(copyLeaf(leaf));
+        }
+        Node recent = new Node("🕘 Zuletzt gesehen");
+        for (String url : mem.recent()) {
+            Node leaf = findLeaf(rootNode, url);
+            if (leaf != null) recent.add(copyLeaf(leaf));
+        }
+        if (!fav.children.isEmpty()) d.add(fav);
+        if (!recent.children.isEmpty()) d.add(recent);
+        d.children.addAll(rootNode.children);   // Eltern der Bereiche bleiben rootNode
+        displayRoot = d;
+        return d;
+    }
+
+    private static Node copyLeaf(Node leaf) {
+        Node c = new Node(leaf.item.heading != null ? leaf.item.heading : leaf.name);
+        c.item = leaf.item;
+        c.favKey = leaf.favKey != null ? leaf.favKey : leaf.parent != null ? leaf.parent.favKey : null;
+        c.favType = leaf.favType != null ? leaf.favType : leaf.parent != null ? leaf.parent.favType : null;
+        return c;
+    }
+
+    /** Nächste Folge vorschlagen: nach der zuletzt gesehenen, sonst die angefangene. */
+    private Node suggestEpisode(Node n) {
+        Node best = null;
+        long bestTs = 0;
+        int bestIdx = -1;
+        for (int i = 0; i < n.children.size(); i++) {
+            Node c = n.children.get(i);
+            if (c.item == null || !"series".equals(c.item.type)) return null;
+            long[] r = mem.resume(c.item.url);
+            if (r != null && r[2] > bestTs) {
+                bestTs = r[2];
+                best = c;
+                bestIdx = i;
+            }
+        }
+        if (best == null) return null;
+        if (Memory.finished(mem.resume(best.item.url)) && bestIdx + 1 < n.children.size()) {
+            return n.children.get(bestIdx + 1);
+        }
+        return best;
+    }
+
     private void showNode(Node n, Node select) {
+        if (n == rootNode || n == displayRoot) n = buildDisplayRoot();
+        if (select == null) select = suggestEpisode(n);
         browse = n;
         listTitle.setText(n.name);
         boolean leaves = !n.children.isEmpty() && n.children.get(0).item != null;
@@ -1140,10 +1341,17 @@ public class PlayerActivity extends Activity {
 
     /** Favorit des Eintrags (oder des Films/der Serie darüber) umschalten, überall im Baum anzeigen. */
     private void toggleFav(Node n) {
+        if (n.item != null && n.item.live()) {
+            boolean on = mem.toggleFavLive(n.item.url);
+            adapter.notifyDataSetChanged();
+            Toast.makeText(this, on ? "★ Lieblingssender – steht jetzt oben in der Übersicht"
+                    : "☆ Kein Lieblingssender mehr", Toast.LENGTH_SHORT).show();
+            return;
+        }
         Node f = n;
         while (f != null && f.favKey == null) f = f.parent;
         if (f == null) {
-            Toast.makeText(this, "Favoriten gibt es für Filme und Serien.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Favoriten gibt es für Sender, Filme und Serien.", Toast.LENGTH_SHORT).show();
             return;
         }
         boolean on = !f.fav;
@@ -1212,8 +1420,9 @@ public class PlayerActivity extends Activity {
             row.num.setText(isPlaying ? "▶" : String.valueOf(position + 1));
             row.num.setTextColor(isPlaying ? ROYAL_LIGHT : MUTED);
             row.logo.setVisibility(it.logo == null || it.logo.isEmpty() ? View.GONE : View.VISIBLE);
-            row.name.setText(n.fav ? "★ " + n.name : n.name);
-            String now = it.nowTitle();
+            boolean star = n.fav || (it.live() && mem.isFavLive(it.url));
+            row.name.setText(star ? "★ " + n.name : n.name);
+            String now = it.live() ? it.nowTitle() : progressText(it);
             row.now.setText(now);
             row.now.setVisibility(now.isEmpty() ? View.GONE : View.VISIBLE);
             images.load(it.logo, row.logo);
@@ -1221,10 +1430,19 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    /** Gibt es in dieser Ebene Filme/Serien (Favoriten möglich)? */
+    /** Filme/Folgen: „✓ gesehen“ bzw. „▶ 42 % gesehen“. */
+    private String progressText(Item it) {
+        long[] r = mem.resume(it.url);
+        if (r == null || r[1] <= 0) return "";
+        if (Memory.finished(r)) return "✓ gesehen";
+        return "▶ " + Math.max(1, Math.round(100.0 * r[0] / r[1])) + " % gesehen";
+    }
+
+    /** Gibt es in dieser Ebene Sender, Filme oder Serien (Favoriten möglich)? */
     private static boolean hasFav(Node n) {
         for (Node c : n.children) {
             if (c.favKey != null) return true;
+            if (c.item != null && c.item.live()) return true;
             if (c.item != null && n.favKey != null) return true;
         }
         return n.favKey != null;

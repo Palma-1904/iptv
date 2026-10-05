@@ -104,23 +104,31 @@ Alte öffentliche Repos `tv`/`tv2` wurden gelöscht; deren Zugänge existieren n
 TRX (Xtream, Server `http://line.trxdnscloud.ru`): **nur 1 gleichzeitige Verbindung**. Abo bis 26.10.2026.
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
-## Stand / nächste Schritte (4.10.2026)
+## Stand / nächste Schritte (5.10.2026)
+- Online: App **39** (alles bis „Fehlermeldung eines Auftrags“). Lokal committet, **noch nicht gepusht**:
+  Editor-Anzeige App-Stand (`/api/app-status`, Knopf `#appver`: grün online, gelb wird gebaut/veröffentlicht, rot
+  fehlgeschlagen, „n nicht gepusht“ per `git rev-list @{u}..HEAD`; GitHub-API ohne Token), Server VERSION 15.
+  → Thomas: Editor neu starten (Start-Editor.command), dann pushen (wird App 40).
+- Editor-Fix: `followJob` liest `/api/job` ohne `api()` (Feld „error“ eines fehlgeschlagenen Auftrags ist kein
+  Abruffehler) – vorher hing das Fenster bei „Start …“, z. B. wenn der Zugang belegt war.
+- Senderprüfung TKH (4.10. abends): 225 geprüft, 1 ohne Bild: „DE| DAZN 1 ᴴᴰ“ → Ersatz „DE| DAZN 1 SD“ läuft
+  (in „Sender prüfen“ → Ersetzen, noch nicht übernommen). ProSieben in TKH wurde gegen „DE| PROSIEBEN“ getauscht.
 - Sticks zu Hause (ADB-Debugging an, Mac freigegeben; Schlüssel in editor/data/adb):
   Wohnzimmer 192.168.6.56 = Fire TV Stick 4K 2018 (AFTMM, **Fire OS 6** → kein Wächter, Liste tkh, Senioren);
   Küche 192.168.6.110 = „Thomas' FireTVStick“, Stick 3. Gen. 2020 (AFTSSS, Fire OS 7.7, Liste asw, Senioren,
   **Wächter getestet: läuft**, Home → nach ~1 s Abdeckung, nach ~5 s App zurück); Schlafzimmer .47 = AFTSSS
   Fire OS 7 (AirReceiver, ohne unsere App, nicht freigegeben). Kein Gerät mit Fire OS 8 zu Hause.
-- Version 37 (Wächter, sparsame Fernwartung, Fernseher-aus) veröffentlicht. **Generalprobe Küche bestanden:** App-Start →
-  nach 20 s Update geladen, Wächter drückt „Installieren“, nach ~45 s läuft Version 37 mit Player und Wächter wieder.
-  Wohnzimmer (Fire OS 6) fragt wie bisher. „Fernseher aus“ noch am echten TV zu bestätigen.
-- Fire-TV-App Version 34 läuft auf Thomas' Stick: Player (libVLC), Senioren-Player mit Autostart,
-  Home-Rückkehr, Fernwartung, Auto-Update, 50-Hz-Anpassung – laut Thomas funktioniert alles.
-- Zugänge: TKH, ASW, KMH (je 1 Verbindung). Playlist ASW nutzt noch Zugang TKH → im Editor „Zugang“ auf ASW
-  umstellen und veröffentlichen, damit ASW- und TKH-Geräte gleichzeitig schauen können.
-- Offen: Senioren-Stick bei ASW (130 km) einmalig vor Ort: App-Update, „Autostart erlauben“, „Updates erlauben“.
-  Fernwartung im Editor einschalten (falls noch nicht). Samsung: Smarters zeigt aus M3U keine Serien/Filme
-  → Fire-TV-Stick oder Smarters per Xtream-Login. iPad mit Outplayer noch ungetestet.
-- Änderungen an der App gesammelt pushen (jeder Push = Update-Frage auf allen Sticks).
+- **Generalprobe Auto-Update bestanden** (Küche 36 → 37 ohne Klick, ~45 s bis der Sender wieder läuft).
+  Wohnzimmer (Fire OS 6) fragt wie bisher. Noch zu bestätigen: „Fernseher aus“ am echten TV; kein
+  „Bild – schwarz – Bild“ mehr beim Umschalten (Bildrate gemerkt/abgedeckt, ab App 38).
+- Hardware: Thomas bestellt **Fire TV Stick 4K Max** (Senioren) und **4K Plus** (zu Hause, Ersatz für Wohnzimmer),
+  beide Fire OS 8. Bei Ankunft: Fire TV einrichten, ADB-Debugging an, IP nennen → `Stick-einrichten.command`,
+  Wächter auf Fire OS 8 testen, dann 4K Max vor Ort bei den Senioren (ASW, 130 km) mit dem Mac einrichten.
+- ntfy.sh: 250 Nachrichten/Tag je Anschluss (anonym) – am 4.10. zu Hause erschöpft, ab App 37 sparsam.
+- Zugänge: TKH, ASW, KMH (je 1 Verbindung). Playlist ASW nutzt evtl. noch Zugang TKH → im Editor „Zugang“ prüfen.
+- Offen: Samsung: Smarters zeigt aus M3U keine Serien/Filme → Fire-TV-Stick oder Smarters per Xtream-Login.
+  iPad mit Outplayer noch ungetestet.
+- Jeder Push = neue App-Version (auch bei reinen Editor-/Notiz-Änderungen) → Änderungen gesammelt pushen.
 
 ## Arbeitsweise über mehrere Macs (MacBook Neo, Büro-Mac, …)
 - **Die SSD ist die einzige Arbeitskopie.** Projekt, `.git`, `editor/data/` liegen darauf; GitHub dient nur zum

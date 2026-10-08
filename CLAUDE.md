@@ -25,6 +25,10 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   bietet „Ersetzen“ / „Alle ersetzen“ an (Platz, Gruppe, eigener Name bleiben). „Doppelte“ zeigt ✓/✕ der letzten
   Prüfung, behält die beste funktionierende Fassung und kann nur die doppelten Sender prüfen (`/api/check` mit `keys`,
   Ergebnis wird zusammengeführt). Test: Test-Editor mit Kopie der Daten (DATA/STATE_FILE umbiegen), nie echte state.json.
+  Schnell: nur 16 KB anspielen, bei „belegt“ 3 s warten (max. 6×), **parallel über alle freien Xtream-Zugänge**
+  (je Zugang ein Thread; Sender wird über den anderen Zugang geprüft, wenn gleiche Stream-Nummer + gleicher
+  `channel_key`). Nachts (Einstellung „automatisch“): erst alle Playlists prüfen, dann veröffentlichen.
+  Trennzeilen des Anbieters („##### … #####“, `SEPARATOR`) filtert `load_catalog`; `remove_separators()` beim Start.
   Nachts automatisch veröffentlichen: Einstellungen (läuft nur, solange der Editor läuft).
   Testen ohne Hochladen/Streams: Test-Editor auf Port 8791 mit gestubbtem `gist_upload`/`measure_stream`.
   `VERSION` in `server.py` und `SERVER_VERSION` in `editor.js` bei Änderungen an beiden erhöhen.

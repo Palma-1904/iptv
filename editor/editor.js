@@ -1313,8 +1313,8 @@ async function checkPlaylist() {
   if (!pl) return toast('Bitte eine Playlist wählen.', true);
   const n = pl.groups.reduce((a, g) => a + g.items.filter((i) => !i.variants && i.key.split(':')[1] === 'live').length, 0);
   if (!n) return toast('In dieser Playlist gibt es keine Live-Sender.', true);
-  if (!confirm(`${n} Live-Sender nacheinander kurz anspielen – dauert etwa ${Math.max(1, Math.round(n * 2.5 / 60))} Minuten.\n\n`
-    + 'Der Anbieter erlaubt nur eine Verbindung: währenddessen bitte nicht fernsehen (am besten abends oder nachts).')) return;
+  if (!confirm(`${n} Live-Sender kurz anspielen – dauert etwa ${Math.max(1, Math.round(n * 1.2 / 60))} Minuten (mit mehreren freien Zugängen entsprechend schneller).\n\n`
+    + 'Die Prüfung nutzt alle Zugänge, die gerade frei sind. Wer gerade fernsieht, wird nicht gestört.')) return;
   runCheck(pl, null, null);
 }
 

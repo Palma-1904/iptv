@@ -549,14 +549,20 @@ def catalog_index(sid):
 
 
 def check_playlist(pl_id, keys=None):
-    """Live-Sender einer Playlist kurz anspielen (nacheinander, wegen Verbindungslimit); für Sender ohne Bild
-    andere Fassungen desselben Senders suchen und anspielen (Ersatz). keys: nur diese Einträge prüfen
-    (z. B. aus „Doppelte“), das Ergebnis wird mit dem bisherigen zusammengeführt.
+    """Live-Sender einer Playlist kurz anspielen; für Sender ohne Bild andere Fassungen desselben Senders suchen
+    und anspielen (Ersatz). keys: nur diese Einträge (z. B. aus „Doppelte“), Ergebnis wird zusammengeführt.
+    Schnell: nur prüfen, ob Daten kommen (16 KB), und parallel über alle gerade freien Zugänge desselben Anbieters
+    (gleiche Stream-Nummer und gleicher Sender im anderen Katalog) – je Zugang eine Verbindung.
     Ergebnis in data/check_<id>.json; Event-/PPV-Kanäle werden gesondert markiert."""
     state = load_state()
     pl = find(state['playlists'], pl_id, 'Playlist')
-    sources = {s['id']: s for s in state['sources']}
     indexes, items, used = {}, [], set()
+
+    def index_of(sid):
+        if sid not in indexes:
+            indexes[sid] = catalog_index(sid)
+        return indexes[sid]
+
     for g in pl.get('groups', []):
         for it in g.get('items', []):
             if it.get('variants'):
@@ -565,58 +571,97 @@ def check_playlist(pl_id, keys=None):
             if keys is not None and it['key'] not in keys:
                 continue
             sid = it['key'].split(':', 1)[0]
-            if sid not in indexes:
-                indexes[sid] = catalog_index(sid)
-            ch = indexes[sid]['keys'].get(it['key'])
+            ch = index_of(sid)['keys'].get(it['key'])
             if ch:
                 items.append((it['key'], it.get('name') or ch['name'], ch, sid))
     if not items:
         raise UserError('In dieser Playlist gibt es keine Live-Sender zum Prüfen.')
-    for sid in {x[3] for x in items}:
-        src = sources.get(sid)
-        if src and src.get('type') == 'xtream':
-            info = source_info(src)
-            mx, act = info.get('maxConnections'), info.get('activeConnections')
-            if mx and act is not None and act >= mx:
-                raise UserError(f'Gerade laufen {act} von {mx} erlaubten Verbindungen (es wird ferngesehen). '
-                                'Bitte später prüfen, z. B. nachts.')
-    busy = re.compile(r'HTTP (403|429|458|503|509)\b')
 
-    def test(url, label, i):
-        r = measure_stream(url, seconds=1.0, max_bytes=192 * 1024)
+    # Freie Zugänge (Xtream, Katalog geladen): je Zugang ein Prüf-Strang
+    accounts = []
+    for src in state['sources']:
+        if src.get('type') != 'xtream' or not os.path.exists(os.path.join(CACHE, f'catalog_{src["id"]}.json')):
+            continue
+        try:
+            info = source_info(src)
+        except Exception:
+            continue
+        mx, act = info.get('maxConnections') or 1, info.get('activeConnections') or 0
+        if act < mx:
+            accounts.append(src['id'])
+    own = {x[3] for x in items}
+    if not accounts:
+        raise UserError('Gerade sind alle Zugänge belegt (es wird ferngesehen). Bitte später prüfen, z. B. nachts.')
+
+    def url_on(acc, ch):
+        """Gleicher Sender über einen anderen Zugang (gleiche Nummer, gleicher Name) – sonst None."""
+        if ch['key'].split(':', 1)[0] == acc:
+            return ch['url']
+        other = index_of(acc)['keys'].get(acc + ':' + ch['key'].split(':', 1)[1])
+        if other and channel_key(other['name']) == channel_key(ch['name']):
+            return other['url']
+        return None
+
+    # Aufteilen: jeder Sender auf den Zugang mit der kürzesten Warteschlange, der ihn hat
+    queues = {acc: [] for acc in accounts}
+    for x in items:
+        cands = [acc for acc in accounts if url_on(acc, x[2])]
+        if not cands:
+            continue                                   # eigener Zugang belegt und sonst nirgends vorhanden
+        acc = min(cands, key=lambda c: (len(queues[c]), c not in own))
+        queues[acc].append(x)
+    todo = sum(len(q) for q in queues.values())
+    if not todo:
+        raise UserError('Der Zugang dieser Playlist ist gerade belegt (es wird ferngesehen). Bitte später prüfen.')
+    busy = re.compile(r'HTTP (403|429|458|503|509)\b')
+    results, lock = {}, threading.Lock()
+    progress = {'n': 0}
+
+    def test(url, label):
+        r = measure_stream(url, seconds=0.5, max_bytes=16 * 1024)
         tries = 0
-        # Verbindungslimit: der Anbieter gibt die letzte Verbindung erst nach einigen Sekunden frei
-        while not r.get('ok') and busy.search(r.get('error') or '') and tries < 3 and not JOB.get('cancel'):
+        # Verbindungslimit: der Anbieter gibt die letzte Verbindung erst nach ein paar Sekunden frei
+        while not r.get('ok') and busy.search(r.get('error') or '') and tries < 6 and not JOB.get('cancel'):
             tries += 1
-            job_progress(f'{label} (warte auf freie Verbindung …)', i, len(items))
-            time.sleep(20)
-            r = measure_stream(url, seconds=1.0, max_bytes=192 * 1024)
-        time.sleep(0.5)
+            time.sleep(3)
+            r = measure_stream(url, seconds=0.5, max_bytes=16 * 1024)
+        time.sleep(0.2)
         return r
 
-    results = {}
-    for i, (key, name, ch, sid) in enumerate(items):
-        if JOB.get('cancel'):
-            break
-        job_progress(f'Prüfe {name}', i, len(items))
-        r = test(ch['url'], f'Prüfe {name}', i)
-        res = {'ok': bool(r.get('ok')), 'err': (r.get('error') or '')[:120],
-               'event': bool(EVENT_NAME.search(name)), 'name': name}
-        if not res['ok'] and not res['event']:
-            # Ersatz: andere Fassungen desselben Senders, bis zu 4 anspielen, die erste mit Bild nehmen
-            tried = 0
-            for alt in find_alternatives({**ch, 'name': ch['name']}, indexes[sid], used)[:4]:
-                if JOB.get('cancel'):
-                    break
-                tried += 1
-                job_progress(f'Suche Ersatz für {name}: {alt["name"]}', i, len(items))
-                ra = test(alt['url'], f'Ersatz {alt["name"]}', i)
-                if ra.get('ok'):
-                    res['alt'] = {'key': alt['key'], 'name': alt['name'], 'mbit': ra.get('mbit'),
-                                  'inPlaylist': alt['key'] in used}
-                    break
-            res['altTried'] = tried
-        results[key] = res
+    def worker(acc):
+        for key, name, ch, sid in queues[acc]:
+            if JOB.get('cancel'):
+                return
+            with lock:
+                job_progress(f'Prüfe {name}' + (f' ({len(accounts)} Zugänge parallel)' if len(accounts) > 1 else ''),
+                             progress['n'], todo)
+            r = test(url_on(acc, ch), name)
+            res = {'ok': bool(r.get('ok')), 'err': (r.get('error') or '')[:120],
+                   'event': bool(EVENT_NAME.search(name)), 'name': name}
+            if not res['ok'] and not res['event']:
+                # Ersatz: andere Fassungen desselben Senders, bis zu 4 anspielen, die erste mit Bild nehmen
+                tried = 0
+                for alt in find_alternatives(ch, index_of(sid), used)[:4]:
+                    if JOB.get('cancel'):
+                        break
+                    u = url_on(acc, alt) or alt['url']
+                    tried += 1
+                    ra = test(u, alt['name'])
+                    if ra.get('ok'):
+                        res['alt'] = {'key': alt['key'], 'name': alt['name'], 'mbit': ra.get('mbit'),
+                                      'inPlaylist': alt['key'] in used}
+                        break
+                res['altTried'] = tried
+            with lock:
+                results[key] = res
+                progress['n'] += 1
+
+    threads = [threading.Thread(target=worker, args=(acc,), daemon=True) for acc in accounts if queues[acc]]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
     path = os.path.join(DATA, f'check_{pl_id}.json')
     if keys is not None:                       # Teilprüfung: bisherige Ergebnisse behalten
         old = read_json(path, {}).get('results', {})
@@ -629,7 +674,7 @@ def check_playlist(pl_id, keys=None):
     write_json(path, out)
     bad = [v for v in results.values() if not v['ok'] and not v['event']]
     return {'checked': len(results), 'total': len(items), 'bad': len(bad), 'cancelled': out['cancelled'],
-            'withAlt': sum(1 for v in bad if v.get('alt')),
+            'withAlt': sum(1 for v in bad if v.get('alt')), 'accounts': len(threads),
             'events': sum(1 for v in results.values() if not v['ok'] and v['event'])}
 
 
@@ -692,15 +737,29 @@ def auto_publish_loop():
             write_json(SETTINGS_FILE, s)
 
             def run():
+                # Erst alle Playlists prüfen (nachts schaut niemand – Zugänge frei), dann veröffentlichen.
+                # Defekte Sender werden nur markiert und mit Ersatz-Vorschlag gespeichert, nicht automatisch getauscht.
+                dead = 0
+                for p in load_state()['playlists']:
+                    if JOB.get('cancel'):
+                        break
+                    try:
+                        JOB['pl'] = p['name']
+                        dead += check_playlist(p['id']).get('bad', 0)
+                    except UserError:
+                        pass                            # z. B. keine Live-Sender oder Zugang belegt
+                JOB['pl'] = None
                 res = publish([])
                 st = load_settings()
                 warn = sum(len(r.get('warnings') or []) for r in res['results'])
-                st['autoResult'] = (f'{now.strftime("%d.%m. %H:%M")}: {len(res["results"])} Playlists '
+                st['autoResult'] = (f'{now.strftime("%d.%m. %H:%M")}: Sender geprüft ({dead} ohne Bild – '
+                                    'siehe Werkzeuge → Sender prüfen), '
+                                    f'{len(res["results"])} Playlists '
                                     + ('hochgeladen' if res['uploaded'] else 'NICHT hochgeladen')
                                     + (f', {warn} Hinweise' if warn else ''))
                 write_json(SETTINGS_FILE, st)
                 return res
-            start_job('publish', 'Automatisch veröffentlichen (nachts)', run)
+            start_job('publish', 'Nachts: Sender prüfen und veröffentlichen', run)
         except Exception as e:  # nie den Editor stören
             print('Automatisch veröffentlichen fehlgeschlagen:', e)
 

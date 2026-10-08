@@ -47,6 +47,7 @@ public class Waechter extends AccessibilityService {
 
     static final long PAUSE_MS = 10 * 60 * 1000L;
     private static final String[] INSTALL_WORDS = {"Installieren", "Aktualisieren", "Install", "Update"};
+    private static final String[] OPEN_WORDS = {"Öffnen", "Open", "Fertig", "Done"};   // Installer: „App installiert“
 
     private static volatile Waechter running;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -156,8 +157,13 @@ public class Waechter extends AccessibilityService {
         prefs(c).edit().putLong("autoInstallUntil", System.currentTimeMillis() + 10 * 60 * 1000L).apply();
     }
 
+    /** Nach dem eigenen Update (UpdateReceiver): die nächsten 3 Minuten im Installer „Öffnen“ drücken. */
     static void installDone(Context c) {
-        prefs(c).edit().remove("autoInstallUntil").apply();
+        prefs(c).edit().remove("autoInstallUntil").putLong("updatedAt", System.currentTimeMillis()).apply();
+    }
+
+    private boolean justUpdated() {
+        return System.currentTimeMillis() - prefs(this).getLong("updatedAt", 0) < 3 * 60 * 1000L;
     }
 
     /** Soll die App gerade vorne gehalten werden? */
@@ -184,6 +190,11 @@ public class Waechter extends AccessibilityService {
             registerReceiver(homeKey, new IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
         } catch (Exception ignored) {
             // dann über den Fensterwechsel
+        }
+        // Nach einem Update steht oft noch „App installiert – Fertig / Öffnen“ da: gleich „Öffnen“ drücken
+        if (justUpdated()) {
+            handler.postDelayed(this::confirmOpen, 1500);
+            handler.postDelayed(this::confirmOpen, 4000);
         }
         // Gleich nach dem Hochfahren die App öffnen (die Startmeldung kommt bei Fire OS 8 manchmal spät)
         if (SystemClock.elapsedRealtime() < 3 * 60 * 1000L) AutostartService.openApp(this);
@@ -288,6 +299,8 @@ public class Waechter extends AccessibilityService {
         if (System.currentTimeMillis() < prefs(this).getLong("autoInstallUntil", 0)) {
             installTries = 0;
             confirmInstall();
+        } else if (justUpdated()) {
+            confirmOpen();
         }
         if (e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         if (tolerated(pkg) || !isScreen(pkg, e.getClassName())) return;   // Dialoge, Tastatur, Hinweise: egal
@@ -332,6 +345,26 @@ public class Waechter extends AccessibilityService {
             showCover();
         } catch (Exception ignored) {
             // sollte mit verbundenem Wächter nicht vorkommen
+        }
+    }
+
+    /** Installer nach dem eigenen Update: „Öffnen“ (sonst „Fertig“) drücken – nur bei unserer App. */
+    private void confirmOpen() {
+        if (SystemClock.elapsedRealtime() - lastClick < 2000) return;
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || root.getPackageName() == null) return;
+        if (!root.getPackageName().toString().contains("installer")) return;
+        if (root.findAccessibilityNodeInfosByText(getString(R.string.app_name)).isEmpty()) return;
+        for (String word : OPEN_WORDS) {
+            for (AccessibilityNodeInfo n : root.findAccessibilityNodeInfosByText(word)) {
+                CharSequence cls = n.getClassName();
+                if (cls == null || !cls.toString().contains("Button") || !n.isClickable() || !n.isEnabled()) continue;
+                lastClick = SystemClock.elapsedRealtime();
+                n.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                prefs(this).edit().remove("updatedAt").apply();
+                if (!word.startsWith("Ö") && !word.equals("Open")) bringBack();   // „Fertig“: App selbst holen
+                return;
+            }
         }
     }
 

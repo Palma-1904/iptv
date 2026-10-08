@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 15  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 16  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -826,8 +826,29 @@ def remote_channels(slug):
     return {'channels': out}
 
 
+# Trennzeilen des Anbieters („##### DOKUS UND NEWS #####“): keine Sender, nur Überschriften in seiner Liste
+SEPARATOR = re.compile(r'^\W*#{3,}')
+
+
 def load_catalog(source_id):
-    return read_json(os.path.join(CACHE, f'catalog_{source_id}.json'), None)
+    cat = read_json(os.path.join(CACHE, f'catalog_{source_id}.json'), None)
+    if cat and cat.get('items'):
+        cat['items'] = [x for x in cat['items'] if not SEPARATOR.match(x.get('name') or '')]
+    return cat
+
+
+def remove_separators():
+    """Beim Start: Trennzeilen aus allen Playlists entfernen (früher mit übernommen)."""
+    state = load_state()
+    n = 0
+    for pl in state.get('playlists', []):
+        for g in pl.get('groups', []):
+            keep = [it for it in g.get('items', []) if not SEPARATOR.match(it.get('name') or it.get('label') or '')]
+            n += len(g.get('items', [])) - len(keep)
+            g['items'] = keep
+    if n:
+        write_json(STATE_FILE, state)
+        print(f'{n} Trennzeilen („#####…“) aus den Playlists entfernt.')
 
 
 # ---------- Hintergrund-Aufgaben mit Fortschritt (Veröffentlichen, Sender prüfen) ----------
@@ -1603,6 +1624,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main():
+    remove_separators()
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     threading.Thread(target=auto_publish_loop, daemon=True).start()
     url = f'http://localhost:{PORT}/'

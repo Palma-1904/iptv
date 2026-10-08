@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 15; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 16; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};

@@ -1058,11 +1058,16 @@ public class PlayerActivity extends Activity implements Remote.Target {
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
         if (listOpen()) {
-            closeList();
+            // Zurück = eine Ebene hoch (Folgen → Serie → Serien → Übersicht); erst in der Übersicht schließen
+            if (browse != null && browse.parent != null) showNode(browse.parent, browse);
+            else closeList();
         } else if (info.getVisibility() == View.VISIBLE && !failed) {
             info.setVisibility(View.GONE);
         } else if (senior) {
-            showInfo();                   // Seniorenansicht: nicht versehentlich hinausfallen
+            // Seniorenansicht: nicht hinausfallen; bei Film/Folge die Liste öffnen (zur Übersicht mit Zurück)
+            Item cur = current();
+            if (cur != null && !cur.live()) openList();
+            else showInfo();
         } else {
             finish();
         }
@@ -1534,11 +1539,11 @@ public class PlayerActivity extends Activity implements Remote.Target {
             listTitle.setText(n.name);
         }
         boolean leaves = !n.children.isEmpty() && n.children.get(0).item != null;
-        String up = n.parent != null ? "   ◀ zurück" : "";
+        String up = n.parent != null ? "   ◀ / ↩ zurück" : "";
         boolean favs = hasFav(n);
         listHint.setText((leaves
-                ? "▲ ▼ auswählen   OK abspielen" + up + "   ↩ schließen"
-                : "▲ ▼ auswählen   OK / ▶ öffnen" + up + "   ↩ schließen")
+                ? "▲ ▼ auswählen   OK abspielen" + up + (up.isEmpty() ? "   ↩ schließen" : "   ☰ schließen")
+                : "▲ ▼ auswählen   OK / ▶ öffnen" + up + (up.isEmpty() ? "   ↩ schließen" : "   ☰ schließen"))
                 + (favs ? "\nOK lange drücken = Favorit ★ an/aus" : ""));
         adapter.notifyDataSetChanged();
         int sel = select == null ? 0 : Math.max(0, n.children.indexOf(select));

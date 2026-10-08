@@ -409,3 +409,5 @@ dialog#dlg-dupes { width: min(720px, 94vw); }
 .split { display: flex; }
 .split > button { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .split .menu > summary { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid rgba(255, 255, 255, .4); }
+.dev-msg { margin-top: 6px; }
+.dev-msg input { flex: 1; min-width: 200px; }

@@ -1226,15 +1226,28 @@ async function renderRemote() {
     sel.onmousedown = loadChannels;
     sel.onchange = () => { if (sel.value) remoteCmd(d.id, 'play', { norm: sel.value }, 'Umschalten'); };
     const btn = (label, fn, cls) => { const b = el('button', cls || '', label); b.type = 'button'; b.onclick = fn; acts.appendChild(b); };
-    btn('Nachricht …', () => { const t = prompt('Nachricht, die auf dem Fernseher erscheint:'); if (t && t.trim()) remoteCmd(d.id, 'message', { text: t.trim() }, 'Nachricht'); });
-    btn('Stoppen', () => { if (confirm(`Wiedergabe auf „${d.name}“ stoppen?`)) remoteCmd(d.id, 'stop', {}, 'Stoppen'); });
+    btn('Stoppen', () => remoteCmd(d.id, 'stop', {}, 'Stoppen'));
     btn('Neu laden', () => remoteCmd(d.id, 'reload', {}, 'Neu laden'));
     btn('Update', () => remoteCmd(d.id, 'update', {}, 'Update'));
     const other = d.view === 'senioren' ? 'komplett' : 'senioren';
-    btn(`Ansicht: ${other === 'senioren' ? 'Senioren' : 'Komplett'}`, () => {
-      if (confirm(`„${d.name}“ auf die Ansicht „${other}“ umstellen?`)) remoteCmd(d.id, 'view', { view: other }, 'Ansicht');
-    });
+    btn(`Ansicht: ${other === 'senioren' ? 'Senioren' : 'Komplett'}`, () => remoteCmd(d.id, 'view', { view: other }, 'Ansicht'));
     box.appendChild(acts);
+    // Nachricht: eigenes Feld, unabhängig von den anderen Befehlen
+    const msg = el('div', 'dev-acts dev-msg');
+    const inp = el('input');
+    inp.placeholder = 'Nachricht auf den Fernseher schicken …';
+    const send = el('button', '', 'Senden');
+    send.type = 'button';
+    const doSend = () => {
+      const t = inp.value.trim();
+      if (!t) return inp.focus();
+      remoteCmd(d.id, 'message', { text: t }, 'Nachricht');
+      inp.value = '';
+    };
+    send.onclick = doSend;
+    inp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doSend(); } };
+    msg.append(inp, send);
+    box.appendChild(msg);
     body.appendChild(box);
   }
   body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. Die Sticks melden sich von selbst nur alle 3 Stunden (ntfy.sh erlaubt 250 Nachrichten am Tag je Anschluss); solange dieses Fenster offen ist, melden sie sich sofort und zeigen Änderungen live (ab App-Version 37). „Update“ lädt die neue App still im Hintergrund. Mit aktivem Wächter installiert sie sich ganz von selbst; ohne Wächter muss vor Ort einmal „Installieren“ gedrückt werden (Vorgabe von Fire OS). Danach startet die App von selbst wieder. Rückmeldungen erscheinen unter „Letzte Rückmeldung“.'));
@@ -1246,7 +1259,12 @@ function openRemote() {
   dlg.showModal();
   renderRemote();
   clearInterval(remoteTimer);
-  remoteTimer = setInterval(() => { if (dlg.open && !document.activeElement.closest('#dlg-remote select')) renderRemote(); }, 15000);
+  // nicht neu zeichnen, während eine Auswahl offen ist oder eine Nachricht getippt wird
+  remoteTimer = setInterval(() => {
+    const a = document.activeElement;
+    const typing = a.closest('#dlg-remote select') || (a.closest('#dlg-remote input') && a.value);
+    if (dlg.open && !typing) renderRemote();
+  }, 15000);
   // Sticks bitten, sich gleich zu melden und Änderungen live zu schicken (sonst nur alle 3 Stunden)
   const watch = () => api('/api/remote/cmd', { to: 'all', action: 'watch', arg: { sec: 900 } })
     .then(() => setTimeout(renderRemote, 5000)).catch(() => {});

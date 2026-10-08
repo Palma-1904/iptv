@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 18  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 19  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -548,7 +548,7 @@ def catalog_index(sid):
     return {'keys': {it['key']: it for it in items}, 'by_name': by_name, 'by_tvg': by_tvg}
 
 
-def check_playlist(pl_id, keys=None):
+def check_playlist(pl_id, keys=None, force=False):
     """Live-Sender einer Playlist kurz anspielen; für Sender ohne Bild andere Fassungen desselben Senders suchen
     und anspielen (Ersatz). keys: nur diese Einträge (z. B. aus „Doppelte“), Ergebnis wird zusammengeführt.
     Schnell: nur prüfen, ob Daten kommen (16 KB), und parallel über alle gerade freien Zugänge desselben Anbieters
@@ -590,8 +590,28 @@ def check_playlist(pl_id, keys=None):
         mx, act = info.get('maxConnections') or 1, info.get('activeConnections') or 0
         if act < mx:
             accounts.append(src['id'])
+    stopped = False
+    if not accounts and force:
+        # Erzwungen: Geräte mit dieser Liste per Fernwartung anhalten, bis der Zugang frei ist (max. 40 s)
+        slug = slugify(pl.get('slug') or pl.get('name') or pl['id'])
+        try:
+            remote_cmd('list:' + slug, 'stop', {})
+            stopped = True
+        except Exception:
+            pass
+        for _ in range(20):
+            job_progress('Geräte werden angehalten, warte auf freien Zugang …')
+            time.sleep(2)
+            try:
+                src = next(x for x in state['sources'] if x['id'] in own)
+                info = source_info(src)
+                if (info.get('activeConnections') or 0) < (info.get('maxConnections') or 1):
+                    break
+            except Exception:
+                break
+        accounts = [x for x in own]
     if not accounts:
-        raise UserError('Der Zugang dieser Playlist ist gerade belegt (es wird ferngesehen). Bitte später prüfen, z. B. nachts.')
+        raise UserError('BELEGT: Der Zugang dieser Playlist ist gerade belegt (es wird ferngesehen).')
 
     def url_on(acc, ch):
         """Gleicher Sender über einen anderen Zugang (gleiche Nummer, gleicher Name) – sonst None."""
@@ -638,7 +658,9 @@ def check_playlist(pl_id, keys=None):
             r = test(url_on(acc, ch), name)
             res = {'ok': bool(r.get('ok')), 'err': (r.get('error') or '')[:120],
                    'event': bool(EVENT_NAME.search(name)), 'name': name}
-            if not res['ok'] and not res['event']:
+            if not res['ok'] and busy.search(res['err']):
+                res['busy'] = True                   # Verbindung belegt: nicht prüfbar, nicht „defekt“
+            if not res['ok'] and not res['event'] and not res.get('busy'):
                 # Ersatz: andere Fassungen desselben Senders, bis zu 4 anspielen, die erste mit Bild nehmen
                 tried = 0
                 for alt in find_alternatives(ch, index_of(sid), used)[:4]:
@@ -672,7 +694,12 @@ def check_playlist(pl_id, keys=None):
     out = {'t': int(time.time()), 'checked': len(results), 'total': len(items),
            'cancelled': bool(JOB.get('cancel')), 'results': results_all}
     write_json(path, out)
-    bad = [v for v in results.values() if not v['ok'] and not v['event']]
+    if stopped:                                  # Geräte wieder weiterlaufen lassen (Senioren: letzter Sender)
+        try:
+            remote_cmd('list:' + slugify(pl.get('slug') or pl.get('name') or pl['id']), 'reload', {})
+        except Exception:
+            pass
+    bad = [v for v in results.values() if not v['ok'] and not v['event'] and not v.get('busy')]
     return {'checked': len(results), 'total': len(items), 'bad': len(bad), 'cancelled': out['cancelled'],
             'withAlt': sum(1 for v in bad if v.get('alt')), 'accounts': len(threads),
             'events': sum(1 for v in results.values() if not v['ok'] and v['event'])}
@@ -1057,6 +1084,9 @@ def prefetch_episodes(pl, state, lookup):
                 job_progress('Folgenlisten der Serien laden', i, len(futures))
 
 
+GERMAN_LANGS = ('DE', 'AT', 'CH', 'MULTI')
+
+
 def build_playlist(pl, state, warnings):
     """Erzeugt M3U-Text; liefert außerdem benötigte EPG-IDs je Quelle."""
     catalogs, index = {}, {}
@@ -1087,7 +1117,11 @@ def build_playlist(pl, state, warnings):
                 # Ein Werk in mehreren Sprachen: gleiche x-work-Kennung, je Fassung x-lang.
                 title = item.get('name') or item.get('label') or ch['name']
                 work = attr(item['key'].split(':', 1)[1])   # ohne Quelle: Favoriten bleiben beim Zugangswechsel
-                for v in item['variants']:
+                variants = item['variants']
+                if pl.get('germanOnly'):                     # Schalter der Playlist: nur deutsche Fassungen
+                    de = [v for v in variants if (v.get('lang') or '').split(' ')[0] in GERMAN_LANGS]
+                    variants = de or variants                # ohne deutsche Fassung: alle behalten
+                for v in variants:
                     vch = lookup(v['key'])
                     if not vch:
                         warnings.append(f'„{title}“ ({v.get("lang")}) gibt es in der Quelle nicht mehr.')
@@ -1750,10 +1784,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({'ok': True})
             if method == 'POST' and path == '/api/check':
                 b = self.body()
-                pid, keys = b.get('id'), b.get('keys')
+                pid, keys, force = b.get('id'), b.get('keys'), bool(b.get('force'))
                 keys = set(keys) if isinstance(keys, list) else None
                 name = find(load_state()['playlists'], pid, 'Playlist').get('name')
-                return self.send_json(start_job('check', f'Sender prüfen „{name}“', lambda: check_playlist(pid, keys)))
+                return self.send_json(start_job('check', f'Sender prüfen „{name}“',
+                                                lambda: check_playlist(pid, keys, force)))
             if method == 'POST' and path == '/api/git-push':
                 return self.send_json(git_push(bool(self.body().get('updateDevices'))))
             if method == 'POST' and path == '/api/update-all':

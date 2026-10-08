@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 18; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 19; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -130,7 +130,10 @@ function renderPlSource() {
   const chip = $('#pl-zugang');
   const pl = playlist();
   const src = pl && state.sources.find((x) => x.id === pl.source);
-  chip.textContent = 'Zugang: ' + (src ? src.name : '–');
+  chip.textContent = 'Zugang: ' + (src ? src.name : '–') + (pl && pl.germanOnly ? ' · nur DE' : '');
+  $('#pl-german').textContent = '🇩🇪 Nur deutsche Fassungen: ' + (pl && pl.germanOnly ? 'AN' : 'AUS');
+  const allClosed = pl && pl.groups.length && pl.groups.every((g) => ui.collapsed.has(g.id));
+  $('#collapse-all').textContent = allClosed ? '▾ Alle auf' : '▸ Alle zu';
 }
 
 // Playlist gewählt: ihr Zugang ist die Quelle des Senderangebots
@@ -1411,7 +1414,7 @@ async function loadCheck(pid) {
 
 function isDead(pid, key) {
   const r = checks[pid] && checks[pid].results && checks[pid].results[key];
-  return !!(r && !r.ok && !r.event);
+  return !!(r && !r.ok && !r.event && !r.busy);
 }
 
 async function checkPlaylist() {
@@ -1425,18 +1428,29 @@ async function checkPlaylist() {
 }
 
 // Prüfen (ganze Playlist oder nur keys), danach Ergebnis zeigen bzw. then() aufrufen
-async function runCheck(pl, keys, then) {
+async function runCheck(pl, keys, then, force) {
   const dlg = $('#dlg-publish');
   const body = $('#publish-body');
   $('#publish-title').textContent = `Sender prüfen „${pl.name}“`;
-  dlg.showModal();
+  if (!dlg.open) dlg.showModal();
   let res;
   try {
-    await api('/api/check', keys ? { id: pl.id, keys } : { id: pl.id });
+    const req = { id: pl.id, force: !!force };
+    if (keys) req.keys = keys;
+    await api('/api/check', req);
     res = await followJob(body, true);
   } catch (e) {
     body.textContent = '';
-    body.appendChild(el('p', 'warn', e.message));
+    if (/^BELEGT/.test(e.message)) {
+      body.appendChild(el('p', 'warn', 'Der Zugang dieser Playlist ist gerade belegt – auf einem Gerät wird damit ferngesehen.'));
+      body.appendChild(el('p', 'hint', '„Trotzdem prüfen“ hält die Geräte mit dieser Liste per Fernwartung an, prüft und lässt sie danach weiterlaufen (Senioren: wieder der letzte Sender). Die Prüfung dauert einige Minuten.'));
+      const b = el('button', 'primary', 'Trotzdem prüfen (Fernsehen wird unterbrochen)');
+      b.type = 'button';
+      b.onclick = () => runCheck(pl, keys, then, true);
+      body.appendChild(b);
+    } else {
+      body.appendChild(el('p', 'warn', e.message));
+    }
     return;
   }
   await loadCheck(pl.id);
@@ -1469,7 +1483,9 @@ function showCheckResult(pl, res, body) {
   body.textContent = '';
   const c = checks[pl.id] || {};
   const inPl = new Set(pl.groups.flatMap((g) => g.items.map((i) => i.key)));
-  const dead = Object.entries(c.results || {}).filter(([k, v]) => !v.ok && !v.event && inPl.has(k));
+  const dead = Object.entries(c.results || {}).filter(([k, v]) => !v.ok && !v.event && !v.busy && inPl.has(k));
+  const busyN = Object.entries(c.results || {}).filter(([k, v]) => v.busy && inPl.has(k)).length;
+  if (busyN) body.appendChild(el('p', 'hint', `${busyN} Sender waren nicht prüfbar (Verbindung belegt) – sie gelten nicht als defekt.`));
   body.appendChild(el('p', '', `${res.checked} von ${res.total} Sendern geprüft${res.cancelled ? ' (abgebrochen)' : ''}: `
     + (dead.length ? `${dead.length} ohne Bild` + (res.withAlt ? `, für ${res.withAlt} gibt es eine funktionierende andere Fassung.` : '.') : 'alle laufen.')
     + (res.events ? ` ${res.events} Event-/PPV-Kanäle senden gerade nichts (normal außerhalb von Events).` : '')));
@@ -2151,6 +2167,23 @@ function bind() {
     renderDeviceWarning();
   };
   $('#pl-add').onclick = () => newPlaylist();
+  $('#pl-german').onclick = () => {
+    const pl = playlist();
+    if (!pl) return;
+    pl.germanOnly = !pl.germanOnly;
+    save();
+    renderPlSource();
+    toast(pl.germanOnly ? 'Ab dem nächsten Veröffentlichen nur deutsche Fassungen (Filme/Serien ohne deutsche Fassung bleiben ganz drin).'
+      : 'Ab dem nächsten Veröffentlichen wieder alle Sprachfassungen.');
+  };
+  $('#collapse-all').onclick = () => {
+    const pl = playlist();
+    if (!pl) return;
+    const allClosed = pl.groups.every((g) => ui.collapsed.has(g.id));
+    pl.groups.forEach((g) => (allClosed ? ui.collapsed.delete(g.id) : ui.collapsed.add(g.id)));
+    renderPlaylist();
+    renderPlSource();
+  };
   $('#pl-switch').onclick = () => {
     const pl = playlist();
     if (!pl) return;

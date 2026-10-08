@@ -540,6 +540,18 @@ public class MainActivity extends Activity implements Remote.Target {
                 Remote.report(min > 0 ? "Wächter pausiert für " + min + " Minuten" : "Wächter-Pause beendet");
                 break;
             }
+            case "list": {                   // andere Liste (Einrichtungs-Link), Ansicht bleibt
+                String link = arg.optString("link").trim();
+                if (!link.matches("[\\w.-]+/[\\w.-]+/[\\w.-]+")) {
+                    Remote.report("Liste: ungültiger Link");
+                    break;
+                }
+                switchingUntil = System.currentTimeMillis() + 5000;
+                if (player != null) player.remote("close", arg);
+                applySetup(link, "senioren".equals(prefs.getString("view", "")) ? "senioren" : "komplett");
+                Remote.report("Liste gewechselt: " + link.substring(link.lastIndexOf('/') + 1));
+                break;
+            }
             case "view":
                 switchingUntil = System.currentTimeMillis() + 5000;
                 if (player != null) player.remote("close", arg);

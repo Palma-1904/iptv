@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 20; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 21; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -1407,6 +1407,15 @@ async function renderRemote() {
     btn('Stoppen', () => remoteCmd(d.id, 'stop', {}, 'Stoppen'));
     btn('Neu laden', () => remoteCmd(d.id, 'reload', {}, 'Neu laden'));
     btn('Update', () => remoteCmd(d.id, 'update', {}, 'Update'));
+    // Liste wechseln (Einrichtungs-Link per Fernwartung; Ansicht bleibt)
+    if (st.lists && st.lists.length) {
+      const ls = el('select');
+      ls.title = 'Andere Liste auf dieses Gerät';
+      ls.appendChild(el('option', '', `Liste: ${d.list || '?'} ▾`));
+      st.lists.filter((l) => l.slug !== d.list).forEach((l) => { const o = el('option', '', `→ ${l.name}`); o.value = l.link; ls.appendChild(o); });
+      ls.onchange = () => { if (ls.value) remoteCmd(d.id, 'list', { link: ls.value }, 'Liste wechseln'); };
+      acts.appendChild(ls);
+    }
     // Ansicht: beide Knöpfe immer da, die aktuelle ist hervorgehoben (erneut drücken = neu einstellen)
     const seg = el('span', 'seg');
     seg.appendChild(el('span', 'hint', 'Ansicht:'));

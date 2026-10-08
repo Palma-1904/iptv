@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 20  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 21  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -1006,7 +1006,14 @@ def remote_status():
                  'left': a['stats']['messages_remaining']}
     except Exception:
         pass
-    return {'enabled': True, 'devices': out, 'quota': quota}
+    # Listen zum Umstellen per Fernwartung (Kurzform des Einrichtungs-Links)
+    st = load_settings()
+    lists = []
+    if st.get('login') and st.get('gistId'):
+        for p in load_state().get('playlists', []):
+            slug = slugify(p.get('slug') or p.get('name') or p['id'])
+            lists.append({'name': p.get('name'), 'slug': slug, 'link': f'{st["login"]}/{st["gistId"]}/{slug}'})
+    return {'enabled': True, 'devices': out, 'quota': quota, 'lists': lists}
 
 
 def remote_cmd(to, action, arg):

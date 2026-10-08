@@ -45,6 +45,7 @@ public class MainActivity extends Activity implements Remote.Target {
         a.runOnUiThread(() -> a.web.evaluateJavascript("window.IPTV&&IPTV.nativeRefresh&&IPTV.nativeRefresh()", null));
     }
     private SharedPreferences prefs;
+    private long switchingUntil;   // Ansicht wird gerade umgestellt: alte Seite nicht noch einmal den Player starten lassen
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -466,6 +467,7 @@ public class MainActivity extends Activity implements Remote.Target {
                     + JSONObject.quote(last) + ")", null);
         }
         Remote.status("overview", "", "");
+        if (System.currentTimeMillis() < switchingUntil) return;   // neue Ansicht lädt gerade
         // Seniorenansicht: beim (erneuten) Öffnen der App gleich wieder den letzten Sender starten
         web.evaluateJavascript("window.IPTV&&IPTV.onAppResume&&IPTV.onAppResume()", null);
     }
@@ -520,6 +522,7 @@ public class MainActivity extends Activity implements Remote.Target {
                 break;
             }
             case "view":
+                switchingUntil = System.currentTimeMillis() + 5000;
                 if (player != null) player.remote("close", arg);
                 String v = "senioren".equals(arg.optString("view")) ? "senioren" : "komplett";
                 applySetup("", v);

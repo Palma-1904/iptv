@@ -1524,7 +1524,15 @@ public class PlayerActivity extends Activity implements Remote.Target {
         if (n == rootNode || n == displayRoot) n = buildDisplayRoot();
         if (select == null) select = suggestEpisode(n);
         browse = n;
-        listTitle.setText(n.name);
+        // in der Übersicht klein die App-Version dahinter (z. B. „Übersicht  · App 47“)
+        if (n == displayRoot) {
+            android.text.SpannableString t = new android.text.SpannableString(n.name + "   · App " + BuildConfig.VERSION_CODE);
+            t.setSpan(new android.text.style.RelativeSizeSpan(0.5f), n.name.length(), t.length(), 0);
+            t.setSpan(new android.text.style.ForegroundColorSpan(MUTED), n.name.length(), t.length(), 0);
+            listTitle.setText(t);
+        } else {
+            listTitle.setText(n.name);
+        }
         boolean leaves = !n.children.isEmpty() && n.children.get(0).item != null;
         String up = n.parent != null ? "   ◀ zurück" : "";
         boolean favs = hasFav(n);

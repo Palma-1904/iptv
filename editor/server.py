@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 16  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 17  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -714,8 +714,72 @@ def app_status():
             out['ahead'] = int(res.stdout.strip() or 0)
     except Exception:
         pass
+    out['push'] = dict(APP_PUSH)
     APP_STATUS.update(t=time.time(), data=out)
     return out
+
+
+# ---------- App veröffentlichen: Commits zu GitHub pushen (wie „Push origin“ in GitHub Desktop) ----------
+
+APP_PUSH = {'state': '', 'msg': ''}
+
+
+def git(*args, timeout=60):
+    import subprocess
+    return subprocess.run(['git', '-C', os.path.dirname(HERE), *args], capture_output=True, text=True, timeout=timeout)
+
+
+def git_push(update_devices):
+    """Lokale Commits pushen (Token aus den Einstellungen, braucht die Rechte „repo“ und „workflow“).
+    Auf Wunsch danach warten, bis GitHub die App gebaut und veröffentlicht hat, und dann alle Geräte
+    per Fernwartung aktualisieren."""
+    s = load_settings()
+    token = s.get('token')
+    if not token:
+        raise UserError('In den Einstellungen ist kein GitHub-Token eingetragen.')
+    ahead = git('rev-list', '--count', '@{u}..HEAD')
+    if ahead.returncode == 0 and ahead.stdout.strip() == '0':
+        raise UserError('Es gibt nichts zu pushen – alles ist schon auf GitHub.')
+    pages = (s.get('pagesUrl') or 'https://palma-1904.github.io/iptv/').strip()
+    m = re.match(r'https?://([^.]+)\.github\.io/([^/]+)/', pages if pages.endswith('/') else pages + '/')
+    owner, repo = (m.group(1), m.group(2)) if m else ('Palma-1904', 'iptv')
+    started = time.time()
+    r = git('-c', 'credential.helper=', 'push', f'https://{owner}:{token}@github.com/{owner}/{repo}.git', 'HEAD:main',
+            timeout=180)
+    if r.returncode != 0:
+        err = (r.stderr or r.stdout).replace(token, '***')
+        if re.search(r'403|denied|permission|scope|workflow', err, re.I):
+            raise UserError('GitHub lehnt das Pushen ab: Dem Token fehlen die Rechte „repo“ und „workflow“. '
+                            'Auf github.com → Settings → Developer settings → Personal access tokens → '
+                            'den Token öffnen, „repo“ und „workflow“ anhaken, „Update token“. Der Token bleibt gleich.')
+        raise UserError('Pushen fehlgeschlagen: ' + err.strip()[-300:])
+    git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+    APP_STATUS['t'] = 0
+    APP_PUSH.update(state='building', msg='Gepusht – GitHub baut die App …', since=started,
+                    updateDevices=bool(update_devices))
+    if update_devices:
+        threading.Thread(target=update_after_build, args=(started,), daemon=True).start()
+    return {'ok': True}
+
+
+def update_after_build(started):
+    """Warten (bis 25 min), bis der Bau-Lauf dieses Pushs fertig und die App online ist; dann alle Geräte aktualisieren."""
+    for _ in range(50):
+        time.sleep(30)
+        APP_STATUS['t'] = 0
+        st = app_status()
+        run = st.get('run') or {}
+        if run.get('status') == 'completed' and run.get('conclusion') not in (None, 'success'):
+            APP_PUSH.update(state='error', msg=f'App-Bau {run.get("number")} fehlgeschlagen – Geräte nicht aktualisiert')
+            return
+        if run.get('status') == 'completed' and st.get('online') and st['online'] >= run.get('number', 10 ** 9):
+            try:
+                remote_cmd('all', 'update', {})
+                APP_PUSH.update(state='done', msg=f'App {st["online"]} online – Update an alle Geräte geschickt')
+            except Exception as e:
+                APP_PUSH.update(state='error', msg=f'App {st["online"]} online, Fernwartung gestört: {e}')
+            return
+    APP_PUSH.update(state='error', msg='Der Bau dauert ungewöhnlich lange – bitte auf GitHub nachsehen')
 
 
 # ---------- Nachts automatisch veröffentlichen ----------
@@ -1269,6 +1333,8 @@ def gist_upload(files, settings):
     settings['gistId'] = res['id']
     settings['login'] = res['owner']['login']
     write_json(SETTINGS_FILE, settings)
+    # genaue Fassung (Revision): unter …/raw/<rev>/datei sofort abrufbar, ohne GitHub-Zwischenspeicher
+    settings = dict(settings, rev=((res.get('history') or [{}])[0].get('version') or ''))
     return settings
 
 
@@ -1323,7 +1389,16 @@ def publish(ids):
                 r['warnings'].append(f'Hochladen fehlgeschlagen: {e}')
     for r in results:
         r.update(device_links(r['slug'], uploaded or {}))
-    return {'results': results, 'uploaded': bool(uploaded)}
+    # Geräte mit diesen Listen gleich neu laden lassen (Fernwartung; die Sendung läuft dabei weiter)
+    told = 0
+    if uploaded and uploaded.get('rev') and load_settings().get('remoteTopic'):
+        for r in results:
+            try:
+                remote_cmd('list:' + r['slug'], 'refresh', {'rev': uploaded['rev']})
+                told += 1
+            except Exception:
+                pass                                     # Fernwartung gestört: Geräte laden später selbst
+    return {'results': results, 'uploaded': bool(uploaded), 'devicesNotified': told}
 
 
 def build_xmltv(epg, live):
@@ -1671,6 +1746,11 @@ class Handler(SimpleHTTPRequestHandler):
                 keys = set(keys) if isinstance(keys, list) else None
                 name = find(load_state()['playlists'], pid, 'Playlist').get('name')
                 return self.send_json(start_job('check', f'Sender prüfen „{name}“', lambda: check_playlist(pid, keys)))
+            if method == 'POST' and path == '/api/git-push':
+                return self.send_json(git_push(bool(self.body().get('updateDevices'))))
+            if method == 'POST' and path == '/api/update-all':
+                remote_cmd('all', 'update', {})
+                return self.send_json({'ok': True})
             if method == 'GET' and path == '/api/app-status':
                 return self.send_json(app_status())
             if method == 'GET' and path == '/api/check':

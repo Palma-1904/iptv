@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 16; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 17; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -1105,6 +1105,9 @@ async function publish(all) {
       ? 'Hochladen fehlgeschlagen – Details bei den Playlists.'
       : 'Nur lokal erzeugt. Zum Hochladen in den Einstellungen ein GitHub-Token eintragen.'));
   }
+  if (res.devicesNotified) {
+    body.appendChild(el('p', 'okmark', '✓ Die Geräte mit dieser Liste laden sie jetzt sofort neu (per Fernwartung, die laufende Sendung wird nicht unterbrochen; ab App-Version 45).'));
+  }
   await loadSettings();
   body.appendChild(appCard());
   res.results.forEach((r) => body.appendChild(linksBox(r)));
@@ -1279,13 +1282,14 @@ function openRemote() {
 let appStatusTimer = null;
 
 async function renderAppStatus() {
+  const menu = $('#appver-menu');
   const b = $('#appver');
   let st;
-  try { st = await api('/api/app-status'); } catch (e) { b.hidden = true; return; }
+  try { st = await api('/api/app-status'); } catch (e) { menu.hidden = true; return; }
   const r = st.run;
   let text = st.online ? `App ${st.online}` : 'App ?';
   let cls = '';
-  let tip = 'Klicken: Bau-Läufe auf GitHub ansehen';
+  let tip = '';
   if (r && r.status !== 'completed') {
     text = `App ${r.number} wird gebaut …`; cls = 'busy';
     tip = `GitHub baut gerade: „${r.msg}“ (dauert etwa 5–10 Minuten)`;
@@ -1299,17 +1303,35 @@ async function renderAppStatus() {
     text = `App ${st.online} ✓`; cls = 'ok';
     tip = `Neueste App online: Version ${st.online}` + (r ? ` („${r.msg}“)` : '');
   }
-  if (st.ahead) {
-    text += ` · ${st.ahead} nicht gepusht`;
-    tip += `\n${st.ahead} lokale Änderung(en) noch nicht gepusht – in GitHub Desktop „Push origin“`;
-  }
-  b.textContent = text;
+  if (st.ahead) text += ` · ${st.ahead} nicht gepusht`;
+  b.textContent = text + ' ▾';
   b.className = 'appver ' + cls;
   b.title = tip;
-  b.hidden = false;
-  b.onclick = () => window.open(st.actionsUrl, '_blank');
+  menu.hidden = false;
+  // Menü: pushen, Geräte aktualisieren, GitHub ansehen
+  const pop = $('#appver-pop');
+  pop.textContent = '';
+  if (st.push && st.push.msg) pop.appendChild(el('p', 'hint menu-note', st.push.msg));
+  const item = (label, fn, cls2) => { const x = el('button', cls2 || '', label); x.type = 'button'; x.onclick = fn; pop.appendChild(x); };
+  const push = async (updateDevices) => {
+    try {
+      await busy(() => api('/api/git-push', { updateDevices }));
+      toast(updateDevices ? 'Gepusht – nach dem Bau (5–10 Min.) bekommen alle Geräte das Update automatisch'
+        : 'Gepusht – GitHub baut jetzt die App');
+      setTimeout(renderAppStatus, 3000);
+    } catch (e) { toast(e.message, true); }
+  };
+  if (st.ahead) {
+    item(`⇪ Jetzt pushen (${st.ahead} Änderung${st.ahead > 1 ? 'en' : ''})`, () => push(false));
+    item('⇪ Pushen und danach alle Geräte aktualisieren', () => push(true));
+  }
+  item('⟳ Alle Geräte jetzt aktualisieren', async () => {
+    if (!confirm('Allen Geräten per Fernwartung „Update“ schicken? Geräte mit Wächter installieren sofort.')) return;
+    try { await api('/api/update-all', {}); toast('Update an alle Geräte geschickt'); } catch (e) { toast(e.message, true); }
+  });
+  item('↗ Bau-Läufe auf GitHub ansehen', () => window.open(st.actionsUrl, '_blank'));
   clearTimeout(appStatusTimer);
-  appStatusTimer = setTimeout(renderAppStatus, cls === 'busy' ? 20000 : 60000);
+  appStatusTimer = setTimeout(renderAppStatus, cls === 'busy' || (st.push && st.push.state === 'building') ? 20000 : 60000);
 }
 
 // ---------- Sender prüfen ----------

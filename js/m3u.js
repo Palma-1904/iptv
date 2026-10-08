@@ -234,9 +234,24 @@
   var lastText = null;
   var lastLoad = 0;
 
-  // GitHub hält Gist-Dateien bis zu 5 Minuten im Zwischenspeicher – Zeitstempel holt die neueste Fassung
+  // GitHub hält Gist-Dateien bis zu 5 Minuten im Zwischenspeicher – Zeitstempel holt die neueste Fassung.
+  // Nach „Veröffentlichen“ schickt der Editor die genaue Fassung (Revision): die ist sofort abrufbar.
+  var REV_KEY = 'iptv-rev';
+  function currentRev() {
+    try {
+      var r = JSON.parse(localStorage.getItem(REV_KEY) || 'null');
+      return r && Date.now() - r.t < 20 * 60 * 1000 ? r.rev : null;   // danach ist der Zwischenspeicher aktuell
+    } catch (e) { return null; }
+  }
+  function setRev(rev) {
+    if (!/^[0-9a-f]{40}$/.test(rev || '')) return;
+    try { localStorage.setItem(REV_KEY, JSON.stringify({ rev: rev, t: Date.now() })); } catch (e) { /* egal */ }
+  }
   function fresh(u) {
-    return /^https:\/\/gist\.githubusercontent\.com\//.test(u) ? u + (u.indexOf('?') < 0 ? '?' : '&') + 't=' + Date.now() : u;
+    if (!/^https:\/\/gist\.githubusercontent\.com\//.test(u)) return u;
+    var rev = currentRev();
+    if (rev) u = u.replace(/\/raw\/(?![0-9a-f]{40}\/)/, '/raw/' + rev + '/');
+    return u + (u.indexOf('?') < 0 ? '?' : '&') + 't=' + Date.now();
   }
 
   function fetchText() {
@@ -540,6 +555,8 @@
     setTreeProvider: function (fn) { treeProvider = fn; },
     openNativePath: openNativePath,
     nativeRefresh: nativeRefresh,
+    // Fernwartung nach „Veröffentlichen“: neue Fassung sofort laden (ohne die laufende Sendung zu unterbrechen)
+    refreshTo: function (rev) { setRev(rev); nativeRefresh(); },
     epgStamp: function () { return epgStamp; },
     nativeTree: function () { return treeProvider ? treeProvider() : null; },   // zum Testen
     nativeLeaf: nativeLeaf,

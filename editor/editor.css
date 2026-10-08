@@ -385,6 +385,7 @@ dialog#dlg-dupes { width: min(720px, 94vw); }
 
 /* Stand der App: grün = online, gelb = wird gebaut/veröffentlicht, rot = Bau fehlgeschlagen */
 .appver { font-size: 14px; white-space: nowrap; }
+.menu > summary.appver.ok, .menu > summary.appver.busy, .menu > summary.appver.bad { }
 .appver.ok { background: rgba(52, 199, 89, .15); border-color: rgba(52, 199, 89, .6); color: #1e7a37; }
 .appver.busy { background: rgba(255, 204, 0, .2); border-color: rgba(230, 170, 0, .8); color: #8a6200; }
 .appver.bad { background: rgba(215, 0, 21, .12); border-color: var(--danger); color: var(--danger); }
@@ -411,3 +412,7 @@ dialog#dlg-dupes { width: min(720px, 94vw); }
 .split .menu > summary { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid rgba(255, 255, 255, .4); }
 .dev-msg { margin-top: 6px; }
 .dev-msg input { flex: 1; min-width: 200px; }
+#appver-menu > summary.ok { background: rgba(52, 199, 89, .15); border-color: rgba(52, 199, 89, .6); color: #1e7a37; }
+#appver-menu > summary.busy { background: rgba(255, 204, 0, .2); border-color: rgba(230, 170, 0, .8); color: #8a6200; }
+#appver-menu > summary.bad { background: rgba(215, 0, 21, .12); border-color: var(--danger); color: var(--danger); }
+.menu-note { margin: 4px 8px 6px; white-space: normal; max-width: 300px; }

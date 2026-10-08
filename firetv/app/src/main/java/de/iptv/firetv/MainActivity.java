@@ -488,6 +488,12 @@ public class MainActivity extends Activity implements Remote.Target {
             case "update":
                 Updater.remoteUpdate(this);   // still laden, dann nur „Installieren“ am Gerät
                 break;
+            case "refresh": {                // neu veröffentlichte Liste sofort laden, Sendung läuft weiter
+                String rev = arg.optString("rev").replaceAll("[^0-9a-f]", "");
+                web.evaluateJavascript("window.IPTV&&IPTV.refreshTo&&IPTV.refreshTo('" + rev + "')", null);
+                Remote.report("Liste neu geladen");
+                break;
+            }
             case "setting": {
                 String key = arg.optString("key");
                 boolean on = arg.optBoolean("on");

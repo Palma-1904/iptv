@@ -25,9 +25,13 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   bietet „Ersetzen“ / „Alle ersetzen“ an (Platz, Gruppe, eigener Name bleiben). „Doppelte“ zeigt ✓/✕ der letzten
   Prüfung, behält die beste funktionierende Fassung und kann nur die doppelten Sender prüfen (`/api/check` mit `keys`,
   Ergebnis wird zusammengeführt). Test: Test-Editor mit Kopie der Daten (DATA/STATE_FILE umbiegen), nie echte state.json.
-  Schnell: nur 16 KB anspielen, bei „belegt“ 3 s warten (max. 6×), **parallel über alle freien Xtream-Zugänge**
-  (je Zugang ein Thread; Sender wird über den anderen Zugang geprüft, wenn gleiche Stream-Nummer + gleicher
-  `channel_key`). Nachts (Einstellung „automatisch“): erst alle Playlists prüfen, dann veröffentlichen.
+  Schnell: nur 16 KB anspielen, bei „belegt“ 3 s warten (max. 6×). **Nur über den eigenen Zugang der Playlist**
+  (Thomas: Zugänge TKH/ASW/KMH nie vermischen; Playlist X nutzt nur Zugang X). Nachts (Einstellung
+  „automatisch“): erst alle Playlists prüfen, dann veröffentlichen.
+- **Player-Umschalten** (`PlayerActivity`): libVLC `stop()` blockiert, wenn der Anbieter die Verbindung nicht sauber
+  schließt → früher ANR. Jetzt: jeder Start bekommt einen frischen `MediaPlayer` (`newPlayer`), der alte wird im
+  Thread „VLC-Abbau“ gestoppt/freigegeben (`dispose`); der neue startet erst, wenn der alte weg ist (max. 4 s, 1 Verbindung).
+  Ton über `--aout=android_audiotrack` (OpenSL ES stürzt bei zwei Playern ab: „theOneTrueRefCount“).
   Trennzeilen des Anbieters („##### … #####“, `SEPARATOR`) filtert `load_catalog`; `remove_separators()` beim Start.
   Nachts automatisch veröffentlichen: Einstellungen (läuft nur, solange der Editor läuft).
   Testen ohne Hochladen/Streams: Test-Editor auf Port 8791 mit gestubbtem `gist_upload`/`measure_stream`.

@@ -577,10 +577,11 @@ def check_playlist(pl_id, keys=None):
     if not items:
         raise UserError('In dieser Playlist gibt es keine Live-Sender zum Prüfen.')
 
-    # Freie Zugänge (Xtream, Katalog geladen): je Zugang ein Prüf-Strang
+    # Nur der eigene Zugang der Playlist (Zugänge werden nicht vermischt); ist er belegt, wird nicht geprüft
+    own = {x[3] for x in items}
     accounts = []
     for src in state['sources']:
-        if src.get('type') != 'xtream' or not os.path.exists(os.path.join(CACHE, f'catalog_{src["id"]}.json')):
+        if src['id'] not in own or src.get('type') != 'xtream':
             continue
         try:
             info = source_info(src)
@@ -589,9 +590,8 @@ def check_playlist(pl_id, keys=None):
         mx, act = info.get('maxConnections') or 1, info.get('activeConnections') or 0
         if act < mx:
             accounts.append(src['id'])
-    own = {x[3] for x in items}
     if not accounts:
-        raise UserError('Gerade sind alle Zugänge belegt (es wird ferngesehen). Bitte später prüfen, z. B. nachts.')
+        raise UserError('Der Zugang dieser Playlist ist gerade belegt (es wird ferngesehen). Bitte später prüfen, z. B. nachts.')
 
     def url_on(acc, ch):
         """Gleicher Sender über einen anderen Zugang (gleiche Nummer, gleicher Name) – sonst None."""

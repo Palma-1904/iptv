@@ -204,6 +204,95 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     private LibVLC vlc;
     private MediaPlayer player;
+    // libVLC: stop() wartet, bis die Verbindung zum Anbieter abgebaut ist. Schließt der Anbieter sie nicht sauber
+    // (Limit 1 Verbindung, schnelles Umschalten), hängt das lange – vorher fror die Bedienung ein („App reagiert
+    // nicht“). Darum: jeder Start bekommt einen frischen Player, der alte wird im Hintergrund abgebaut.
+    private static final java.util.concurrent.atomic.AtomicInteger disposing = new java.util.concurrent.atomic.AtomicInteger();
+
+    private void onPlayerEvent(MediaPlayer.Event event) {
+        switch (event.type) {
+            case MediaPlayer.Event.Buffering:
+                spinner.setVisibility(event.getBuffering() < 100f ? View.VISIBLE : View.GONE);
+                break;
+            case MediaPlayer.Event.Playing:
+                retries = 0;
+                failed = false;
+                reportPlaying();
+                spinner.setVisibility(View.GONE);
+                status.setVisibility(View.GONE);
+                if (pendingSeek > 0) {            // Weiterschauen
+                    player.setTime(pendingSeek);
+                    position = pendingSeek;
+                    pendingSeek = -1;
+                }
+                rateTries = 0;
+                handler.removeCallbacks(rateCheck);
+                handler.post(rateCheck);              // Bildrate wird kurz nach dem Start bekannt
+                break;
+            case MediaPlayer.Event.TimeChanged:
+                position = event.getTimeChanged();
+                if (System.currentTimeMillis() - lastSave > 15000) saveResume();
+                break;
+            case MediaPlayer.Event.LengthChanged:
+                length = event.getLengthChanged();
+                break;
+            case MediaPlayer.Event.EndReached:
+                onEnded();
+                break;
+            case MediaPlayer.Event.EncounteredError:
+                onError();
+                break;
+            default:
+                break;
+        }
+    }
+
+    private MediaPlayer newPlayer() {
+        final MediaPlayer p = new MediaPlayer(vlc);
+        p.attachViews(surface, null, false, false);
+        p.setEventListener(event -> {
+            if (p == player) onPlayerEvent(event);   // Meldungen alter Player ignorieren
+        });
+        return p;
+    }
+
+    /** Alten Player vom Bild lösen und im Hintergrund stoppen/freigeben (darf beliebig lange dauern). */
+    private static void dispose(final MediaPlayer p, final LibVLC releaseAfter) {
+        p.setEventListener(null);
+        p.detachViews();
+        disposing.incrementAndGet();
+        new Thread(() -> {
+            try {
+                p.stop();
+                p.release();
+            } catch (Exception ignored) {
+                // egal
+            } finally {
+                disposing.decrementAndGet();
+            }
+            if (releaseAfter != null) {
+                for (int i = 0; i < 300 && disposing.get() > 0; i++) {
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                }
+                if (disposing.get() == 0) releaseAfter.release();
+            }
+        }, "VLC-Abbau").start();
+    }
+
+    /** Wiedergabe beenden: sofort, ohne auf den Anbieter zu warten (neuer, leerer Player liegt bereit). */
+    private void stopPlayer() {
+        if (player == null) return;
+        dispose(player, null);
+        player = newPlayer();
+    }
+
+    private void playPlayer() {
+        if (player != null) player.play();
+    }
     private FrameLayout root;
     private VLCVideoLayout surface;
     private View curtain;           // schwarz über dem Bild, bis die Bildrate feststeht (kein Bild–schwarz–Bild)
@@ -325,48 +414,13 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 "--http-reconnect",
                 "--audio-language=de,deu,ger",
                 "--audio-time-stretch",
+                // Ton über AudioTrack statt OpenSL ES: OpenSL verträgt keine zwei Player gleichzeitig (Absturz
+                // beim Umschalten, während der alte Player noch abgebaut wird)
+                "--aout=android_audiotrack",
                 // Zeitsteuerung bei Live-Sendern nicht ständig nachregeln (verursacht kleine Ruckler)
                 "--clock-jitter=0",
                 "--clock-synchro=0")));
-        player = new MediaPlayer(vlc);
-        player.attachViews(surface, null, false, false);
-        player.setEventListener(event -> {
-            switch (event.type) {
-                case MediaPlayer.Event.Buffering:
-                    spinner.setVisibility(event.getBuffering() < 100f ? View.VISIBLE : View.GONE);
-                    break;
-                case MediaPlayer.Event.Playing:
-                    retries = 0;
-                    failed = false;
-                    reportPlaying();
-                    spinner.setVisibility(View.GONE);
-                    status.setVisibility(View.GONE);
-                    if (pendingSeek > 0) {            // Weiterschauen
-                        player.setTime(pendingSeek);
-                        position = pendingSeek;
-                        pendingSeek = -1;
-                    }
-                    rateTries = 0;
-                    handler.removeCallbacks(rateCheck);
-                    handler.post(rateCheck);              // Bildrate wird kurz nach dem Start bekannt
-                    break;
-                case MediaPlayer.Event.TimeChanged:
-                    position = event.getTimeChanged();
-                    if (System.currentTimeMillis() - lastSave > 15000) saveResume();
-                    break;
-                case MediaPlayer.Event.LengthChanged:
-                    length = event.getLengthChanged();
-                    break;
-                case MediaPlayer.Event.EndReached:
-                    onEnded();
-                    break;
-                case MediaPlayer.Event.EncounteredError:
-                    onError();
-                    break;
-                default:
-                    break;
-            }
-        });
+        player = newPlayer();
 
         if (idle()) {
             spinner.setVisibility(View.GONE);
@@ -409,7 +463,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
     private final Runnable tvGone = () -> {
         if (sleeping || idle() || player == null) return;
         saveResume();
-        player.stop();
+        stopPlayer();
         sleeping = true;
         tvOff = true;
         sleepWarned = false;
@@ -682,7 +736,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 break;
             case "stop":
                 saveResume();
-                player.stop();
+                stopPlayer();
                 sleeping = true;      // jede Taste schaut weiter
                 closeList();
                 info.setVisibility(View.GONE);
@@ -753,9 +807,27 @@ public class PlayerActivity extends Activity implements Remote.Target {
             media.addOption(":adaptive-livedelay=30000");
             media.addOption(":adaptive-maxbuffer=60000");
         }
-        player.setMedia(media);
-        media.release();
-        player.play();
+        if (player != null) dispose(player, null);
+        player = newPlayer();
+        final MediaPlayer p = player;
+        // Anbieter erlaubt nur 1 Verbindung: erst starten, wenn der alte Player sie freigegeben hat (max. 4 s)
+        final long t0 = System.currentTimeMillis();
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (p != player) {
+                    media.release();
+                    return;
+                }
+                if (disposing.get() > 0 && System.currentTimeMillis() - t0 < 4000) {
+                    handler.postDelayed(this, 100);
+                    return;
+                }
+                p.setMedia(media);
+                media.release();
+                p.play();
+            }
+        });
     }
 
     /** Sender/Folge wechseln: alten Stream sofort beenden, neuen erst nach kurzer Ruhe laden. */
@@ -775,7 +847,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         }
         saveResume();
         pendingIndex = to;
-        player.stop();
+        stopPlayer();
         spinner.setVisibility(View.VISIBLE);
         status.setVisibility(View.GONE);
         showInfo();
@@ -788,7 +860,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         if (!idle() && leaf.parent == ctx && leaf.item == items().get(index) && pendingIndex < 0 && !failed) return;
         handler.removeCallbacks(tune);
         saveResume();
-        player.stop();
+        stopPlayer();
         pendingIndex = -1;
         retries = 0;
         setContext(leaf);
@@ -817,7 +889,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
             final int at = index;
             handler.postDelayed(() -> {
                 if (atCtx == ctx && at == index && pendingIndex < 0) {
-                    player.stop();
+                    stopPlayer();
                     start(it);
                 }
             }, 2500);
@@ -838,7 +910,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
             Item it = current();
             if (it != null) Remote.status("paused", it.heading != null ? it.heading : it.name, it.type);
         } else {
-            player.play();
+            playPlayer();
         }
         handler.postDelayed(this::showInfo, 150);
     }
@@ -853,7 +925,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     private void openInVlc() {
         Item it = items().get(index);
-        player.stop();
+        stopPlayer();
         AutostartService.suppress(6 * 3600 * 1000L);   // in VLC weiterschauen
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.setDataAndType(Uri.parse(it.url), "video/*");
@@ -1023,7 +1095,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
             long quiet = System.currentTimeMillis() - lastInput;
             if (quiet >= SLEEP_MS + SLEEP_GRACE) {
                 saveResume();
-                player.stop();
+                stopPlayer();
                 sleeping = true;
                 Remote.status("sleep", "", "");
                 if (Waechter.running()) Updater.check(PlayerActivity.this, true);   // ruhiger Moment für ein Update
@@ -1118,10 +1190,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
         if (mem != null && player != null) saveResume();
         handler.removeCallbacksAndMessages(null);
         if (player != null) {
-            player.stop();
-            player.detachViews();
-            player.release();
+            dispose(player, vlc);              // im Hintergrund: Stoppen kann dauern
             player = null;
+            vlc = null;
         }
         if (vlc != null) {
             vlc.release();

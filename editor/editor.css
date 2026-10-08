@@ -418,3 +418,9 @@ dialog#dlg-dupes { width: min(720px, 94vw); }
 .menu-note { margin: 4px 8px 6px; white-space: normal; max-width: 300px; }
 .seg { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
 .seg button.on { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+
+/* Klick sichtbar machen: beim Drücken dunkler/kleiner, danach kurz grün aufleuchten */
+button:active, .menu > summary:active { filter: brightness(.85); transform: scale(.97); }
+button { transition: background-color .25s, box-shadow .25s, transform .05s; }
+button.clicked { box-shadow: 0 0 0 3px rgba(52, 199, 89, .55); background-color: rgba(52, 199, 89, .18); }
+button.primary.clicked { box-shadow: 0 0 0 3px rgba(52, 199, 89, .7); }

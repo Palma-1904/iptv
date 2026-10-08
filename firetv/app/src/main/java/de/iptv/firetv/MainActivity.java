@@ -58,6 +58,14 @@ public class MainActivity extends Activity implements Remote.Target {
         Remote.main_target = this;
         AutostartService.start(this);
         Waechter.ensure(this);   // falls Fire OS den Wächter abgeschaltet hat
+        // Eingetragen, aber nicht verbunden (z. B. nach Neuinstallation hängengeblieben): einmal aus- und einschalten
+        handler.postDelayed(() -> {
+            if (!Waechter.running() && Waechter.wanted(this) && Waechter.canSwitch(this) && Waechter.supported()
+                    && Waechter.systemEnabled(this)) {
+                Waechter.setSystem(this, false);
+                handler.postDelayed(() -> Waechter.setSystem(this, true), 1500);
+            }
+        }, 10000);
 
         web = new WebView(this);
         setContentView(web);

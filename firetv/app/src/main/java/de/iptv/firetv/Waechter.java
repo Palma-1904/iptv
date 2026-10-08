@@ -154,8 +154,23 @@ public class Waechter extends AccessibilityService {
 
     /** Eigenes Update kommt: die nächsten 10 Minuten im Installer „Installieren“ drücken. */
     static void expectInstall(Context c) {
-        prefs(c).edit().putLong("autoInstallUntil", System.currentTimeMillis() + 10 * 60 * 1000L).apply();
+        // 2 Stunden: kommt das Update im Standby, ist der Knopf gesperrt, bis der Fernseher wieder an ist
+        prefs(c).edit().putLong("autoInstallUntil", System.currentTimeMillis() + 2 * 3600 * 1000L).apply();
+        Waechter w = running;
+        if (w != null) w.handler.post(w.watchInstall);
     }
+
+    /** Solange ein Update ansteht: alle 2 s nachsehen, ob „Installieren“ gedrückt werden kann
+     *  (nicht nur bei Fensterwechseln – der Knopf wird oft erst später freigegeben). */
+    private final Runnable watchInstall = new Runnable() {
+        @Override
+        public void run() {
+            handler.removeCallbacks(this);
+            if (System.currentTimeMillis() >= prefs(Waechter.this).getLong("autoInstallUntil", 0)) return;
+            confirmInstall();
+            handler.postDelayed(this, 2000);
+        }
+    };
 
     /** Nach dem eigenen Update (UpdateReceiver): die nächsten 3 Minuten im Installer „Öffnen“ drücken. */
     static void installDone(Context c) {
@@ -191,6 +206,7 @@ public class Waechter extends AccessibilityService {
         } catch (Exception ignored) {
             // dann über den Fensterwechsel
         }
+        handler.post(watchInstall);   // ansteh. Update (z. B. nach Neustart des Wächters) weiter beobachten
         // Nach einem Update steht oft noch „App installiert – Fertig / Öffnen“ da: gleich „Öffnen“ drücken
         if (justUpdated()) {
             handler.postDelayed(this::confirmOpen, 1500);

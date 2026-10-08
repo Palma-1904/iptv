@@ -2146,6 +2146,13 @@ function bind() {
   $('#publish-all').onclick = () => publish(true);
   $('#check').onclick = checkPlaylist;
   $('#dupes').onclick = openDupes;
+  // Jeder Klick auf einen Knopf leuchtet kurz grün auf (man sieht, dass er angekommen ist)
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button');
+    if (!b || b.disabled) return;
+    b.classList.add('clicked');
+    setTimeout(() => b.classList.remove('clicked'), 700);
+  }, true);
   // Aufklapp-Menüs: nach Auswahl und bei Klick daneben schließen
   document.addEventListener('click', (ev) => {
     document.querySelectorAll('details.menu[open]').forEach((d) => {

@@ -112,7 +112,8 @@ Vor jedem Commit prüfen, dass keine Stream-Adressen/Zugangsdaten in versioniert
 Alte öffentliche Repos `tv`/`tv2` wurden gelöscht; deren Zugänge existieren nicht mehr.
 
 ## Anbieter
-TRX (Xtream, Server `http://line.trxdnscloud.ru`): **nur 1 gleichzeitige Verbindung**. Abo bis 26.10.2026.
+TRX (Xtream, Server heute `line.smrtrx.cfd`): **nur 1 gleichzeitige Verbindung je Zugang**. Abos (Stand 8.10.2026):
+TKH bis 26.10.2027, ASW bis 04.10.2027, KMH bis 04.10.2027 (player_api für KMH/ASW zeitweise HTTP 404, Streams laufen).
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
 ## Stand / nächste Schritte (5.10.2026)

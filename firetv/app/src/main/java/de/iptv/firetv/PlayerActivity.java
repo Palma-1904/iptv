@@ -119,6 +119,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         Item item;
         boolean search;
         boolean clear;      // „Zuletzt gesehen löschen“ (unten in der Übersicht)
+        boolean restart;    // „App neu starten“ (ganz unten in der Übersicht)
         boolean variants;   // Film mit mehreren Sprachfassungen
         String favKey, favType;  // Favoriten-Kennung (Film = Werk, Serie = Titel)
         boolean fav;
@@ -1537,6 +1538,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
     private void open(Node n) {
         if (n.search) askSearch();
         else if (n.clear) askClear();
+        else if (n.restart) askRestart();
         else showNode(n, null);
     }
 
@@ -1562,6 +1564,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
             clear.clear = true;
             d.add(clear);
         }
+        Node restart = new Node("🔄 App neu starten");
+        restart.restart = true;
+        d.add(restart);
         displayRoot = d;
         return d;
     }
@@ -1626,6 +1631,25 @@ public class PlayerActivity extends Activity implements Remote.Target {
     }
 
     /** Suche über alle Einträge (Name und Gruppe); Ergebnisse als eigene Ebene unter der Übersicht. */
+    /** Wie App schließen und öffnen: Liste frisch laden und nach Updates suchen (Einstellungen bleiben). */
+    private void askRestart() {
+        handler.removeCallbacks(hideList);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("App neu starten?")
+                .setMessage("Die Senderliste wird neu geladen und nach einer neuen App-Version gesucht.\n"
+                        + "Favoriten, Einstellungen und „Weiterschauen“ bleiben erhalten.")
+                .setPositiveButton("Neu starten", (d, w) -> {
+                    Intent i = new Intent(this, MainActivity.class)
+                            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK)
+                            .putExtra("restart", true);
+                    startActivity(i);
+                    finish();
+                })
+                .setNegativeButton("Abbrechen", (d, w) -> handler.postDelayed(hideList, LIST_MS))
+                .setOnCancelListener(d -> handler.postDelayed(hideList, LIST_MS))
+                .show();
+    }
+
     /** „Zuletzt gesehen“ leeren, auf Wunsch auch die Weiterschauen-Stellen; Lieblingssender bleiben. */
     private void askClear() {
         handler.removeCallbacks(hideList);
@@ -1707,6 +1731,10 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 previewEpg.setText("Alle Sender, Filme und Serien durchsuchen");
                 return;
             }
+            if (n.restart) {
+                previewEpg.setText("Senderliste neu laden und nach Updates suchen\n(Einstellungen bleiben erhalten)");
+                return;
+            }
             if (n.clear) {
                 previewEpg.setText("Liste „Zuletzt gesehen“ leeren\n(Lieblingssender bleiben)");
                 return;
@@ -1768,7 +1796,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     /** „97 Sender“, „12 Filme“, „3 Fassungen“ … */
     private static String countText(Node n) {
-        if (n.search || n.clear) return "";
+        if (n.search || n.clear || n.restart) return "";
         if (n.variants) return n.children.size() + " Fassungen";
         int c = n.count();
         Node first = n;
@@ -1802,7 +1830,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
             Item playing = idle() ? null : items().get(index);
             if (n.item == null) {
                 boolean inside = contains(n, playing);
-                row.num.setText(inside ? "▶" : n.search || n.clear ? "" : "›");
+                row.num.setText(inside ? "▶" : n.search || n.clear || n.restart ? "" : "›");
                 row.num.setTextColor(inside ? ROYAL_LIGHT : MUTED);
                 row.logo.setVisibility(View.GONE);
                 row.name.setText(n.fav ? "★ " + n.name : n.name);

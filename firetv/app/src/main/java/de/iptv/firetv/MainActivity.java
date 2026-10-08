@@ -118,6 +118,17 @@ public class MainActivity extends Activity implements Remote.Target {
         web.loadUrl(url);
     }
 
+    /** „App neu starten“ aus der Übersicht des Players: Webapp frisch laden, dann nach Updates suchen. */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent != null && intent.getBooleanExtra("restart", false)) {
+            Toast.makeText(this, "Wird neu gestartet …", Toast.LENGTH_SHORT).show();
+            web.reload();
+            handler.postDelayed(() -> Updater.check(this, true), 4000);
+        }
+    }
+
     /** Vom Computer vorgemerkte Einrichtung übernehmen (Stick-einrichten.command → SetupReceiver). */
     private boolean takePendingSetup() {
         if (!prefs.contains("pendingView")) return false;

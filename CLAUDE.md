@@ -139,8 +139,13 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   Veröffentlichen (Pages + App-Bau), nicht zum Abgleich zwischen Macs. Kein Pull nötig, solange niemand auf github.com ändert.
 - Neuer Mac: `Einrichten-neuer-Mac.command` (Command Line Tools, safe.directory, GitHub Desktop, VLC-Check).
 - Git-Identität steht im Repo (`.git/config`): „Max Mustermann <mieten.riffe3y@icloud.com>“ – nicht ändern.
-- **Claude committet lokal** (mit Co-Authored-By), **Thomas pusht** in GitHub Desktop („Push origin“).
+- **Claude committet lokal** (mit Co-Authored-By), **Thomas pusht** in GitHub Desktop („Push origin“) oder im
+  Editor (App-Anzeige ▾ → „Jetzt pushen“, `/api/git-push`: Token aus settings.json, braucht Scopes **repo + workflow**;
+  pusht `HEAD:main` per https mit Token, setzt danach `refs/remotes/origin/main`; Fehlertext ohne Token).
+  „Pushen und danach alle Geräte aktualisieren“ wartet auf den Bau (`update_after_build`) und schickt `update` an alle.
   Claude hat keine GitHub-Zugangsdaten auf der Kommandozeile.
+- Nach „Veröffentlichen“ schickt der Editor `refresh {rev}` an `list:<slug>`: Geräte laden die Gist-Revision
+  (`…/raw/<rev>/datei`, sofort, ohne 5-min-Cache; `IPTV.refreshTo`, 20 min gültig) im Hintergrund ohne Unterbrechung.
 - Vor dem Abziehen der SSD: Terminal-Fenster von Editor/Webapp und die Claude-Sitzung schließen.
 
 ## Testen lokal

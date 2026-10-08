@@ -1106,7 +1106,7 @@ async function publish(all) {
       : 'Nur lokal erzeugt. Zum Hochladen in den Einstellungen ein GitHub-Token eintragen.'));
   }
   if (res.devicesNotified) {
-    body.appendChild(el('p', 'okmark', '✓ Die Geräte mit dieser Liste laden sie jetzt sofort neu (per Fernwartung, die laufende Sendung wird nicht unterbrochen; ab App-Version 45).'));
+    body.appendChild(el('p', 'okmark', '✓ Die Geräte mit dieser Liste laden sie jetzt sofort neu (per Fernwartung, die laufende Sendung wird nicht unterbrochen; Geräte mit der neuesten App).'));
   }
   await loadSettings();
   body.appendChild(appCard());

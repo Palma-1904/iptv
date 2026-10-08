@@ -89,6 +89,12 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   (freien) Zugang zuordnen (`/api/switch-source`, gleiche Stream-Nummer, sonst Name), neue Playlist nur mit freiem
   Zugang, neuer Zugang → passende Playlist anlegen. `addToPlaylist` nimmt nur Sender des eigenen Zugangs.
   Kennungen ohne Zugang: x-work = `typ:id`, App-Speicher `Memory.norm(url)` → Favoriten/Weiterschauen bleiben.
+- **Editor-Extras**: „★ Meine Sender“ je Playlist (`pl.myChannels`, ☆ in der Zeile; beim Veröffentlichen erste Gruppe
+  „★ Meine Sender“, Sender bleiben auch in ihren Gruppen). Tägliche Sicherung `data/backup/state-JJJJ-MM-TT.json`
+  vor der ersten Änderung des Tages (21 behalten), ⋯ → „Frühere Fassung wiederherstellen“. Abo-Erinnerung
+  (`#expiry-warn`, ≤ 30 Tage). Gerätenamen/Notizen der Fernwartung in settings.json `deviceNotes`.
+  „Nur deutsche Fassungen“ je Playlist (`pl.germanOnly`, wirkt beim Veröffentlichen; ASW 5,1 → 1,4 MB).
+  „Trotzdem prüfen“: Geräte der Liste per Fernwartung `stop`, danach `reload`.
 - **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.
 - **Wächter** (`Waechter.java`, Bedienungshilfe/AccessibilityService, `res/xml/waechter.xml`): fängt Home/Einstellungen/
   Alle-Apps-Taste ab und holt die App sofort zurück, wenn ein fremder Bildschirm (Activity/Startseite) erscheint –

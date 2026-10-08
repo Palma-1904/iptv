@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 19; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 20; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -134,6 +134,7 @@ function renderPlSource() {
   $('#pl-german').textContent = '🇩🇪 Nur deutsche Fassungen: ' + (pl && pl.germanOnly ? 'AN' : 'AUS');
   const allClosed = pl && pl.groups.length && pl.groups.every((g) => ui.collapsed.has(g.id));
   $('#collapse-all').textContent = allClosed ? '▾ Alle auf' : '▸ Alle zu';
+  renderMine();
 }
 
 // Playlist gewählt: ihr Zugang ist die Quelle des Senderangebots
@@ -715,7 +716,17 @@ function renderPlaylist() {
         item.variants.forEach((v) => langs.appendChild(el('span', 'lang' + (langRank(v.lang.split(' ')[0]) < PREFERRED.length ? ' pref' : ''), v.lang)));
         row.appendChild(langs);
       } else {
-        row.appendChild(ch && ch.tvgId ? el('span', 'epg', 'EPG') : el('span'));
+        const meta = el('span', 'meta');
+        if (item.key.split(':')[1] === 'live') {
+          const mine = (pl.myChannels || []).includes(item.key);
+          const star = el('button', 'star' + (mine ? ' on' : ''), mine ? '★' : '☆');
+          star.type = 'button';
+          star.title = mine ? 'Aus „Meine Sender“ entfernen' : 'Zu „★ Meine Sender“ hinzufügen (steht auf den Geräten ganz oben)';
+          star.onclick = () => toggleMine(pl, item.key);
+          meta.appendChild(star);
+        }
+        if (ch && ch.tvgId) meta.appendChild(el('span', 'epg', 'EPG'));
+        row.appendChild(meta);
       }
       row.appendChild(ch ? playButton(ch, item.name || item.label) : el('span'));
       const x = el('button', '', '✕');
@@ -832,6 +843,97 @@ function openSort(g) {
     toast(`„${g.name}“ sortiert` + (removed ? `, ${removed} doppelte entfernt` : '') + ' – zum Übernehmen „Veröffentlichen“');
   };
   dlg.showModal();
+}
+
+// ---------- ★ Meine Sender (eigene erste Gruppe auf den Geräten) ----------
+
+function toggleMine(pl, key) {
+  pl.myChannels = pl.myChannels || [];
+  const i = pl.myChannels.indexOf(key);
+  if (i >= 0) pl.myChannels.splice(i, 1); else pl.myChannels.push(key);
+  save();
+  renderPlaylist();
+  renderMine();
+}
+
+function renderMine() {
+  const box = $('#my-channels');
+  const pl = playlist();
+  const keys = new Set(pl ? plKeys(pl) : []);
+  const mine = pl ? (pl.myChannels || []).filter((k) => keys.has(k)) : [];
+  box.hidden = !pl;
+  box.textContent = '';
+  if (!pl) return;
+  box.appendChild(el('strong', '', `★ Meine Sender (${mine.length})`));
+  if (!mine.length) {
+    box.appendChild(el('span', 'hint', ' – ☆ bei einem Sender antippen: er steht dann auf den Geräten in der ersten Gruppe „★ Meine Sender“ (z. B. die 10 wichtigsten für Senioren).'));
+    return;
+  }
+  const list = el('div', 'mylist');
+  mine.forEach((k, i) => {
+    const ch = lookup(k);
+    const chipEl = el('span', 'mychip');
+    chipEl.appendChild(el('span', '', `${i + 1}. ${(ch && ch.name) || k}`));
+    const up = el('button', '', '↑');
+    up.type = 'button';
+    up.title = 'Nach vorne';
+    up.disabled = i === 0;
+    up.onclick = () => { const a = pl.myChannels; const j = a.indexOf(k); if (j > 0) { [a[j - 1], a[j]] = [a[j], a[j - 1]]; save(); renderMine(); } };
+    const x = el('button', '', '✕');
+    x.type = 'button';
+    x.title = 'Entfernen';
+    x.onclick = () => toggleMine(pl, k);
+    chipEl.append(up, x);
+    list.appendChild(chipEl);
+  });
+  box.appendChild(list);
+  box.appendChild(el('div', 'hint', 'Erscheint nach dem Veröffentlichen ganz oben unter „Live TV“; die Sender bleiben auch in ihren Gruppen.'));
+}
+
+// ---------- Sicherungen (täglich) ----------
+
+async function openBackups() {
+  const dlg = $('#dlg-publish');
+  const body = $('#publish-body');
+  $('#publish-title').textContent = 'Frühere Fassung wiederherstellen';
+  $('#job-cancel').hidden = true;
+  body.textContent = 'Lade …';
+  dlg.showModal();
+  let res;
+  try { res = await api('/api/backups'); } catch (e) { body.textContent = e.message; return; }
+  body.textContent = '';
+  body.appendChild(el('p', 'hint', 'Der Editor sichert vor der ersten Änderung jedes Tages den Stand aller Playlists (die letzten 21). Wiederherstellen ersetzt alle Playlists durch diesen Stand – der jetzige wird vorher ebenfalls gesichert.'));
+  if (!res.backups.length) { body.appendChild(el('p', '', 'Noch keine Sicherung vorhanden – sie entsteht bei der nächsten Änderung.')); return; }
+  res.backups.forEach((b) => {
+    const row = el('div', 'bk-row');
+    row.appendChild(el('strong', '', new Date(b.time * 1000).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })));
+    row.appendChild(el('span', 'hint', Object.entries(b.playlists).map(([n, c]) => `${n}: ${c}`).join(' · ')));
+    const btn = el('button', '', 'Wiederherstellen');
+    btn.type = 'button';
+    btn.onclick = async () => {
+      if (!confirm('Alle Playlists auf diesen Stand zurücksetzen? (Der jetzige Stand wird vorher gesichert.)')) return;
+      try { await api('/api/restore', { name: b.name }); location.reload(); } catch (e) { toast(e.message, true); }
+    };
+    row.appendChild(btn);
+    body.appendChild(row);
+  });
+}
+
+// ---------- Abo-Erinnerung ----------
+
+function renderExpiryWarning() {
+  const box = $('#expiry-warn');
+  const msgs = [];
+  state.sources.forEach((src) => {
+    const info = sourceInfos[src.id];
+    if (!info || !info.expires) return;
+    const days = Math.round((info.expires * 1000 - Date.now()) / 86400000);
+    const date = new Date(info.expires * 1000).toLocaleDateString('de-DE');
+    if (days < 0) msgs.push(`Zugang „${src.name}“ ist seit ${date} abgelaufen – die Geräte dieser Playlist bekommen kein Bild mehr.`);
+    else if (days <= 30) msgs.push(`Zugang „${src.name}“ läuft am ${date} ab (in ${days} Tagen) – rechtzeitig beim Anbieter verlängern.`);
+  });
+  box.hidden = !msgs.length;
+  box.textContent = msgs.join('  ·  ');
 }
 
 // ---------- Doppelte Sender (ganze Playlist) ----------
@@ -1226,10 +1328,23 @@ async function renderRemote() {
     const box = el('div', 'dev');
     const head = el('div', 'dev-head');
     head.appendChild(el('span', 'dev-dot' + (online ? ' on' : '')));
-    head.appendChild(el('strong', '', d.name || 'Gerät'));
+    head.appendChild(el('strong', '', d.label || d.name || 'Gerät'));
+    if (d.label) head.appendChild(el('span', 'hint', `(${d.name})`));
+    const ed = el('button', 'mini', '✎');
+    ed.type = 'button';
+    ed.title = 'Eigenen Namen und Notiz für dieses Gerät festlegen (nur im Editor)';
+    ed.onclick = async () => {
+      const label = prompt('Name für dieses Gerät (leer = Name vom Gerät):', d.label || '');
+      if (label === null) return;
+      const note = prompt('Notiz (z. B. Ort, Ansprechpartner, Besonderheiten):', d.memo || '');
+      if (note === null) return;
+      try { await api('/api/remote/note', { id: d.id, label, note }); renderRemote(); } catch (e) { toast(e.message, true); }
+    };
+    head.appendChild(ed);
     head.appendChild(el('span', 'chip', `Liste „${d.list || '?'}“ · ${d.view === 'senioren' ? 'Senioren' : 'Komplett'} · App ${d.ver || '?'}`));
     head.appendChild(el('span', 'hint', (online ? 'online, ' : 'offline? ') + 'zuletzt gemeldet ' + ago(d.age)));
     box.appendChild(head);
+    if (d.memo) box.appendChild(el('p', 'dev-memo', '📝 ' + d.memo));
     box.appendChild(el('p', 'dev-now', (STATE_TEXT[d.state] || d.state || '') + (d.title ? ': ' + d.title : '')));
     if (d.lastNote) box.appendChild(el('p', 'hint', 'Letzte Rückmeldung: ' + d.lastNote));
     // Einstellungen des Geräts (ab App mit Fernwartungs-Einstellungen)
@@ -1820,6 +1935,7 @@ async function loadSourceInfo(id, attempt = 0) {
   }
   if (id === ui.sourceId) renderSrcInfo();
   renderDeviceWarning();
+  renderExpiryWarning();
 }
 
 const RATING_CLASS = { gut: 'good', mittel: 'mid', schlecht: 'bad' };
@@ -2167,6 +2283,7 @@ function bind() {
     renderDeviceWarning();
   };
   $('#pl-add').onclick = () => newPlaylist();
+  $('#backups').onclick = openBackups;
   $('#pl-german').onclick = () => {
     const pl = playlist();
     if (!pl) return;
@@ -2316,6 +2433,8 @@ async function start() {
     ui.playlistId = state.playlists[0] ? state.playlists[0].id : null;
     const pl0 = state.playlists[0];
     ui.sourceId = (pl0 && pl0.source) || (state.sources[0] ? state.sources[0].id : null);
+    // Laufzeit aller Zugänge (für die Abo-Erinnerung), nacheinander
+    state.sources.forEach((src, i) => setTimeout(() => { if (!sourceInfos[src.id]) loadSourceInfo(src.id); }, 3000 + i * 4000));
     // Gewählte Quelle ganz laden, von den anderen nur die Einträge der Playlists (nacheinander)
     await busy(async () => {
       await loadCatalog(ui.sourceId).catch((e) => toast(e.message, true));

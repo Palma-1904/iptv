@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 19  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 20  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -705,6 +705,58 @@ def check_playlist(pl_id, keys=None, force=False):
             'events': sum(1 for v in results.values() if not v['ok'] and v['event'])}
 
 
+# ---------- Sicherungen der Playlists (täglich, „Rückgängig“) ----------
+
+BACKUP = os.path.join(DATA, 'backup')
+
+
+def backup_state(tag=None):
+    """Vor der ersten Änderung des Tages (oder vor einer Wiederherstellung) den Stand sichern; 21 behalten."""
+    if not os.path.exists(STATE_FILE):
+        return
+    os.makedirs(BACKUP, exist_ok=True)
+    name = f'state-{tag or datetime.now().strftime("%Y-%m-%d")}.json'
+    path = os.path.join(BACKUP, name)
+    if tag is None and os.path.exists(path):
+        return
+    shutil.copyfile(STATE_FILE, path)
+    files = sorted(f for f in os.listdir(BACKUP) if f.startswith('state-'))
+    for f in files[:-21]:
+        os.remove(os.path.join(BACKUP, f))
+
+
+def list_backups():
+    out = []
+    if os.path.isdir(BACKUP):
+        for f in sorted(os.listdir(BACKUP), reverse=True):
+            if not f.startswith('state-'):
+                continue
+            st = read_json(os.path.join(BACKUP, f), {})
+            out.append({'name': f, 'time': int(os.path.getmtime(os.path.join(BACKUP, f))),
+                        'playlists': {p.get('name'): sum(len(g.get('items', [])) for g in p.get('groups', []))
+                                      for p in st.get('playlists', [])}})
+    return {'backups': out}
+
+
+def restore_backup(name):
+    if not re.fullmatch(r'state-[\w.-]+\.json', name or '') or not os.path.exists(os.path.join(BACKUP, name)):
+        raise UserError('Sicherung nicht gefunden.')
+    backup_state(datetime.now().strftime('%Y-%m-%d-vor-wiederherstellen-%H%M%S'))
+    shutil.copyfile(os.path.join(BACKUP, name), STATE_FILE)
+    return {'ok': True}
+
+
+def device_note(dev_id, label, note):
+    s = load_settings()
+    notes = s.setdefault('deviceNotes', {})
+    if label or note:
+        notes[dev_id] = {'label': (label or '').strip()[:60], 'note': (note or '').strip()[:300]}
+    else:
+        notes.pop(dev_id, None)
+    write_json(SETTINGS_FILE, s)
+    return {'ok': True}
+
+
 # ---------- Stand der App: online, GitHub-Bau, nicht gepushte Änderungen ----------
 
 APP_STATUS = {'t': 0, 'data': None}
@@ -940,8 +992,12 @@ def remote_status():
             devices[d['id']] = d
     now = int(time.time())
     out = sorted(devices.values(), key=lambda d: (d.get('list') or '', d.get('name') or ''))
+    notes = load_settings().get('deviceNotes', {})
     for d in out:
         d['age'] = now - int(d.get('t') or 0)
+        if d.get('id') in notes:
+            d['label'] = notes[d['id']].get('label', '')
+            d['memo'] = notes[d['id']].get('note', '')
     # Tageskontingent von ntfy.sh für diesen Anschluss (gilt auch für die Sticks im selben WLAN)
     quota = None
     try:
@@ -1104,7 +1160,15 @@ def build_playlist(pl, state, warnings):
     epg_ids = {}  # source_id -> set(tvgId)
     live = []     # Live-Sender: Zeile, tvg-id, Namen (für Zusatz-EPG)
     count = 0
-    for g in pl.get('groups', []):
+    groups = list(pl.get('groups', []))
+    # „★ Meine Sender“: im Editor markierte Sender als erste Gruppe (Senioren schalten darin mit ▲▼)
+    mine = pl.get('myChannels') or []
+    if mine:
+        by_key = {it['key']: it for g in groups for it in g.get('items', [])}
+        fav = [by_key[k] for k in mine if k in by_key]
+        if fav:
+            groups = [{'name': '★ Meine Sender', 'items': fav}] + groups
+    for g in groups:
         gname = g.get('name') or 'Sonstige'
         for item in g.get('items', []):
             ch = lookup(item['key'])
@@ -1542,7 +1606,7 @@ class Handler(SimpleHTTPRequestHandler):
     server_version = 'IPTVEditor'
 
     def log_message(self, fmt, *args):
-        if '/api/' in (args[0] if args else ''):
+        if '/api/' in str(args[0] if args else ''):   # args[0] ist bei Fehlermeldungen eine Zahl
             sys.stderr.write('%s\n' % (fmt % args))
 
     def send_json(self, obj, status=200):
@@ -1703,6 +1767,7 @@ class Handler(SimpleHTTPRequestHandler):
                 state = self.body()
                 if not isinstance(state.get('sources'), list) or not isinstance(state.get('playlists'), list):
                     raise UserError('Ungültige Daten.')
+                backup_state()                      # erste Änderung des Tages: alten Stand sichern
                 write_json(STATE_FILE, state)
                 return self.send_json({'ok': True})
             if method == 'POST' and path == '/api/settings':
@@ -1789,6 +1854,13 @@ class Handler(SimpleHTTPRequestHandler):
                 name = find(load_state()['playlists'], pid, 'Playlist').get('name')
                 return self.send_json(start_job('check', f'Sender prüfen „{name}“',
                                                 lambda: check_playlist(pid, keys, force)))
+            if method == 'GET' and path == '/api/backups':
+                return self.send_json(list_backups())
+            if method == 'POST' and path == '/api/restore':
+                return self.send_json(restore_backup(self.body().get('name')))
+            if method == 'POST' and path == '/api/remote/note':
+                b = self.body()
+                return self.send_json(device_note(b.get('id') or '', b.get('label'), b.get('note')))
             if method == 'POST' and path == '/api/git-push':
                 return self.send_json(git_push(bool(self.body().get('updateDevices'))))
             if method == 'POST' and path == '/api/update-all':

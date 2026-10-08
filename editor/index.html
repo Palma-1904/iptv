@@ -26,6 +26,7 @@
           <button id="pl-rename" type="button">✎ Playlist umbenennen</button>
           <button id="pl-add" type="button">＋ Neue Playlist (mit eigenem Zugang)</button>
           <button id="src-add" type="button">＋ Neuen Zugang anlegen</button>
+          <button id="backups" type="button" title="Der Editor sichert jeden Tag den Stand aller Playlists">⟲ Frühere Fassung wiederherstellen …</button>
           <button id="pl-delete" type="button" class="danger">🗑 Playlist löschen</button>
         </div>
       </details>
@@ -58,6 +59,7 @@
     </div>
   </header>
 
+  <div id="expiry-warn" class="expiry-warn" hidden></div>
   <main class="panes">
     <!-- Links: Kategorien, Länder, Gruppen der Quelle -->
     <aside class="pane left">
@@ -112,6 +114,7 @@
         <button id="sel-clear" type="button" title="Auswahl aufheben (Esc)">✕</button>
       </div>
       <div id="pl-warning" class="warnbox" hidden></div>
+      <div id="my-channels" class="mybox" hidden></div>
       <div class="hint pad">Klick = auswählen (⇧ = Bereich) · ⌥↑/⌥↓ verschieben · Ziehen zum Sortieren · ⇅ am Gruppenkopf = automatisch sortieren · Doppelklick = umbenennen</div>
       <div id="pl-groups" class="scroll"></div>
     </aside>

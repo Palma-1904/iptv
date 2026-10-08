@@ -267,7 +267,9 @@ final class Updater {
         Uri uri = FileProvider.getUriForFile(a, a.getPackageName() + ".files", apk);
         Intent i = new Intent(Intent.ACTION_VIEW);
         i.setDataAndType(uri, "application/vnd.android.package-archive");
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        // CLEAR_TASK: alte Installer-Bildschirme („App installiert – Fertig / Öffnen“ vom letzten Update) wegräumen –
+        // sonst holt Fire OS den alten Bildschirm wieder hervor und installiert gar nichts
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         try {
             a.startActivity(i);
         } catch (Exception e) {

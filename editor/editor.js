@@ -110,22 +110,50 @@ function plKeys(pl) {
   return keys;
 }
 
-// Auswahlfeld: Zugang, über den die Playlist läuft („gemischt“, wenn mehrere)
+// Jede Playlist hat genau einen Zugang (pl.source); das Senderangebot links ist immer das dieses Zugangs.
+function plSourceOf(pl) {
+  if (pl.source && state.sources.some((x) => x.id === pl.source)) return pl.source;
+  const count = {};
+  plKeys(pl).forEach((k) => { const sid = k.split(':', 1)[0]; count[sid] = (count[sid] || 0) + 1; });
+  const best = Object.keys(count).sort((x, y) => count[y] - count[x])[0];
+  const byName = state.sources.find((x) => x.name.toLowerCase() === (pl.name || '').toLowerCase());
+  return best || (byName && byName.id) || null;
+}
+
+// Zugänge, die noch keiner (anderen) Playlist gehören
+function freeSources(except) {
+  const taken = new Set(state.playlists.filter((p) => p !== except).map((p) => p.source).filter(Boolean));
+  return state.sources.filter((x) => !taken.has(x.id));
+}
+
 function renderPlSource() {
-  const sel = $('#pl-source');
+  const chip = $('#pl-zugang');
   const pl = playlist();
-  sel.textContent = '';
-  sel.disabled = !pl;
-  if (!pl) return;
-  const used = new Set(plKeys(pl).map((k) => k.split(':', 1)[0]));
-  if (used.size !== 1) sel.appendChild(el('option', '', used.size ? 'gemischt' : '–'));
-  state.sources.forEach((s) => {
-    const o = el('option', '', s.name);
-    o.value = s.id;
-    sel.appendChild(o);
-  });
-  sel.value = used.size === 1 ? [...used][0] : '';
-  if (used.size !== 1) sel.selectedIndex = 0;
+  const src = pl && state.sources.find((x) => x.id === pl.source);
+  chip.textContent = 'Zugang: ' + (src ? src.name : '–');
+}
+
+// Playlist gewählt: ihr Zugang ist die Quelle des Senderangebots
+async function selectSource(id) {
+  if (!id || id === ui.sourceId) return;
+  const prev = ui.sourceId;
+  ui.sourceId = id;
+  ui.group = null;
+  ui.selected.clear();
+  await busy(() => loadCatalog(ui.sourceId)).catch((e) => toast(e.message, true));
+  // vorherige Quelle wieder auf die Playlist-Einträge verkleinern (Speicher)
+  if (prev && catalogs[prev] && !catalogs[prev].partial) {
+    await loadCatalog(prev, true, sourceKeys(prev)).catch(() => null);
+  }
+  if (!sourceInfos[ui.sourceId]) loadSourceInfo(ui.sourceId);
+}
+
+// Auswahl aus einer Liste per Nummer (z. B. Zugang wählen)
+function pickFrom(list, title) {
+  if (list.length === 1) return list[0];
+  const t = prompt(title + '\n\n' + list.map((x, i) => `${i + 1} = ${x.name}`).join('\n') + '\n\nNummer eingeben:');
+  const n = parseInt(t, 10);
+  return n >= 1 && n <= list.length ? list[n - 1] : null;
 }
 
 async function switchPlSource(target) {
@@ -134,7 +162,7 @@ async function switchPlSource(target) {
   if (!pl || !src) return;
   if (!confirm(`Playlist „${pl.name}“ auf den Zugang „${src.name}“ umstellen?\n\n`
     + 'Gruppen, Reihenfolge und Fassungen bleiben gleich; die Geräte nutzen danach die Verbindung von „'
-    + src.name + '“. Zum Übernehmen danach „Veröffentlichen“.')) return renderPlSource();
+    + src.name + '“. Zum Übernehmen danach „Veröffentlichen“.')) return;
   let res;
   try {
     res = await busy(() => api('/api/switch-source', { source: target, keys: plKeys(pl) }));
@@ -147,8 +175,9 @@ async function switchPlSource(target) {
     if (m[i.key]) i.key = m[i.key];
     (i.variants || []).forEach((v) => { if (m[v.key]) v.key = m[v.key]; });
   }));
+  pl.source = target;
   save();
-  if (target !== ui.sourceId) await loadCatalog(target, true, sourceKeys(target)).catch(() => null);
+  await selectSource(target);
   renderAll();
   toast(`${Object.keys(m).length} Einträge auf „${src.name}“ umgestellt`
     + (res.missing.length ? ` – ${res.missing.length} gibt es dort nicht (bleiben beim alten Zugang): ${res.missing.slice(0, 5).join(', ')}` : '')
@@ -350,6 +379,7 @@ function openSourceDialog(src) {
     }
     renderSourceSelect();
     await refreshSource();
+    if (!src && confirm(`Zum neuen Zugang „${data.name}“ gleich die passende Playlist anlegen?`)) await newPlaylist(state.sources[state.sources.length - 1].id);
   };
   dlg.showModal();
 }
@@ -547,14 +577,25 @@ function renderPlaylistSelect() {
   sel.value = ui.playlistId || '';
 }
 
-function newPlaylist() {
-  const name = prompt('Name der neuen Playlist (z. B. Familie, Oma, Sport):');
+async function newPlaylist(sourceId) {
+  const free = freeSources(null);
+  let src = sourceId ? state.sources.find((x) => x.id === sourceId) : null;
+  if (!src) {
+    if (!free.length) {
+      alert('Jeder Zugang gehört schon zu einer Playlist.\n\nFür eine neue Playlist zuerst unter ⋯ → „Neuen Zugang anlegen“ einen weiteren Zugang eintragen.');
+      return;
+    }
+    src = pickFrom(free, 'Welcher Zugang gehört zur neuen Playlist?');
+    if (!src) return;
+  }
+  const name = prompt(`Name der neuen Playlist (Zugang „${src.name}“):`, src.name);
   if (!name || !name.trim()) return;
-  const pl = { id: 'p' + uid(), name: name.trim(), groups: [] };
+  const pl = { id: 'p' + uid(), name: name.trim(), source: src.id, groups: [] };
   state.playlists.push(pl);
   ui.playlistId = pl.id;
   ui.targetGroupId = null;
   save();
+  await selectSource(src.id);
   renderAll();
 }
 
@@ -565,6 +606,12 @@ function addToPlaylist(items, fallbackGroup) {
     newPlaylist();
     pl = playlist();
     if (!pl) return;
+  }
+  // Nie Zugänge vermischen: nur Sender vom Zugang dieser Playlist
+  if (pl.source) {
+    const foreign = items.filter((it) => it.key.split(':', 1)[0] !== pl.source).length;
+    if (foreign) toast(`${foreign} Sender gehören zu einem anderen Zugang und wurden nicht übernommen.`, true);
+    items = items.filter((it) => it.key.split(':', 1)[0] === pl.source);
   }
   const existing = playlistKeys();
   let added = 0;
@@ -2087,9 +2134,11 @@ function bind() {
     b.onclick = () => { $('#form-source').elements.epgUrl.value = b.dataset.epg; };
   });
 
-  $('#playlist').onchange = (ev) => {
+  $('#playlist').onchange = async (ev) => {
     ui.playlistId = ev.target.value;
     ui.targetGroupId = null;
+    const pl = playlist();
+    if (pl && pl.source) await selectSource(pl.source);
     renderAll();
     if (!checks[ui.playlistId]) loadCheck(ui.playlistId);
   };
@@ -2101,8 +2150,15 @@ function bind() {
     save();
     renderDeviceWarning();
   };
-  $('#pl-add').onclick = newPlaylist;
-  $('#pl-source').onchange = (ev) => { if (ev.target.value) switchPlSource(ev.target.value); };
+  $('#pl-add').onclick = () => newPlaylist();
+  $('#pl-switch').onclick = () => {
+    const pl = playlist();
+    if (!pl) return;
+    const free = freeSources(pl).filter((x) => x.id !== pl.source);
+    if (!free.length) return alert('Es gibt keinen freien Zugang – jeder gehört schon zu einer Playlist.\nZuerst unter ⋯ → „Neuen Zugang anlegen“.');
+    const target = pickFrom(free, `Playlist „${pl.name}“ auf welchen Zugang umstellen?`);
+    if (target) switchPlSource(target.id);
+  };
   $('#pl-rename').onclick = () => {
     const pl = playlist();
     if (!pl) return;
@@ -2220,8 +2276,13 @@ async function start() {
     state = data.state;
     state.sources = state.sources || [];
     state.playlists = state.playlists || [];
-    ui.sourceId = state.sources[0] ? state.sources[0].id : null;
+    // Jede Playlist bekommt fest ihren Zugang (aus ihren Einträgen ermittelt)
+    let assigned = 0;
+    state.playlists.forEach((pl) => { if (!pl.source) { pl.source = plSourceOf(pl); if (pl.source) assigned++; } });
+    if (assigned) save();
     ui.playlistId = state.playlists[0] ? state.playlists[0].id : null;
+    const pl0 = state.playlists[0];
+    ui.sourceId = (pl0 && pl0.source) || (state.sources[0] ? state.sources[0].id : null);
     // Gewählte Quelle ganz laden, von den anderen nur die Einträge der Playlists (nacheinander)
     await busy(async () => {
       await loadCatalog(ui.sourceId).catch((e) => toast(e.message, true));

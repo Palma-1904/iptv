@@ -424,3 +424,4 @@ button:active, .menu > summary:active { filter: brightness(.85); transform: scal
 button { transition: background-color .25s, box-shadow .25s, transform .05s; }
 button.clicked { box-shadow: 0 0 0 3px rgba(52, 199, 89, .55); background-color: rgba(52, 199, 89, .18); }
 button.primary.clicked { box-shadow: 0 0 0 3px rgba(52, 199, 89, .7); }
+.chip.zugang { font-size: 14px; padding: 4px 10px; color: var(--text); background: var(--accent-soft); border-color: var(--accent); }

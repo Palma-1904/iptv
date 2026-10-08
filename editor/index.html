@@ -10,33 +10,24 @@
   <header class="toolbar">
     <strong class="brand">Playlist-Editor</strong>
 
-    <div class="tb-group">
-      <label for="source">Quelle</label>
-      <select id="source"></select>
-      <details class="menu">
-        <summary title="Quelle: neu, bearbeiten, aktualisieren">⋯</summary>
-        <div class="menu-pop">
-          <button id="src-refresh" type="button">↻ Aktualisieren</button>
-          <button id="src-edit" type="button">✎ Quelle bearbeiten</button>
-          <button id="src-add" type="button">＋ Neue Quelle</button>
-        </div>
-      </details>
-    </div>
+    <select id="source" hidden></select>
 
     <div class="tb-group">
       <label for="playlist">Playlist</label>
       <select id="playlist"></select>
+      <span class="chip zugang" id="pl-zugang" title="Jede Playlist hat genau einen Zugang; das Senderangebot links ist immer das dieses Zugangs">Zugang: –</span>
       <details class="menu">
-        <summary title="Playlist: neu, umbenennen, löschen">⋯</summary>
+        <summary title="Playlist und Zugang">⋯</summary>
         <div class="menu-pop">
-          <button id="pl-add" type="button">＋ Neue Playlist</button>
-          <button id="pl-rename" type="button">✎ Umbenennen</button>
-          <button id="pl-delete" type="button" class="danger">🗑 Löschen</button>
+          <button id="src-refresh" type="button">↻ Senderangebot des Zugangs aktualisieren</button>
+          <button id="src-edit" type="button">✎ Zugangsdaten bearbeiten</button>
+          <button id="pl-switch" type="button">⇄ Anderen Zugang zuordnen …</button>
+          <button id="pl-rename" type="button">✎ Playlist umbenennen</button>
+          <button id="pl-add" type="button">＋ Neue Playlist (mit eigenem Zugang)</button>
+          <button id="src-add" type="button">＋ Neuen Zugang anlegen</button>
+          <button id="pl-delete" type="button" class="danger">🗑 Playlist löschen</button>
         </div>
       </details>
-      <label class="devices" title="Über welchen Zugang (Quelle) die Sender dieser Playlist laufen – jeder Zugang erlaubt eigene Verbindungen">Zugang
-        <select id="pl-source"></select>
-      </label>
       <label class="devices" title="Auf wie vielen Geräten diese Playlist gleichzeitig laufen soll">Geräte
         <input id="pl-devices" type="number" min="1" max="20" value="1">
       </label>

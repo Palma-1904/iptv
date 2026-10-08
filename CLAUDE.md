@@ -83,8 +83,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
 - Player-Puffer: Live 5 s, Filme 8 s; HLS live 30 s hinter live, bis 60 s Vorrat (Anbieter liefert 10-s-Stücke teils langsamer als Echtzeit).
 - **Auffrischen im Player**: alle 2 h ruft der Player `MainActivity.requestRefresh()` → Webapp `IPTV.nativeRefresh()`
   lädt Liste+EPG neu und schickt einen neuen Baum; der Player übernimmt ihn ohne Unterbrechung (`adopt`).
-- **Zugang je Playlist**: Auswahlfeld „Zugang“ in der Toolbar stellt alle Einträge einer Playlist auf eine andere
-  Quelle um (`/api/switch-source`, gleiche Stream-Nummer, sonst Name). Jeder Zugang = eigene Verbindung.
+- **Zugang je Playlist (1:1, Thomas' Wunsch: nie vermischen)**: jede Playlist hat `pl.source` (beim Start aus den
+  Einträgen ermittelt); keine Quellen-Auswahl mehr – Playlist wählen = Senderangebot ihres Zugangs (`selectSource`).
+  Chip „Zugang: X“; Menü ⋯: Senderangebot aktualisieren, Zugangsdaten bearbeiten (Xtream-Daten), anderen
+  (freien) Zugang zuordnen (`/api/switch-source`, gleiche Stream-Nummer, sonst Name), neue Playlist nur mit freiem
+  Zugang, neuer Zugang → passende Playlist anlegen. `addToPlaylist` nimmt nur Sender des eigenen Zugangs.
   Kennungen ohne Zugang: x-work = `typ:id`, App-Speicher `Memory.norm(url)` → Favoriten/Weiterschauen bleiben.
 - **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.
 - **Wächter** (`Waechter.java`, Bedienungshilfe/AccessibilityService, `res/xml/waechter.xml`): fängt Home/Einstellungen/

@@ -13,17 +13,27 @@
     <div class="tb-group">
       <label for="source">Quelle</label>
       <select id="source"></select>
-      <button id="src-add" type="button" title="Quelle hinzufügen">＋</button>
-      <button id="src-edit" type="button" title="Quelle bearbeiten">✎</button>
-      <button id="src-refresh" type="button">Aktualisieren</button>
+      <details class="menu">
+        <summary title="Quelle: neu, bearbeiten, aktualisieren">⋯</summary>
+        <div class="menu-pop">
+          <button id="src-refresh" type="button">↻ Aktualisieren</button>
+          <button id="src-edit" type="button">✎ Quelle bearbeiten</button>
+          <button id="src-add" type="button">＋ Neue Quelle</button>
+        </div>
+      </details>
     </div>
 
     <div class="tb-group">
       <label for="playlist">Playlist</label>
       <select id="playlist"></select>
-      <button id="pl-add" type="button" title="Neue Playlist">＋</button>
-      <button id="pl-rename" type="button" title="Umbenennen">✎</button>
-      <button id="pl-delete" type="button" title="Löschen">🗑</button>
+      <details class="menu">
+        <summary title="Playlist: neu, umbenennen, löschen">⋯</summary>
+        <div class="menu-pop">
+          <button id="pl-add" type="button">＋ Neue Playlist</button>
+          <button id="pl-rename" type="button">✎ Umbenennen</button>
+          <button id="pl-delete" type="button" class="danger">🗑 Löschen</button>
+        </div>
+      </details>
       <label class="devices" title="Über welchen Zugang (Quelle) die Sender dieser Playlist laufen – jeder Zugang erlaubt eigene Verbindungen">Zugang
         <select id="pl-source"></select>
       </label>
@@ -34,11 +44,23 @@
 
     <span class="spacer"></span>
     <button id="appver" type="button" class="appver" hidden>App …</button>
-    <button id="remote" type="button" title="Geräte aus der Ferne sehen und steuern">Fernwartung</button>
-    <button id="links" type="button" title="Einrichtungs-Links und QR-Codes für Geräte">Geräte-Links</button>
-    <button id="settings" type="button">Einstellungen</button>
-    <button id="publish" type="button" class="primary" title="Nur die gewählte Playlist veröffentlichen (schneller)">Veröffentlichen</button>
-    <button id="publish-all" type="button" title="Alle Playlists veröffentlichen">Alle</button>
+    <details class="menu">
+      <summary>Geräte ▾</summary>
+      <div class="menu-pop right">
+        <button id="remote" type="button" title="Geräte aus der Ferne sehen und steuern">📡 Fernwartung</button>
+        <button id="links" type="button" title="Einrichtungs-Links und QR-Codes für Geräte">🔗 Geräte-Links</button>
+      </div>
+    </details>
+    <button id="settings" type="button" title="Einstellungen">⚙︎ Einstellungen</button>
+    <div class="split">
+      <button id="publish" type="button" class="primary" title="Nur die gewählte Playlist veröffentlichen (schneller)">Veröffentlichen</button>
+      <details class="menu">
+        <summary class="primary" title="Weitere Möglichkeiten">▾</summary>
+        <div class="menu-pop right">
+          <button id="publish-all" type="button">Alle Playlists veröffentlichen</button>
+        </div>
+      </details>
+    </div>
   </header>
 
   <main class="panes">
@@ -75,9 +97,14 @@
     <aside class="pane right">
       <div class="right-bar">
         <span id="pl-summary"></span>
-        <button id="dupes" type="button" title="Doppelte Sender der Playlist zeigen und entfernen">Doppelte</button>
-        <button id="check" type="button" title="Alle Live-Sender dieser Playlist kurz anspielen und defekte markieren">Sender prüfen</button>
-        <button id="epg-order" type="button" title="Reihenfolge der Sender im Reiter „Programm“ der Webapp">Programm-Reihenfolge</button>
+        <details class="menu">
+          <summary>Werkzeuge ▾</summary>
+          <div class="menu-pop right">
+            <button id="check" type="button" title="Alle Live-Sender dieser Playlist kurz anspielen, defekte markieren und Ersatz vorschlagen">✔︎ Sender prüfen (mit Ersatz)</button>
+            <button id="dupes" type="button" title="Doppelte Sender der Playlist zeigen und entfernen">⧉ Doppelte Sender</button>
+            <button id="epg-order" type="button" title="Reihenfolge der Sender im Reiter „Programm“ der Webapp">☰ Programm-Reihenfolge</button>
+          </div>
+        </details>
         <button id="group-add" type="button">＋ Gruppe</button>
       </div>
       <div id="pl-selbar" class="selbar" hidden>

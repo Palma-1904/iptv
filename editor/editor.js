@@ -2097,6 +2097,12 @@ function bind() {
   $('#publish-all').onclick = () => publish(true);
   $('#check').onclick = checkPlaylist;
   $('#dupes').onclick = openDupes;
+  // Aufklapp-Menüs: nach Auswahl und bei Klick daneben schließen
+  document.addEventListener('click', (ev) => {
+    document.querySelectorAll('details.menu[open]').forEach((d) => {
+      if (!d.contains(ev.target) || ev.target.closest('.menu-pop button')) d.open = false;
+    });
+  });
   $('#remote').onclick = openRemote;
   renderAppStatus();
   $('#remote-off').onclick = async () => {

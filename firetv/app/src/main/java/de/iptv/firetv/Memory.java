@@ -116,10 +116,27 @@ final class Memory {
         if (oldest != null) resume.remove(oldest);
     }
 
+    boolean hasResume() {
+        return resume.length() > 0;
+    }
+
+    void clearResume() {
+        for (java.util.Iterator<String> it = resume.keys(); it.hasNext(); ) {
+            it.next();
+            it.remove();
+        }
+        prefs.edit().putString("resume", "{}").apply();
+    }
+
     // ---------- Zuletzt gesehen ----------
 
     List<String> recent() {
         return recent;
+    }
+
+    void clearRecent() {
+        recent.clear();
+        writeList("recent", recent);
     }
 
     void addRecent(String url) {

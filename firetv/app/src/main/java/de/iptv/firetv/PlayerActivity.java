@@ -118,6 +118,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         final List<Node> children = new ArrayList<>();
         Item item;
         boolean search;
+        boolean clear;      // „Zuletzt gesehen löschen“ (unten in der Übersicht)
         boolean variants;   // Film mit mehreren Sprachfassungen
         String favKey, favType;  // Favoriten-Kennung (Film = Werk, Serie = Titel)
         boolean fav;
@@ -1459,6 +1460,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
     /** Ebene öffnen: Suche fragt nach dem Suchbegriff, sonst Inhalt anzeigen. */
     private void open(Node n) {
         if (n.search) askSearch();
+        else if (n.clear) askClear();
         else showNode(n, null);
     }
 
@@ -1479,6 +1481,11 @@ public class PlayerActivity extends Activity implements Remote.Target {
         if (!fav.children.isEmpty()) d.add(fav);
         if (!recent.children.isEmpty()) d.add(recent);
         d.children.addAll(rootNode.children);   // Eltern der Bereiche bleiben rootNode
+        if (!mem.recent().isEmpty() || mem.hasResume()) {
+            Node clear = new Node("🗑 Zuletzt gesehen löschen");
+            clear.clear = true;
+            d.add(clear);
+        }
         displayRoot = d;
         return d;
     }
@@ -1535,6 +1542,27 @@ public class PlayerActivity extends Activity implements Remote.Target {
     }
 
     /** Suche über alle Einträge (Name und Gruppe); Ergebnisse als eigene Ebene unter der Übersicht. */
+    /** „Zuletzt gesehen“ leeren, auf Wunsch auch die Weiterschauen-Stellen; Lieblingssender bleiben. */
+    private void askClear() {
+        handler.removeCallbacks(hideList);
+        String[] choices = {"„Zuletzt gesehen“ löschen",
+                "„Zuletzt gesehen“ und Weiterschauen-Stellen löschen", "Abbrechen"};
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Zuletzt gesehen löschen")
+                .setItems(choices, (d, w) -> {
+                    if (w == 0 || w == 1) {
+                        mem.clearRecent();
+                        if (w == 1) mem.clearResume();
+                        Toast.makeText(this, w == 1 ? "Gelöscht (Lieblingssender bleiben)"
+                                : "„Zuletzt gesehen“ gelöscht", Toast.LENGTH_SHORT).show();
+                    }
+                    showNode(rootNode, null);
+                    handler.postDelayed(hideList, LIST_MS);
+                })
+                .setOnCancelListener(d -> handler.postDelayed(hideList, LIST_MS))
+                .show();
+    }
+
     private void askSearch() {
         handler.removeCallbacks(hideList);
         final android.widget.EditText input = new android.widget.EditText(this);
@@ -1595,6 +1623,10 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 previewEpg.setText("Alle Sender, Filme und Serien durchsuchen");
                 return;
             }
+            if (n.clear) {
+                previewEpg.setText("Liste „Zuletzt gesehen“ leeren\n(Lieblingssender bleiben)");
+                return;
+            }
             StringBuilder sb = new StringBuilder(countText(n));
             for (int k = 0; k < Math.min(4, n.children.size()); k++) sb.append("\n").append(n.children.get(k).name);
             previewEpg.setText(sb);
@@ -1652,7 +1684,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     /** „97 Sender“, „12 Filme“, „3 Fassungen“ … */
     private static String countText(Node n) {
-        if (n.search) return "";
+        if (n.search || n.clear) return "";
         if (n.variants) return n.children.size() + " Fassungen";
         int c = n.count();
         Node first = n;
@@ -1686,7 +1718,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
             Item playing = idle() ? null : items().get(index);
             if (n.item == null) {
                 boolean inside = contains(n, playing);
-                row.num.setText(inside ? "▶" : n.search ? "" : "›");
+                row.num.setText(inside ? "▶" : n.search || n.clear ? "" : "›");
                 row.num.setTextColor(inside ? ROYAL_LIGHT : MUTED);
                 row.logo.setVisibility(View.GONE);
                 row.name.setText(n.fav ? "★ " + n.name : n.name);

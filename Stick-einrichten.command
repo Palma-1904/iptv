@@ -108,7 +108,16 @@ grant "Wächter selbst ein-/ausschalten"          pm grant $PKG android.permissi
 
 # ---------- 4) Wächter ----------
 echo
-echo "4) Wächter"
+echo "4) Wächter und Autostart"
+echo "   Für Senioren: Fernsehen startet von selbst, Home-Taste führt zurück, Updates ohne Klick."
+read -r -p "   Einschalten? j = ja (Enter), n = nein (selbst bedienen): " WA
+case "$WA" in n|N) KIOSK=0 ;; *) KIOSK=1 ;; esac
+if [ "$KIOSK" = 0 ]; then
+  CUR=$(sh_ settings get secure enabled_accessibility_services)
+  NEW=$(echo "$CUR" | tr ':' '\n' | grep -v "$PKG" | grep -v '^null$' | paste -sd: -)
+  if [ -n "$NEW" ]; then sh_ settings put secure enabled_accessibility_services "$NEW"; else sh_ settings delete secure enabled_accessibility_services >/dev/null; fi
+  ok "Wächter und Autostart bleiben aus"
+else
 SVC="$PKG/$PKG.Waechter"
 CUR=$(sh_ settings get secure enabled_accessibility_services)
 case "$CUR" in
@@ -119,6 +128,7 @@ esac
 [ -n "$NEW" ] && sh_ settings put secure enabled_accessibility_services "$NEW"
 sh_ settings put secure accessibility_enabled 1
 ok "Wächter eingeschaltet"
+fi
 
 # ---------- 5) Liste und Ansicht ----------
 echo
@@ -128,8 +138,9 @@ read -r -p "   Link: " LINK
 LINK=$(echo "$LINK" | tr -d " '\"")
 read -r -p "   Ansicht – s = Senioren, k = Komplett (Enter = so lassen): " V
 case "$V" in s|S) VIEW=senioren ;; k|K) VIEW=komplett ;; *) VIEW="" ;; esac
-if [ -n "$LINK$VIEW" ]; then
-  EXTRAS=""
+EXTRAS=""
+if [ "$KIOSK" = 0 ]; then EXTRAS=" --es autostart 0 --es home 0 --es waechter 0"; else EXTRAS=" --es autostart 1 --es waechter 1"; fi
+if [ -n "$LINK$VIEW" ] || [ -n "$EXTRAS" ]; then
   [ -n "$LINK" ] && EXTRAS="$EXTRAS --es link '$LINK'"
   [ -n "$VIEW" ] && EXTRAS="$EXTRAS --es ansicht $VIEW"
   if sh_ "am broadcast -f 32 -n $PKG/.SetupReceiver$EXTRAS" | grep -q vorgemerkt; then
@@ -147,7 +158,9 @@ echo "6) App starten"
 sh_ am start -n $PKG/.MainActivity >/dev/null
 sleep 5
 # Android 9+: „services:{Service[label=Fernsehen …“, älter: „Bound services:{…}“
-if sh_ dumpsys accessibility | grep -iE "services:\{.*(label=Fernsehen|$PKG)" >/dev/null; then
+if [ "$KIOSK" = 0 ]; then
+  ok "App gestartet (Wächter und Autostart aus)"
+elif sh_ dumpsys accessibility | grep -iE "services:\{.*(label=Fernsehen|$PKG)" >/dev/null; then
   ok "Wächter läuft"
 elif [ -n "$OLD_FIREOS" ]; then
   warn "Älterer Stick (Fire OS 6): Amazon lässt hier keinen Wächter zu. Die App läuft trotzdem;"

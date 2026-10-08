@@ -131,7 +131,11 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   Abruffehler) – vorher hing das Fenster bei „Start …“, z. B. wenn der Zugang belegt war.
 - Senderprüfung TKH (4.10. abends): 225 geprüft, 1 ohne Bild: „DE| DAZN 1 ᴴᴰ“ → Ersatz „DE| DAZN 1 SD“ läuft
   (in „Sender prüfen“ → Ersetzen, noch nicht übernommen). ProSieben in TKH wurde gegen „DE| PROSIEBEN“ getauscht.
-- Sticks zu Hause (ADB-Debugging an, Mac freigegeben; Schlüssel in editor/data/adb):
+- **Stand 8.10. abends – Sticks zu Hause alle Liste TKH, Ansicht Komplett, Wächter/Autostart/Home-Rückkehr AUS**
+  (Thomas bedient selbst): Wohnzimmer 192.168.6.112 (AFTMM, Fire OS 6), Küche .110, Schlafzimmer .47 (AFTSSS,
+  „Thomas' 2. FireTVStick“, App neu installiert). „Max' Fire TV Stick“ .111 (Fire OS 8, Liste kmh, Senioren, Wächter an).
+  SetupReceiver kann zusätzlich `autostart`/`home`/`waechter` = 0/1; Stick-einrichten fragt „Wächter und Autostart?“.
+- Ältere Notiz – Sticks zu Hause (ADB-Debugging an, Mac freigegeben; Schlüssel in editor/data/adb):
   Wohnzimmer 192.168.6.56 = Fire TV Stick 4K 2018 (AFTMM, **Fire OS 6** → kein Wächter, Liste tkh, Senioren);
   Küche 192.168.6.110 = „Thomas' FireTVStick“, Stick 3. Gen. 2020 (AFTSSS, Fire OS 7.7, Liste asw, Senioren,
   **Wächter getestet: läuft**, Home → nach ~1 s Abdeckung, nach ~5 s App zurück); Schlafzimmer .47 = AFTSSS

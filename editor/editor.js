@@ -1232,8 +1232,17 @@ async function renderRemote() {
     btn('Stoppen', () => remoteCmd(d.id, 'stop', {}, 'Stoppen'));
     btn('Neu laden', () => remoteCmd(d.id, 'reload', {}, 'Neu laden'));
     btn('Update', () => remoteCmd(d.id, 'update', {}, 'Update'));
-    const other = d.view === 'senioren' ? 'komplett' : 'senioren';
-    btn(`Ansicht: ${other === 'senioren' ? 'Senioren' : 'Komplett'}`, () => remoteCmd(d.id, 'view', { view: other }, 'Ansicht'));
+    // Ansicht: beide Knöpfe immer da, die aktuelle ist hervorgehoben (erneut drücken = neu einstellen)
+    const seg = el('span', 'seg');
+    seg.appendChild(el('span', 'hint', 'Ansicht:'));
+    [['komplett', 'Komplett'], ['senioren', 'Senioren']].forEach(([v, label]) => {
+      const x = el('button', d.view === v ? 'on' : '', label);
+      x.type = 'button';
+      x.title = d.view === v ? 'Ist eingestellt – erneut drücken stellt sie noch einmal ein' : `Auf „${label}“ umstellen`;
+      x.onclick = () => remoteCmd(d.id, 'view', { view: v }, `Ansicht ${label}`);
+      seg.appendChild(x);
+    });
+    acts.appendChild(seg);
     box.appendChild(acts);
     // Nachricht: eigenes Feld, unabhängig von den anderen Befehlen
     const msg = el('div', 'dev-acts dev-msg');

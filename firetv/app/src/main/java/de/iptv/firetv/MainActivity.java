@@ -103,7 +103,9 @@ public class MainActivity extends Activity implements Remote.Target {
 
     private void load(String hash) {
         String url = BuildConfig.START_URL;
-        if (hash != null && !hash.isEmpty()) url += "#" + hash;
+        // Mit Einrichtung (z. B. „ansicht=senioren“): Zeitstempel davor, sonst ändert sich nur der Teil hinter „#“
+        // und die Seite lädt nicht neu (Umstellen Komplett → Senioren hatte dann keine Wirkung)
+        if (hash != null && !hash.isEmpty()) url += "?_=" + System.currentTimeMillis() + "#" + hash;
         web.loadUrl(url);
     }
 

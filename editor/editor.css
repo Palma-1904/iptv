@@ -416,3 +416,5 @@ dialog#dlg-dupes { width: min(720px, 94vw); }
 #appver-menu > summary.busy { background: rgba(255, 204, 0, .2); border-color: rgba(230, 170, 0, .8); color: #8a6200; }
 #appver-menu > summary.bad { background: rgba(215, 0, 21, .12); border-color: var(--danger); color: var(--danger); }
 .menu-note { margin: 4px 8px 6px; white-space: normal; max-width: 300px; }
+.seg { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.seg button.on { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }

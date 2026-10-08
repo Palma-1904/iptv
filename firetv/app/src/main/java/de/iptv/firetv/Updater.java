@@ -37,6 +37,7 @@ final class Updater {
     private static final long SNOOZE = 24 * 3600 * 1000L;
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static boolean running;
+    private static int retries;   // Update hängen geblieben: so oft schon neu versucht
 
     interface Progress {
         void percent(int p);
@@ -253,6 +254,16 @@ final class Updater {
         a.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit().putBoolean("restartAfterUpdate", true).apply();
         AutostartService.suppress(10 * 60 * 1000L);   // Installieren-Fenster nicht verdrängen
         Waechter.expectInstall(a);                     // Wächter drückt „Installieren“
+        // Nach einem erfolgreichen Update läuft dieser Prozess nicht mehr. Läuft er nach 2½ Minuten noch,
+        // ist der Installer hängen geblieben (z. B. von anderen Befehlen gestört): noch einmal versuchen.
+        if (Waechter.running()) {
+            main.postDelayed(() -> {
+                if (a.isFinishing() || retries >= 2) return;
+                retries++;
+                Remote.report("Update nicht abgeschlossen – neuer Versuch (" + retries + ")");
+                fetchAndInstall(a, true);
+            }, 150 * 1000L);
+        }
         Uri uri = FileProvider.getUriForFile(a, a.getPackageName() + ".files", apk);
         Intent i = new Intent(Intent.ACTION_VIEW);
         i.setDataAndType(uri, "application/vnd.android.package-archive");

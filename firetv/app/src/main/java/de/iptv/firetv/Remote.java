@@ -40,7 +40,7 @@ final class Remote {
 
     private static final String NTFY = "https://ntfy.sh/";
     private static final long HEARTBEAT_MS = 3 * 3600 * 1000L;
-    private static final long MIN_GAP_MS = 3000;            // Änderungen zusammenfassen (schnelles Umschalten)
+    private static final long MIN_GAP_MS = 10000;           // Änderungen zusammenfassen (schnelles Umschalten)
     private static volatile long watchUntil;                 // so lange schaut der Editor zu
     private static volatile boolean dirty;                   // etwas Neues zu melden
     private static final long MAX_AGE_S = 10 * 60;   // ältere Befehle nicht mehr ausführen

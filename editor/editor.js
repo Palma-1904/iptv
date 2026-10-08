@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 17; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 18; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -1131,7 +1131,10 @@ function ago(sec) {
 
 async function remoteCmd(to, action, arg, label) {
   try {
-    await api('/api/remote/cmd', { to, action, arg: arg || {} });
+    await api('/api/remote/cmd', { to, action, arg: arg || {} }).catch((e) => {
+      if (/429|quota|limit/i.test(e.message)) throw new Error('Nicht gesendet: Das Tageskontingent von ntfy.sh ist aufgebraucht – bitte später erneut versuchen.');
+      throw e;
+    });
     toast(`${label} gesendet – das Gerät reagiert in wenigen Sekunden`);
     setTimeout(renderRemote, 6000);
   } catch (e) { toast(e.message, true); }
@@ -1157,6 +1160,13 @@ async function renderRemote() {
     return;
   }
   if (st.error) body.appendChild(el('p', 'warn', 'ntfy.sh nicht erreichbar: ' + st.error));
+  if (st.quota) {
+    const q = st.quota;
+    const low = q.left <= 0 ? 'warnbox' : q.left < 40 ? 'warnbox' : 'hint';
+    body.appendChild(el('p', low, q.left <= 0
+      ? `ntfy.sh: Das Tageskontingent ist aufgebraucht (${q.used} von ${q.limit} Nachrichten). Befehle und Meldungen von diesem Anschluss kommen erst wieder an, wenn es sich auffüllt (etwa 10 pro Stunde, ganz bis morgen). Geräte an anderen Anschlüssen (z. B. bei den Senioren) sind nicht betroffen.`
+      : `ntfy.sh: heute noch ${q.left} von ${q.limit} Nachrichten übrig (gilt für diesen Anschluss, auch für die Sticks im selben WLAN).`));
+  }
   if (!st.devices.length) {
     body.appendChild(el('p', '', 'Noch keine Geräte gemeldet. Die Sticks melden sich, sobald die App (neueste Version) geöffnet wird – das kann ein paar Minuten dauern.'));
     return;

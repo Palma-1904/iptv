@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 17  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 18  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -915,7 +915,15 @@ def remote_status():
     out = sorted(devices.values(), key=lambda d: (d.get('list') or '', d.get('name') or ''))
     for d in out:
         d['age'] = now - int(d.get('t') or 0)
-    return {'enabled': True, 'devices': out}
+    # Tageskontingent von ntfy.sh für diesen Anschluss (gilt auch für die Sticks im selben WLAN)
+    quota = None
+    try:
+        a = json.loads(fetch(NTFY + 'v1/account', timeout=10))
+        quota = {'used': a['stats']['messages'], 'limit': a['limits']['messages'],
+                 'left': a['stats']['messages_remaining']}
+    except Exception:
+        pass
+    return {'enabled': True, 'devices': out, 'quota': quota}
 
 
 def remote_cmd(to, action, arg):

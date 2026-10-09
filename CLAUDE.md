@@ -146,6 +146,11 @@ TKH bis 26.10.2027, ASW bis 04.10.2027, KMH bis 04.10.2027 (player_api für KMH/
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
 ## Stand / nächste Schritte (5.10.2026)
+- **9.10.2026**: Online App 57 (ohne Firebase). Lokal committet, noch nicht gepusht: Firebase-Fernwartung, Hänger-Wächter,
+  x-alt, Lautstärke, Erinnerungen, Zustandsbericht, nächtliches Auffrischen, Schnellstart, Handy-Fernbedienung
+  (Editor VERSION 23). Küche/Schlafzimmer/Wohnzimmer haben einen lokalen Bau mit versionCode 57 (melden über Firebase);
+  der nächste Push wird App 58 und installiert sich darüber. Max (KMH) noch auf altem Stand über ntfy.
+  → Thomas: pushen, Editor neu starten, Max per Fernwartung „Update“.
 - Online: App **39** (alles bis „Fehlermeldung eines Auftrags“). Lokal committet, **noch nicht gepusht**:
   Editor-Anzeige App-Stand (`/api/app-status`, Knopf `#appver`: grün online, gelb wird gebaut/veröffentlicht, rot
   fehlgeschlagen, „n nicht gepusht“ per `git rev-list @{u}..HEAD`; GitHub-API ohne Token), Server VERSION 15.

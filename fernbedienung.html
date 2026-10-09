@@ -52,9 +52,10 @@
   .toast.show { opacity: 1; }
   .err { color: var(--bad); }
   h2 { font-size: 17px; margin: 18px 0 8px; }
-  .crumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-  .crumbs button { min-height: 40px; padding: 6px 12px; font-size: 15px; }
-  .list button.dir .t::after { content: " ›"; color: var(--muted); }
+  .list button.dir { background: var(--panel2); min-height: 52px; }
+  .list button.dir.open { background: var(--accent); color: #fff; position: sticky; top: 0; z-index: 1; }
+  .list button.dir.open .c { color: #e6ecff; }
+  .list .arrow { width: 16px; flex: none; }
   .list .c { margin-left: auto; color: var(--muted); font-size: 14px; flex: none; }
   input[type=search] { width: 100%; font: inherit; padding: 12px 14px; border-radius: 12px; border: 0;
     background: var(--panel); color: var(--text); margin-bottom: 10px; }
@@ -77,7 +78,6 @@
 <div class="list" id="list"></div>
 <section id="all" hidden>
   <h2>Alles auf diesem Fernseher</h2>
-  <div class="crumbs" id="crumbs"></div>
   <input type="search" id="q" placeholder="Sender, Film oder Serie suchen …" hidden>
   <div class="list" id="tree"></div>
 </section>
@@ -230,7 +230,7 @@
   // Der Editor legt unter <kanal>/lists die Einrichtungs-Links ab; die Handy-Codes einzelner Sticks haben keine.
   var lists = null, trees = {}, nav = [], shownList = null, query = '';
   fetch(BASE + 'lists.json').then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (l) { lists = l; if (sel && devices[sel]) adminFor(devices[sel]); })
+    .then(function (l) { lists = l; if (sel && devices[sel]) { renderList(); adminFor(devices[sel]); } })
     .catch(function () { /* keine Admin-Ansicht */ });
 
   function norm(u) { return u.replace(/^https?:\/\/[^\/]+\/(live|movie|series)\/[^\/]+\/[^\/]+\//, '$1/'); }
@@ -306,91 +306,118 @@
   }
   function fold(s) { return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 
-  var LIMIT = 300;
-  function drawTree(limit) {
+  // Aufklappen wie die Übersicht am Fernseher: je Ebene ist ein Bereich offen, nochmal antippen klappt ihn zu.
+  // nav = Pfad der offenen Bereiche (Knoten des Baums).
+  var LIMIT = 300, limits = new WeakMap();
+  function leafButton(x, data, depth, name) {
+    var b = document.createElement('button');
+    if (x.k === (devices[sel] || {}).norm) b.className = 'cur';
+    var sub = x.t === 'live' ? nowTitle(data.epg, x.id) : '';
+    name = name || x.n;
+    b.style.marginLeft = depth * 14 + 'px';
+    b.style.width = 'calc(100% - ' + depth * 14 + 'px)';
+    b.innerHTML = (x.l ? '<img alt="" loading="lazy" src="' + esc(x.l.replace(/^http:/, 'https:')) + '" onerror="this.style.display=\'none\'">' : '') +
+      '<span><span class="t">' + esc(name) + '</span>' + (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</span>';
+    b.onclick = function () {
+      send('play', { norm: x.k });
+      toast('Startet auf dem Fernseher: ' + name);
+    };
+    return b;
+  }
+  function dirButton(x, depth, path) {
+    var open = nav[depth] === x;
+    var b = document.createElement('button');
+    b.className = 'dir' + (open ? ' open' : '');
+    if (open) b.style.top = depth * 56 + 'px';   // offene Bereiche bleiben beim Blättern oben stehen
+    b.style.marginLeft = depth * 14 + 'px';
+    b.style.width = 'calc(100% - ' + depth * 14 + 'px)';
+    var n = x.s ? '' : countLeaves(x);
+    b.innerHTML = '<span class="arrow">' + (open ? '▾' : '▸') + '</span><span><span class="t">' + esc(x.n) + '</span></span>' +
+      (n ? '<span class="c">' + n + '</span>' : '');
+    b.onclick = function () {
+      nav = open ? nav.slice(0, depth) : (path || nav.slice(0, depth)).concat(x);
+      drawTree();
+      if (!open) {
+        var all = $('tree').querySelectorAll('button.open');
+        var row = all[all.length - 1];
+        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (x.s) setTimeout(function () { $('q').focus(); }, 300);
+      }
+    };
+    return b;
+  }
+  function drawTree() {
     var slug = shownList;
     if (!slug || !trees[slug]) return;
     trees[slug].then(function (data) {
       if (slug !== shownList) return;
-      limit = limit || LIMIT;
-      var cur = (devices[sel] || {}).norm;
-      // Brotkrumen
-      var cr = $('crumbs');
-      cr.innerHTML = '';
-      var top = document.createElement('button');
-      top.textContent = 'Übersicht';
-      top.onclick = function () { nav = []; drawTree(); };
-      cr.appendChild(top);
-      nav.forEach(function (n, i) {
-        var b = document.createElement('button');
-        b.textContent = n.n;
-        b.onclick = function () { nav = nav.slice(0, i + 1); drawTree(); };
-        cr.appendChild(b);
-      });
-      var node = nav.length ? nav[nav.length - 1] : { c: data.root };
       var box = $('tree');
       box.innerHTML = '';
-      var search = !!node.s;
-      $('q').hidden = !search;
-      var items = node.c || [];
-      if (search) {
-        var q = fold(query.trim());
-        items = [];
-        if (q.length >= 2) {
-          // Treffer: Sender/Filme/Folgen und ganze Serien bzw. Gruppen (dann darin weiter blättern)
-          (function walk(n, depth) {
-            (n.c || []).forEach(function (x) {
-              if (x.s) return;
-              if (depth > 0 && fold(x.ti || x.n).indexOf(q) >= 0) items.push(x);
-              else if (x.c) walk(x, depth + 1);
-            });
-          })({ c: data.root }, 0);
+      (function level(children, depth) {
+        var lim = limits.get(children) || LIMIT;
+        children.slice(0, lim).forEach(function (x) {
+          if (x.k) { box.appendChild(leafButton(x, data, depth)); return; }
+          box.appendChild(dirButton(x, depth));
+          if (nav[depth] !== x) return;
+          if (x.s) {
+            var q = $('q');
+            q.hidden = false;
+            q.style.marginLeft = (depth + 1) * 14 + 'px';
+            q.style.width = 'calc(100% - ' + (depth + 1) * 14 + 'px)';
+            box.appendChild(q);
+            var res = document.createElement('div');
+            res.id = 'qres';
+            box.appendChild(res);
+            drawResults(data, depth + 1);
+          } else {
+            level(x.c || [], depth + 1);
+          }
+        });
+        if (children.length > lim) {
+          var more = document.createElement('button');
+          more.textContent = 'Weitere ' + (children.length - lim) + ' anzeigen';
+          more.style.marginLeft = depth * 14 + 'px';
+          more.onclick = function () { limits.set(children, lim + LIMIT); drawTree(); };
+          box.appendChild(more);
         }
-        if (q.length < 2) box.innerHTML = '<p class="muted">Mindestens 2 Buchstaben eingeben.</p>';
-        else if (!items.length) box.innerHTML = '<p class="muted">Nichts gefunden.</p>';
-      }
-      items.slice(0, limit).forEach(function (x) {
-        var b = document.createElement('button');
-        if (x.k) {
-          if (x.k === cur) b.className = 'cur';
-          var sub = x.t === 'live' ? nowTitle(data.epg, x.id) : '';
-          var name = search && x.ti ? x.ti : x.n;
-          b.innerHTML = (x.l ? '<img alt="" loading="lazy" src="' + esc(x.l.replace(/^http:/, 'https:')) + '" onerror="this.style.display=\'none\'">' : '') +
-            '<span><span class="t">' + esc(name) + '</span>' + (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</span>';
-          b.onclick = function () {
-            send('play', { norm: x.k });
-            toast('Startet auf dem Fernseher: ' + name);
-          };
-        } else {
-          b.className = 'dir';
-          var n = x.s ? '' : countLeaves(x);
-          b.innerHTML = '<span><span class="t">' + esc(x.n) + '</span></span>' + (n ? '<span class="c">' + n + '</span>' : '');
-          b.onclick = function () {
-            nav.push(x);
-            if (x.s) setTimeout(function () { $('q').focus(); }, 50);
-            drawTree();
-            $('all').scrollIntoView({ behavior: 'smooth' });
-          };
-        }
-        box.appendChild(b);
-      });
-      if (items.length > limit) {
-        var more = document.createElement('button');
-        more.textContent = 'Weitere ' + (items.length - limit) + ' anzeigen';
-        more.onclick = function () { drawTree(limit + LIMIT); };
-        box.appendChild(more);
-      }
+      })(data.root, 0);
     });
+  }
+  // Suche: Sender/Filme/Folgen und ganze Serien bzw. Gruppen (die öffnen sich dann an ihrem Platz)
+  function drawResults(data, depth) {
+    var res = $('qres');
+    if (!res) return;
+    res.innerHTML = '';
+    var q = fold(query.trim());
+    if (q.length < 2) { res.innerHTML = '<p class="muted">Mindestens 2 Buchstaben eingeben.</p>'; return; }
+    var hits = [];
+    (function walk(n, path) {
+      (n.c || []).forEach(function (x) {
+        if (x.s) return;
+        if (path.length && fold(x.ti || x.n).indexOf(q) >= 0) hits.push({ x: x, path: path });
+        else if (x.c) walk(x, path.concat(x));
+      });
+    })({ c: data.root }, []);
+    if (!hits.length) { res.innerHTML = '<p class="muted">Nichts gefunden.</p>'; return; }
+    hits.slice(0, LIMIT).forEach(function (h) {
+      res.appendChild(h.x.k ? leafButton(h.x, data, depth, h.x.ti || h.x.n) : dirButton(h.x, depth, h.path));
+    });
+    if (hits.length > LIMIT) res.appendChild(Object.assign(document.createElement('p'),
+      { className: 'muted', textContent: 'Und ' + (hits.length - LIMIT) + ' weitere – bitte genauer suchen.' }));
   }
   $('q').addEventListener('input', function () {
     query = this.value;
     clearTimeout(drawTree.h);
-    drawTree.h = setTimeout(function () { drawTree(); }, 250);
+    drawTree.h = setTimeout(function () {
+      var slug = shownList;
+      if (slug && trees[slug]) trees[slug].then(function (data) { drawResults(data, (parseInt($('q').style.marginLeft, 10) || 14) / 14); });
+    }, 250);
   });
 
   function renderList() {
     var d = devices[sel] || {};
     var c = channels && channels.items ? channels : null;
+    if (lists && d.list && lists[d.list]) c = null;   // Admin: „Alles auf diesem Fernseher“ reicht
     $('lhead').hidden = !c;
     $('list').innerHTML = '';
     if (!c) return;

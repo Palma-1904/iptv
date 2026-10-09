@@ -486,6 +486,8 @@ public class MainActivity extends Activity implements Remote.Target {
                     + JSONObject.quote(last) + ")", null);
         }
         Remote.status("overview", "", "");
+        // Wieder vorne (z. B. Fernseher aus dem Standby eingeschaltet): nach Updates sehen (höchstens alle 6 h)
+        handler.postDelayed(() -> { if (!isFinishing()) Updater.check(this, false); }, 5000);
         if (System.currentTimeMillis() < switchingUntil) return;   // neue Ansicht lädt gerade
         // Seniorenansicht: beim (erneuten) Öffnen der App gleich wieder den letzten Sender starten
         web.evaluateJavascript("window.IPTV&&IPTV.onAppResume&&IPTV.onAppResume()", null);

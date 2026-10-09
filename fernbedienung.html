@@ -51,6 +51,10 @@
     opacity: 0; transition: opacity .25s; pointer-events: none; }
   .toast.show { opacity: 1; }
   .err { color: var(--bad); }
+  .ver { margin-top: 8px; font-size: 15px; color: var(--muted); }
+  .ver b { color: var(--text); }
+  .ver.old { color: var(--warn); }
+  button.hot { background: var(--warn); color: #1b1300; }
   h2 { font-size: 17px; margin: 18px 0 8px; }
   .list button.dir { background: var(--panel2); min-height: 52px; }
   .list button.dir.open { background: var(--accent); color: #fff; position: sticky; top: 0; z-index: 1; }
@@ -166,6 +170,16 @@
     return obj;
   }
 
+  // Neueste veröffentlichte App-Version (liegt neben dieser Seite), alle 10 Minuten neu
+  var latest = 0;
+  function loadLatest() {
+    fetch('app-version.txt?t=' + Date.now()).then(function (r) { return r.ok ? r.text() : ''; })
+      .then(function (t) { var v = parseInt(t, 10); if (v > 0 && v !== latest) { latest = v; render(); } })
+      .catch(function () { /* offline */ });
+  }
+  loadLatest();
+  setInterval(loadLatest, 10 * 60 * 1000);
+
   live(BASE + 'status.json', function (path, data, merge) {
     devices = apply(devices, path, data, merge);
     render();
@@ -219,9 +233,16 @@
       if (epg[1]) h += '<div class="muted">danach ' + hhmm(epg[1][0]) + '  ' + esc(epg[1][2]) + '</div>';
     }
     if (d.note && d.noteT && t - d.noteT < 120) h += '<div class="muted">↩ ' + esc(d.note) + '</div>';
+    if (d.cfg && d.ver) {   // Admin: App-Stand des Sticks und neueste Version
+      var old = latest && d.ver < latest;
+      h += '<div class="ver' + (old ? ' old' : '') + '">App auf dem Stick: <b>' + esc(d.ver) + '</b>' +
+        (latest ? ' · neueste: <b>' + latest + '</b>' + (old ? ' – Update verfügbar' : ' ✓ aktuell') : '') + '</div>';
+    }
     $('state').innerHTML = h;
     $('pad').hidden = false;
     $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
+    $('upd').textContent = latest && d.ver < latest ? 'App aktualisieren auf Version ' + latest : 'App aktualisieren';
+    $('upd').classList.toggle('hot', !!(latest && d.ver < latest));
     renderList();
     adminFor(d);
   }

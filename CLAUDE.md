@@ -99,6 +99,10 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   eigener `handyKey` (32 Zeichen, prefs; QR in ☰ 3 s → Weitere Einstellungen, zxing; „Neuer Code“ macht alte ungültig).
   Über den Geräteschlüssel nur `PHONE_ACTIONS` (play/zap/toggle/stop/message/reload/watch), Status ohne cfg/diag.
   Firebase speichert leere Arrays/Strings nicht (`epg` fehlt dann).
+  **Admin-Ansicht** (nur Haupt-Link): Editor schreibt `<kanal>/lists/<slug>` = {name, link, rev} (`fb_sync_lists`, bei
+  Fernwartung-Status und nach Veröffentlichen mit Gist-Revision). Die Seite lädt M3U + EPG der Liste des gewählten
+  Sticks direkt aus dem Gist, baut mit `js/tree.js` denselben Baum wie die App (Live TV/Filme/Serien/Suche, Shim
+  `IPTV.nativeLeaf` mit `norm`) und schickt `play {norm}`; laufender Sender markiert, Live mit laufender Sendung.
 - **Fernseher aus** (Stick bleibt an, HDMI meldet `ACTION_HDMI_AUDIO_PLUG` = 0 länger als 20 s): Player hält an
   (Status `tvoff`, gibt die einzige Verbindung frei), beim Wiedereinschalten läuft es von selbst weiter. Der
   Anfangszustand zählt nicht; kurze Aussetzer (Tonformat-Wechsel) werden ignoriert. Ungetestet am echten TV.
@@ -148,7 +152,7 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 ## Stand / nächste Schritte (5.10.2026)
 - **9.10.2026**: Online App 57 (ohne Firebase). Lokal committet, noch nicht gepusht: Firebase-Fernwartung, Hänger-Wächter,
   x-alt, Lautstärke, Erinnerungen, Zustandsbericht, nächtliches Auffrischen, Schnellstart, Handy-Fernbedienung
-  (Editor VERSION 23). Küche/Schlafzimmer/Wohnzimmer haben einen lokalen Bau mit versionCode 57 (melden über Firebase);
+  (Editor VERSION 24, Admin-Ansicht mit ganzer Liste). Küche/Schlafzimmer/Wohnzimmer haben einen lokalen Bau mit versionCode 57 (melden über Firebase);
   der nächste Push wird App 58 und installiert sich darüber. Max (KMH) noch auf altem Stand über ntfy.
   → Thomas: pushen, Editor neu starten, Max per Fernwartung „Update“.
 - Online: App **39** (alles bis „Fehlermeldung eines Auftrags“). Lokal committet, **noch nicht gepusht**:

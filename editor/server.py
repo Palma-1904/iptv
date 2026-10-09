@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 23  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 24  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -970,6 +970,30 @@ def fb_devices(topic):
     return {k: v for k, v in data.items() if isinstance(v, dict)}
 
 
+_fb_lists_sent = None
+
+
+def fb_sync_lists(rev=None):
+    """Listen-Links für die Admin-Fernbedienung (Haupt-Link): <kanal>/lists/<slug> = {link, rev}.
+    Nur unter dem geheimen Fernwartungs-Kanal – die Handy-Codes einzelner Sticks sehen das nicht."""
+    global _fb_lists_sent
+    st, base = load_settings(), fb_base()
+    topic = st.get('remoteTopic')
+    if not base or not topic or not st.get('login') or not st.get('gistId'):
+        return
+    old = _fb_lists_sent or {}
+    lists = {}
+    for p in load_state().get('playlists', []):
+        slug = slugify(p.get('slug') or p.get('name') or p['id'])
+        lists[slug] = {'name': p.get('name') or slug, 'link': f'{st["login"]}/{st["gistId"]}/{slug}',
+                       'rev': rev or (old.get(slug) or {}).get('rev') or ''}
+    if lists == _fb_lists_sent:
+        return
+    with http(f'{base}{topic}/lists.json', data=json.dumps(lists).encode(), method='PUT', timeout=20):
+        pass
+    _fb_lists_sent = lists
+
+
 def remote_enable(on):
     s = load_settings()
     if not s.get('token') or not s.get('gistId'):
@@ -1058,6 +1082,10 @@ def remote_status():
     if fb_base() and st.get('pagesUrl'):
         host = re.sub(r'^https://|/+$', '', fb_base())
         phone = f'{st["pagesUrl"].rstrip("/")}/fernbedienung.html#k={topic}&db={host}'
+    try:
+        fb_sync_lists()
+    except Exception:
+        pass                                         # nur für die Admin-Fernbedienung
     return {'enabled': True, 'devices': out, 'quota': quota, 'lists': lists, 'phone': phone}
 
 
@@ -1594,6 +1622,10 @@ def publish(ids):
     # Geräte mit diesen Listen gleich neu laden lassen (Fernwartung; die Sendung läuft dabei weiter)
     told = 0
     if uploaded and uploaded.get('rev') and load_settings().get('remoteTopic'):
+        try:
+            fb_sync_lists(uploaded['rev'])           # Admin-Fernbedienung lädt gleich die neue Fassung
+        except Exception:
+            pass
         for r in results:
             try:
                 remote_cmd('list:' + r['slug'], 'refresh', {'rev': uploaded['rev']})

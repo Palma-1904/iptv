@@ -52,6 +52,12 @@
   .toast.show { opacity: 1; }
   .err { color: var(--bad); }
   h2 { font-size: 17px; margin: 18px 0 8px; }
+  .crumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .crumbs button { min-height: 40px; padding: 6px 12px; font-size: 15px; }
+  .list button.dir .t::after { content: " ›"; color: var(--muted); }
+  .list .c { margin-left: auto; color: var(--muted); font-size: 14px; flex: none; }
+  input[type=search] { width: 100%; font: inherit; padding: 12px 14px; border-radius: 12px; border: 0;
+    background: var(--panel); color: var(--text); margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -69,8 +75,27 @@
 </div>
 <h2 id="lhead" hidden></h2>
 <div class="list" id="list"></div>
+<section id="all" hidden>
+  <h2>Alles auf diesem Fernseher</h2>
+  <div class="crumbs" id="crumbs"></div>
+  <input type="search" id="q" placeholder="Sender, Film oder Serie suchen …" hidden>
+  <div class="list" id="tree"></div>
+</section>
 <p class="muted" id="foot"></p>
 <div class="toast" id="toast"></div>
+<script>
+  // tree.js (derselbe Baum wie in der App) braucht nur IPTV.nativeLeaf: hier ohne Adresse, nur Kennung (norm)
+  window.IPTV = {
+    nativeLeaf: function (e, label, title) {
+      var o = { n: label || e.name, k: e.norm, t: e.type };
+      if (title && title !== o.n) o.ti = title;
+      if (e.tvgId) o.id = e.tvgId;
+      if (e.logo) o.l = e.logo;
+      return o;
+    }
+  };
+</script>
+<script src="js/tree.js"></script>
 <script>
 (function () {
   'use strict';
@@ -198,7 +223,170 @@
     $('pad').hidden = false;
     $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
     renderList();
+    adminFor(d);
   }
+
+  // ---------- Admin (nur Haupt-Link): ganze Liste des Sticks – Live TV, Filme, Serien, Suche ----------
+  // Der Editor legt unter <kanal>/lists die Einrichtungs-Links ab; die Handy-Codes einzelner Sticks haben keine.
+  var lists = null, trees = {}, nav = [], shownList = null, query = '';
+  fetch(BASE + 'lists.json').then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (l) { lists = l; if (sel && devices[sel]) adminFor(devices[sel]); })
+    .catch(function () { /* keine Admin-Ansicht */ });
+
+  function norm(u) { return u.replace(/^https?:\/\/[^\/]+\/(live|movie|series)\/[^\/]+\/[^\/]+\//, '$1/'); }
+  function parseM3u(text) {
+    var out = [], cur = null, lines = text.split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (line.indexOf('#EXTINF') === 0) {
+        var q = false, c = -1;
+        for (var j = 0; j < line.length; j++) {
+          if (line[j] === '"') q = !q;
+          else if (line[j] === ',' && !q) { c = j; break; }
+        }
+        var head = c >= 0 ? line.slice(0, c) : line, a = {}, m, re = /([\w-]+)="([^"]*)"/g;
+        while ((m = re.exec(head))) a[m[1].toLowerCase()] = m[2].trim();
+        cur = { name: (c >= 0 ? line.slice(c + 1).trim() : '') || a['tvg-name'] || 'Unbenannt',
+          group: a['group-title'] || 'Sonstige', logo: a['tvg-logo'] || '', tvgId: a['tvg-id'] || '',
+          work: a['x-work'] || '', lang: (a['x-lang'] || '').toUpperCase(),
+          type: /^(live|movie|series)$/.test(a['tvg-type']) ? a['tvg-type'] : 'live' };
+      } else if (line && line[0] !== '#' && /^https?:\/\//i.test(line)) {
+        var e = cur || { name: line, group: 'Sonstige', logo: '', tvgId: '', work: '', lang: '', type: 'live' };
+        if (e.type === 'series') e.name = e.name.replace(/\b(S\d{1,3}) (E\d{1,4})\b/, '$1$2');
+        e.norm = norm(line);
+        out.push(e);
+        cur = null;
+      }
+    }
+    return out;
+  }
+  function loadList(slug) {
+    if (trees[slug]) return trees[slug];
+    var info = lists[slug], p = info.link.split('/');
+    var base = 'https://gist.githubusercontent.com/' + p[0] + '/' + p[1] + '/raw/' + (info.rev ? info.rev + '/' : '');
+    var fresh = info.rev ? '' : '?t=' + Date.now();
+    trees[slug] = Promise.all([
+      fetch(base + p[2] + '.m3u' + fresh).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }),
+      fetch(base + p[2] + '.epg.json' + fresh).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+    ]).then(function (res) {
+      return { root: IPTV.buildTree(parseM3u(res[0])).root, epg: res[1] && res[1].channels ? res[1].channels : {} };
+    });
+    trees[slug].catch(function () { delete trees[slug]; });
+    return trees[slug];
+  }
+
+  function adminFor(d) {
+    if (!lists || !d.list || !lists[d.list]) { $('all').hidden = true; return; }
+    $('all').hidden = false;
+    if (shownList !== d.list) {
+      shownList = d.list;
+      nav = [];
+      query = '';
+      $('tree').innerHTML = '<p class="muted">Lade Liste „' + esc(lists[d.list].name) + '“ …</p>';
+      loadList(d.list).then(function () { drawTree(); }, function (e) {
+        $('tree').innerHTML = '<p class="err">Liste nicht ladbar: ' + esc(e.message) + '</p>';
+      });
+    } else if (d.norm !== adminFor.norm) {
+      drawTree();   // anderer Sender läuft: neu markieren
+    }
+    adminFor.norm = d.norm;
+  }
+
+  function nowTitle(epg, id) {
+    var p = id && epg[id], t = Date.now() / 1000;
+    if (!p) return '';
+    for (var i = 0; i < p.length; i++) if (p[i][0] <= t && p[i][1] > t) return p[i][2];
+    return '';
+  }
+  function countLeaves(n) {
+    if (!n.c) return n.s ? 0 : 1;
+    var k = 0;
+    n.c.forEach(function (x) { k += countLeaves(x); });
+    return k;
+  }
+  function fold(s) { return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+
+  var LIMIT = 300;
+  function drawTree(limit) {
+    var slug = shownList;
+    if (!slug || !trees[slug]) return;
+    trees[slug].then(function (data) {
+      if (slug !== shownList) return;
+      limit = limit || LIMIT;
+      var cur = (devices[sel] || {}).norm;
+      // Brotkrumen
+      var cr = $('crumbs');
+      cr.innerHTML = '';
+      var top = document.createElement('button');
+      top.textContent = 'Übersicht';
+      top.onclick = function () { nav = []; drawTree(); };
+      cr.appendChild(top);
+      nav.forEach(function (n, i) {
+        var b = document.createElement('button');
+        b.textContent = n.n;
+        b.onclick = function () { nav = nav.slice(0, i + 1); drawTree(); };
+        cr.appendChild(b);
+      });
+      var node = nav.length ? nav[nav.length - 1] : { c: data.root };
+      var box = $('tree');
+      box.innerHTML = '';
+      var search = !!node.s;
+      $('q').hidden = !search;
+      var items = node.c || [];
+      if (search) {
+        var q = fold(query.trim());
+        items = [];
+        if (q.length >= 2) {
+          // Treffer: Sender/Filme/Folgen und ganze Serien bzw. Gruppen (dann darin weiter blättern)
+          (function walk(n, depth) {
+            (n.c || []).forEach(function (x) {
+              if (x.s) return;
+              if (depth > 0 && fold(x.ti || x.n).indexOf(q) >= 0) items.push(x);
+              else if (x.c) walk(x, depth + 1);
+            });
+          })({ c: data.root }, 0);
+        }
+        if (q.length < 2) box.innerHTML = '<p class="muted">Mindestens 2 Buchstaben eingeben.</p>';
+        else if (!items.length) box.innerHTML = '<p class="muted">Nichts gefunden.</p>';
+      }
+      items.slice(0, limit).forEach(function (x) {
+        var b = document.createElement('button');
+        if (x.k) {
+          if (x.k === cur) b.className = 'cur';
+          var sub = x.t === 'live' ? nowTitle(data.epg, x.id) : '';
+          var name = search && x.ti ? x.ti : x.n;
+          b.innerHTML = (x.l ? '<img alt="" loading="lazy" src="' + esc(x.l.replace(/^http:/, 'https:')) + '" onerror="this.style.display=\'none\'">' : '') +
+            '<span><span class="t">' + esc(name) + '</span>' + (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</span>';
+          b.onclick = function () {
+            send('play', { norm: x.k });
+            toast('Startet auf dem Fernseher: ' + name);
+          };
+        } else {
+          b.className = 'dir';
+          var n = x.s ? '' : countLeaves(x);
+          b.innerHTML = '<span><span class="t">' + esc(x.n) + '</span></span>' + (n ? '<span class="c">' + n + '</span>' : '');
+          b.onclick = function () {
+            nav.push(x);
+            if (x.s) setTimeout(function () { $('q').focus(); }, 50);
+            drawTree();
+            $('all').scrollIntoView({ behavior: 'smooth' });
+          };
+        }
+        box.appendChild(b);
+      });
+      if (items.length > limit) {
+        var more = document.createElement('button');
+        more.textContent = 'Weitere ' + (items.length - limit) + ' anzeigen';
+        more.onclick = function () { drawTree(limit + LIMIT); };
+        box.appendChild(more);
+      }
+    });
+  }
+  $('q').addEventListener('input', function () {
+    query = this.value;
+    clearTimeout(drawTree.h);
+    drawTree.h = setTimeout(function () { drawTree(); }, 250);
+  });
 
   function renderList() {
     var d = devices[sel] || {};
@@ -210,7 +398,7 @@
     c.items.forEach(function (it) {
       var b = document.createElement('button');
       if (it.k === d.norm) b.className = 'cur';
-      b.innerHTML = (it.l ? '<img alt="" loading="lazy" src="' + esc(it.l.replace(/^http:/, 'https:')) + '" onerror="this.style.visibility=\'hidden\'">' : '') +
+      b.innerHTML = (it.l ? '<img alt="" loading="lazy" src="' + esc(it.l.replace(/^http:/, 'https:')) + '" onerror="this.style.display=\'none\'">' : '') +
         '<span><span class="t">' + esc(it.n) + '</span>' + (it.now ? '<span class="s">' + esc(it.now) + '</span>' : '') + '</span>';
       b.onclick = function () { send('play', { norm: it.k }); toast('Schalte um auf ' + it.n + ' …'); };
       $('list').appendChild(b);

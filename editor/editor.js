@@ -1420,21 +1420,6 @@ async function renderRemote() {
       if (d.cfg.normvol !== undefined) toggle('normvol', 'Gleichmäßige Lautstärke', d.cfg.normvol);
       cfg.appendChild(el('span', d.cfg.overlay ? 'ok' : 'warn', d.cfg.overlay ? '✓ Autostart erlaubt' : '✕ Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)'));
       cfg.appendChild(el('span', d.cfg.install ? 'ok' : 'warn', d.cfg.install ? '✓ Updates erlaubt' : '✕ Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)'));
-      // Updates ohne Klick über das eigene ADB-Debugging (ab App 61; einmalig „Immer zulassen“ am Fernseher)
-      if (d.cfg.selfadb !== undefined) {
-        const a = d.cfg.selfadb;
-        if (a === 'ok') {
-          cfg.appendChild(el('span', 'ok', '✓ Updates ohne Klick (ADB)'));
-        } else if (a === 'off') {
-          cfg.appendChild(el('span', 'hint', 'Updates ohne Klick: ADB-Debugging am Stick ist aus'));
-        } else {
-          const b = el('button', '', 'Updates ohne Klick einrichten');
-          b.type = 'button';
-          b.title = 'Am Fernseher erscheint einmalig „Debugging zulassen?“ – dort „Immer zulassen“ ankreuzen und OK drücken (90 s Zeit).';
-          b.onclick = () => remoteCmd(d.id, 'setting', { key: 'selfadb', on: true }, 'Updates ohne Klick einrichten – bitte am Fernseher „Immer zulassen“ bestätigen');
-          cfg.appendChild(b);
-        }
-      }
       box.appendChild(cfg);
       // Wächter (ab App mit Wächter): hält die App vorne und drückt bei Updates selbst „Installieren“
       if (d.cfg.waechter !== undefined) {

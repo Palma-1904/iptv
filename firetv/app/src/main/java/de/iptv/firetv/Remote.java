@@ -378,8 +378,7 @@ final class Remote {
                         .put("waechterSwitch", Waechter.canSwitch(app) && Waechter.supported())
                         .put("waechterOld", !Waechter.supported())
                         .put("pause", (Waechter.pausedFor(app) + 59999) / 60000)
-                        .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true))
-                        .put("selfadb", SelfAdb.state(app)))
+                        .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true)))
                 .put("diag", Diag.json(app))
                 .put("norm", nowNorm).put("epg", nowEpg);
         if (fb != null) {

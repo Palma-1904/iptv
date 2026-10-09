@@ -105,12 +105,6 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   `IPTV.nativeLeaf` mit `norm`) und schickt `play {norm}`; laufender Sender markiert, Live mit laufender Sendung.
   Darstellung zum Auf-/Zuklappen (je Ebene ein Bereich offen, `nav` = Pfad, offene Köpfe bleiben oben stehen);
   im Admin-Modus keine extra „Meine Sender“-Liste (Thomas: nur „Alles auf diesem Fernseher“).
-- **Selbst-ADB** (`SelfAdb.java`, Thomas' Wunsch, ab App 61): Updates ohne Klick auch ohne Wächter (Fire OS 6). App
-  spricht das ADB-Protokoll selbst mit 127.0.0.1:5555 (eigener RSA-Schlüssel in prefs `selfAdbKey`), einmalig am TV
-  „Debugging zulassen? → Immer zulassen“; Installation per `exec:cmd package install -r -S <größe>` (gestreamt).
-  Einrichten: ☰ 3 s → Weitere Einstellungen → „Updates ohne Klick einrichten (ADB)“ oder Fernwartung `setting selfadb`;
-  Status `cfg.selfadb` (off/new/ok/fail); Test `selfadb-test` (installiert die eigene APK neu). Updater nimmt Selbst-ADB
-  vor dem Wächter, bei Fehler Fire-OS-Installer. Braucht ADB-Debugging AN.
 - **Fernseher aus** (Stick bleibt an, HDMI meldet `ACTION_HDMI_AUDIO_PLUG` = 0 länger als 20 s): Player hält an
   (Status `tvoff`, gibt die einzige Verbindung frei), beim Wiedereinschalten läuft es von selbst weiter. Der
   Anfangszustand zählt nicht; kurze Aussetzer (Tonformat-Wechsel) werden ignoriert. Ungetestet am echten TV.

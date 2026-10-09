@@ -110,8 +110,7 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   „Debugging zulassen? → Immer zulassen“; Installation per `exec:cmd package install -r -S <größe>` (gestreamt).
   Einrichten: ☰ 3 s → Weitere Einstellungen → „Updates ohne Klick einrichten (ADB)“ oder Fernwartung `setting selfadb`;
   Status `cfg.selfadb` (off/new/ok/fail); Test `selfadb-test` (installiert die eigene APK neu). Updater nimmt Selbst-ADB
-  vor dem Wächter, bei Fehler Fire-OS-Installer. Braucht ADB-Debugging AN. **Fire OS erlaubt nur EINE ADB-Verbindung**:
-  ist der Mac per adb verbunden, wird die App abgewiesen (Connection reset) → nach Mac-Arbeiten `adb disconnect`.
+  vor dem Wächter, bei Fehler Fire-OS-Installer. Braucht ADB-Debugging AN.
 - **Fernseher aus** (Stick bleibt an, HDMI meldet `ACTION_HDMI_AUDIO_PLUG` = 0 länger als 20 s): Player hält an
   (Status `tvoff`, gibt die einzige Verbindung frei), beim Wiedereinschalten läuft es von selbst weiter. Der
   Anfangszustand zählt nicht; kurze Aussetzer (Tonformat-Wechsel) werden ignoriert. Ungetestet am echten TV.

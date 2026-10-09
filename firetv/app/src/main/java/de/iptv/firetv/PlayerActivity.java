@@ -91,6 +91,12 @@ public class PlayerActivity extends Activity implements Remote.Target {
     static class Item {
         String name, url, logo, tvgId, type, group;
         String heading;   // Titel in der Info (z. B. „Film (Deutsch 4K)“), sonst name
+        String[] alts = new String[0];   // Ersatz-Fassungen desselben Senders (vom Editor)
+        int altIdx;                      // 0 = Hauptadresse, sonst alts[altIdx-1]
+
+        String playUrl() {
+            return altIdx > 0 && altIdx <= alts.length ? alts[altIdx - 1] : url;
+        }
         long[] start = new long[0], end = new long[0];
         String[] title = new String[0];
 
@@ -160,6 +166,11 @@ public class PlayerActivity extends Activity implements Remote.Target {
             it.logo = j.optString("l");
             it.tvgId = j.optString("id");
             it.type = j.optString("t", "live");
+            JSONArray alts = j.optJSONArray("a");
+            if (alts != null) {
+                it.alts = new String[alts.length()];
+                for (int i = 0; i < alts.length(); i++) it.alts[i] = alts.optString(i);
+            }
             JSONArray epg = j.optJSONArray("e");
             int k = epg == null ? 0 : epg.length();
             it.start = new long[k];
@@ -216,6 +227,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 spinner.setVisibility(event.getBuffering() < 100f ? View.VISIBLE : View.GONE);
                 break;
             case MediaPlayer.Event.Playing:
+                lastProgress = System.currentTimeMillis();
                 retries = 0;
                 failed = false;
                 reportPlaying();
@@ -231,6 +243,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 handler.post(rateCheck);              // Bildrate wird kurz nach dem Start bekannt
                 break;
             case MediaPlayer.Event.TimeChanged:
+                lastProgress = System.currentTimeMillis();
                 position = event.getTimeChanged();
                 if (System.currentTimeMillis() - lastSave > 15000) saveResume();
                 break;
@@ -238,6 +251,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 length = event.getLengthChanged();
                 break;
             case MediaPlayer.Event.EndReached:
+                expectPlaying = false;
                 onEnded();
                 break;
             case MediaPlayer.Event.EncounteredError:
@@ -286,6 +300,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     /** Wiedergabe beenden: sofort, ohne auf den Anbieter zu warten (neuer, leerer Player liegt bereit). */
     private void stopPlayer() {
+        expectPlaying = false;
         if (player == null) return;
         dispose(player, null);
         player = newPlayer();
@@ -411,7 +426,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         Remote.player_target = this;
         buildViews();
 
-        vlc = new LibVLC(this, new ArrayList<>(Arrays.asList(
+        java.util.List<String> vlcOptions = new ArrayList<>(Arrays.asList(
                 "--http-reconnect",
                 "--audio-language=de,deu,ger",
                 "--audio-time-stretch",
@@ -420,7 +435,14 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 "--aout=android_audiotrack",
                 // Zeitsteuerung bei Live-Sendern nicht ständig nachregeln (verursacht kleine Ruckler)
                 "--clock-jitter=0",
-                "--clock-synchro=0")));
+                "--clock-synchro=0"));
+        // Gleichmäßige Lautstärke (Werbung/Sender unterschiedlich laut) – abschaltbar in den Einstellungen
+        if (getSharedPreferences("iptv", MODE_PRIVATE).getBoolean("normvol", true)) {
+            vlcOptions.add("--audio-filter=normvol");
+            vlcOptions.add("--norm-buff-size=20");
+            vlcOptions.add("--norm-max-level=1.5");
+        }
+        vlc = new LibVLC(this, new ArrayList<>(vlcOptions));
         player = newPlayer();
 
         if (idle()) {
@@ -433,6 +455,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         handler.postDelayed(refresh, REFRESH_MS);
         handler.postDelayed(adopt, ADOPT_MS);
         handler.postDelayed(sleepCheck, 60000);
+        handler.postDelayed(stallCheck, 5000);
         handler.postDelayed(() -> Updater.check(this, false), 20000);
         watchTv();
     }
@@ -616,6 +639,36 @@ public class PlayerActivity extends Activity implements Remote.Target {
     // Ablauf beim Umschalten: Ist die Bildrate des Senders schon bekannt (gemerkt), wird der Fernseher schon
     // vor dem Start umgestellt. Sonst bleibt das Bild schwarz (curtain), bis die Rate feststeht; muss der
     // Fernseher umstellen (HDMI kurz schwarz), kommt das Bild erst danach – statt Bild, schwarz, Bild.
+    // ---------- Hängendes Bild: läuft angeblich, aber 15 s kein Fortschritt -> Sender neu starten ----------
+    private boolean expectPlaying;
+    private long lastProgress;
+    private final java.util.ArrayDeque<Long> stallTimes = new java.util.ArrayDeque<>();
+
+    private final Runnable stallCheck = new Runnable() {
+        @Override
+        public void run() {
+            handler.postDelayed(this, 3000);
+            if (!expectPlaying || sleeping || failed || idle() || player == null || pendingIndex >= 0) return;
+            long now = System.currentTimeMillis();
+            if (now - lastProgress < 15000) return;
+            while (!stallTimes.isEmpty() && now - stallTimes.peekFirst() > 3 * 60 * 1000L) stallTimes.pollFirst();
+            Item it = current();
+            if (it == null) return;
+            if (stallTimes.size() >= 3) {             // hängt dauernd: wie ein Fehler behandeln (Ersatz-Fassung)
+                stallTimes.clear();
+                retries = 2;
+                onError();
+                return;
+            }
+            stallTimes.addLast(now);
+            Diag.stall();
+            showStatus("Bild hängt – wird neu gestartet …");
+            handler.postDelayed(() -> status.setVisibility(View.GONE), 4000);
+            stopPlayer();
+            start(it);
+        }
+    };
+
     private float appliedFps;
     private int rateTries;
     private static org.json.JSONObject fpsSeen;   // Adresse (ohne Zugangsdaten) -> Bildrate
@@ -796,13 +849,16 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     private void start(Item it) {
         prepareRate(it);
-        Media media = new Media(vlc, Uri.parse(it.url));
+        expectPlaying = true;
+        lastProgress = System.currentTimeMillis() + 10000;   // Anlaufzeit
+        final String u = it.playUrl();
+        Media media = new Media(vlc, Uri.parse(u));
         media.setHWDecoderEnabled(true, false);
         media.addOption(":http-user-agent=" + USER_AGENT);
         // Vorrat gegen Ruckeln bei schwankendem WLAN/Anbieter (Live 5 s, Filme 8 s; Umschalten etwas langsamer)
         media.addOption(":network-caching=" + (it.live() ? 5000 : 8000));
         media.addOption(":live-caching=5000");
-        if (it.url.split("\\?")[0].toLowerCase(Locale.ROOT).endsWith(".m3u8")) {
+        if (u.split("\\?")[0].toLowerCase(Locale.ROOT).endsWith(".m3u8")) {
             // HLS: Anbieter liefert ~10-s-Stücke und ist zeitweise langsamer als Echtzeit (gemessen
             // bei RTL Crime: 12 s für 10 s Film) -> 30 s hinter live (wie Samsung), bis 60 s Vorrat; Stabilität vor Aktualität
             media.addOption(":adaptive-livedelay=30000");
@@ -896,7 +952,25 @@ public class PlayerActivity extends Activity implements Remote.Target {
             }, 2500);
             return;
         }
+        if (it.live() && it.altIdx < it.alts.length) {
+            it.altIdx++;                          // Sender gestört: andere Fassung desselben Senders
+            retries = 0;
+            Diag.altSwitch();
+            showStatus("„" + it.name + "“ ist gestört – es wird eine andere Fassung versucht …");
+            spinner.setVisibility(View.VISIBLE);
+            final Node atCtx = ctx;
+            final int at = index;
+            handler.postDelayed(() -> {
+                if (atCtx == ctx && at == index && pendingIndex < 0) {
+                    stopPlayer();
+                    start(it);
+                }
+            }, 1500);
+            return;
+        }
         failed = true;
+        expectPlaying = false;
+        Diag.error(it.name);
         spinner.setVisibility(View.GONE);
         Remote.status("error", it.name, it.type);
         String keys = it.live() || items().size() > 1
@@ -907,10 +981,13 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     private void togglePause() {
         if (player.isPlaying()) {
+            expectPlaying = false;
             player.pause();
             Item it = current();
             if (it != null) Remote.status("paused", it.heading != null ? it.heading : it.name, it.type);
         } else {
+            expectPlaying = true;
+            lastProgress = System.currentTimeMillis() + 5000;
             playPlayer();
         }
         handler.postDelayed(this::showInfo, 150);
@@ -987,6 +1064,23 @@ public class PlayerActivity extends Activity implements Remote.Target {
                     Node sel = pos >= 0 && pos < browse.children.size() ? browse.children.get(pos) : null;
                     if (sel != null && sel.item == null) open(sel);
                     else closeList();
+                    return true;
+                }
+                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                case KeyEvent.KEYCODE_MEDIA_PLAY: {   // ⏯ auf einem Sender: an seine nächste Sendung erinnern
+                    int pos = list.getSelectedItemPosition();
+                    Node sel = pos >= 0 && pos < browse.children.size() ? browse.children.get(pos) : null;
+                    if (sel != null && sel.item != null && sel.item.live()) {
+                        Item it = sel.item;
+                        int nx = it.now() + 1;
+                        if (nx > 0 && nx < it.start.length) {
+                            Toast.makeText(this, Reminders.toggle(this, it.url, it.name, it.start[nx], it.title[nx]),
+                                    Toast.LENGTH_LONG).show();
+                            updatePreview(pos);
+                        } else {
+                            Toast.makeText(this, "Für diesen Sender gibt es keine Programmdaten.", Toast.LENGTH_SHORT).show();
+                        }
+                    }
                     return true;
                 }
                 case KeyEvent.KEYCODE_DPAD_UP:
@@ -1155,11 +1249,13 @@ public class PlayerActivity extends Activity implements Remote.Target {
     protected void onResume() {
         super.onResume();
         AutostartService.shown();
+        Reminders.front = this;
     }
 
     @Override
     protected void onPause() {
         AutostartService.hidden();
+        if (Reminders.front == this) Reminders.front = null;
         super.onPause();
     }
 
@@ -1758,8 +1854,10 @@ public class PlayerActivity extends Activity implements Remote.Target {
         StringBuilder sb = new StringBuilder();
         for (int k = now; k < Math.min(it.start.length, now + 5); k++) {
             if (sb.length() > 0) sb.append("\n");
-            sb.append(k == now ? "Jetzt  " : time(it.start[k]) + "   ").append(it.title[k]);
+            boolean bell = k > now && Reminders.isSet(this, it.url, it.start[k]);
+            sb.append(k == now ? "Jetzt  " : time(it.start[k]) + "   ").append(bell ? "🔔 " : "").append(it.title[k]);
         }
+        if (now + 1 < it.start.length) sb.append("\n\n⏯ = an „").append(it.title[now + 1]).append("“ erinnern");
         previewEpg.setText(sb);
     }
 

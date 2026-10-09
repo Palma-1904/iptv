@@ -49,6 +49,7 @@ final class Remote {
     private static Context app;
     private static String deviceId, deviceName;
     private static volatile String topic;
+    private static volatile String fb;   // Firebase-Datenbank (aus fernwartung.json), sonst ntfy.sh
     private static volatile String playlistUrl = "", list = "", view = "";
     private static volatile String state = "start", title = "", type = "";
     private static volatile long since = System.currentTimeMillis() / 1000;
@@ -116,7 +117,8 @@ final class Remote {
         state = s;
         title = t == null ? "" : t;
         type = ty == null ? "" : ty;
-        if (System.currentTimeMillis() < watchUntil) dirty = true;   // nur melden, wenn der Editor zuschaut
+        // ntfy.sh: nur melden, wenn der Editor zuschaut (Tageskontingent); Firebase: immer (kein Kontingent)
+        if (fb != null || System.currentTimeMillis() < watchUntil) dirty = true;
     }
 
     private static void loop() {
@@ -126,7 +128,9 @@ final class Remote {
                 if (topic == null) loadTopic();
                 if (topic == null) continue;
                 long now = System.currentTimeMillis();
-                if (now - lastSent > HEARTBEAT_MS || (dirty && now - lastSent > MIN_GAP_MS)) send();
+                long beat = fb != null ? 5 * 60 * 1000L : HEARTBEAT_MS;
+                long gap = fb != null ? 2000 : MIN_GAP_MS;
+                if (now - lastSent > beat || (dirty && now - lastSent > gap)) send();
             } catch (InterruptedException e) {
                 return;
             } catch (Exception ignored) {
@@ -143,6 +147,12 @@ final class Remote {
                 String tp = topic;
                 if (tp == null) {
                     Thread.sleep(3000);
+                    continue;
+                }
+                if (fb != null) {                     // Firebase: eigener Briefkasten je Gerät, Live-Verbindung
+                    listenFirebase(tp);
+                    wait = 5000;
+                    Thread.sleep(2000);
                     continue;
                 }
                 String s = lastCmdId != null ? lastCmdId : String.valueOf(since);
@@ -178,6 +188,72 @@ final class Remote {
         }
     }
 
+    /**
+     * Firebase: Befehle liegen unter <kanal>/inbox/<gerät>/<id>; Live-Verbindung (Server-Sent Events) meldet neue
+     * sofort. Nach dem Ausführen wird der Befehl gelöscht, der Briefkasten bleibt leer.
+     */
+    private static void listenFirebase(String tp) throws Exception {
+        String base = fb + tp + "/inbox/" + deviceId;
+        HttpURLConnection c = (HttpURLConnection) new URL(base + ".json").openConnection();
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(120000);              // Firebase schickt regelmäßig „keep-alive“
+        c.setUseCaches(false);
+        c.setRequestProperty("Accept", "text/event-stream");
+        try {
+            if (c.getResponseCode() != 200) throw new java.io.IOException("HTTP " + c.getResponseCode());
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
+                String line, event = "";
+                while ((line = r.readLine()) != null) {
+                    if (!tp.equals(topic) || fb == null) break;
+                    if (line.startsWith("event:")) {
+                        event = line.substring(6).trim();
+                        if (event.equals("cancel") || event.equals("auth_revoked")) break;
+                    } else if (line.startsWith("data:") && (event.equals("put") || event.equals("patch"))) {
+                        JSONObject d = new JSONObject(line.substring(5).trim());
+                        String path = d.optString("path", "/");
+                        Object data = d.opt("data");
+                        if ("/".equals(path) && data instanceof JSONObject) {
+                            JSONObject all = (JSONObject) data;
+                            for (java.util.Iterator<String> it = all.keys(); it.hasNext(); ) {
+                                String id = it.next();
+                                JSONObject cmd = all.optJSONObject(id);
+                                if (cmd != null) fbCommand(base, id, cmd);
+                            }
+                        } else if (data instanceof JSONObject && path.matches("/[^/]+")) {
+                            fbCommand(base, path.substring(1), (JSONObject) data);
+                        }
+                    }
+                }
+            }
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    private static void fbCommand(String base, String id, JSONObject c) {
+        new Thread(() -> {                     // gleich aus dem Briefkasten löschen
+            try {
+                HttpURLConnection d = (HttpURLConnection) new URL(base + "/" + id + ".json").openConnection();
+                d.setRequestMethod("DELETE");
+                d.setConnectTimeout(10000);
+                d.getResponseCode();
+                d.disconnect();
+            } catch (Exception ignored) {
+                // nächstes Mal
+            }
+        }).start();
+        if (done.contains(id)) return;
+        done.add(id);
+        if (System.currentTimeMillis() / 1000 - c.optLong("t") > MAX_AGE_S) return;   // zu alt
+        final String action = c.optString("action");
+        final JSONObject arg = c.optJSONObject("arg") != null ? c.optJSONObject("arg") : new JSONObject();
+        if ("watch".equals(action)) {
+            dirty = true;
+            return;
+        }
+        main.post(() -> dispatch(action, arg));
+    }
+
     /** fernwartung.json aus dem Gist (gleicher Ordner wie die Playlist). */
     private static void loadTopic() throws Exception {
         String url = playlistUrl;
@@ -192,7 +268,11 @@ final class Remote {
             Thread.sleep(10 * 60 * 1000L);   // Fernwartung (noch) nicht eingeschaltet
             return;
         }
-        String t = new JSONObject(text).optString("topic", "");
+        JSONObject cfg = new JSONObject(text);
+        String f = cfg.optString("firebase", "");
+        fb = f.matches("https://[a-z0-9-]+\\.([a-z0-9-]+\\.)?(firebasedatabase\\.app|firebaseio\\.com)/?")
+                ? (f.endsWith("/") ? f : f + "/") : null;
+        String t = cfg.optString("topic", "");
         if (t.matches("[A-Za-z0-9_-]{16,64}")) topic = t;
     }
 
@@ -212,9 +292,16 @@ final class Remote {
                         .put("waechter", Waechter.running())
                         .put("waechterSwitch", Waechter.canSwitch(app) && Waechter.supported())
                         .put("waechterOld", !Waechter.supported())
-                        .put("pause", (Waechter.pausedFor(app) + 59999) / 60000));
-        note = "";
-        post(NTFY + topic + "-status", o.toString());
+                        .put("pause", (Waechter.pausedFor(app) + 59999) / 60000)
+                        .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true)))
+                .put("diag", Diag.json(app));
+        if (fb != null) {
+            o.put("noteT", noteT);
+            put(fb + topic + "/status/" + deviceId + ".json", o.toString());   // überschreibt: immer der neueste Stand
+        } else {
+            note = "";
+            post(NTFY + topic + "-status", o.toString());
+        }
     }
 
     /** Eine Zeile von ntfy (message, keepalive, open) auswerten. */
@@ -275,8 +362,11 @@ final class Remote {
     /** Rückmeldung zu einem Befehl (z. B. „Sender nicht gefunden“). */
     private static volatile String note = "";
 
+    private static volatile long noteT;
+
     static void report(String text) {
         note = text;
+        noteT = System.currentTimeMillis() / 1000;
         dirty = true;
     }
 
@@ -296,6 +386,20 @@ final class Remote {
         } finally {
             c.disconnect();
         }
+    }
+
+    private static void put(String url, String body) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(10000);
+        c.setReadTimeout(15000);
+        c.setDoOutput(true);
+        c.setRequestMethod("PUT");
+        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        try (OutputStream o = c.getOutputStream()) {
+            o.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+        c.getResponseCode();
+        c.disconnect();
     }
 
     private static void post(String url, String body) throws Exception {

@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 21  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 22  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -948,6 +948,28 @@ def stream_norm(url):
     return re.sub(r'^https?://[^/]+/(live|movie|series)/[^/]+/[^/]+/', r'\1/', url or '')
 
 
+def remote_config(s):
+    """Inhalt von fernwartung.json: geheimer Kanal und (falls eingerichtet) die Firebase-Datenbank."""
+    cfg = {'topic': s['remoteTopic']}
+    if s.get('remoteFirebase'):
+        cfg['firebase'] = s['remoteFirebase']
+    return cfg
+
+
+def fb_base():
+    f = (load_settings().get('remoteFirebase') or '').strip()
+    return (f if f.endswith('/') else f + '/') if f else None
+
+
+def fb_devices(topic):
+    """Neuester Stand je Gerät aus Firebase (<kanal>/status/<gerät>)."""
+    base = fb_base()
+    if not base:
+        return {}
+    data = json.loads(fetch(f'{base}{topic}/status.json', timeout=20) or b'null') or {}
+    return {k: v for k, v in data.items() if isinstance(v, dict)}
+
+
 def remote_enable(on):
     s = load_settings()
     if not s.get('token') or not s.get('gistId'):
@@ -956,7 +978,7 @@ def remote_enable(on):
         if not s.get('remoteTopic'):
             import secrets
             s['remoteTopic'] = 'iptv' + re.sub(r'[^A-Za-z0-9]', '', secrets.token_urlsafe(32))[:28]
-        gist_upload({'fernwartung.json': json.dumps({'topic': s['remoteTopic']})}, s)
+        gist_upload({'fernwartung.json': json.dumps(remote_config(s))}, s)
     else:
         gist_upload({'fernwartung.json': None}, s)
         s.pop('remoteTopic', None)
@@ -968,11 +990,24 @@ def remote_status():
     topic = load_settings().get('remoteTopic')
     if not topic:
         return {'enabled': False, 'devices': []}
+    devices = {}
+    fb_err = None
+    if fb_base():
+        try:
+            for k, d in fb_devices(topic).items():
+                d.setdefault('id', k)
+                if d.get('note'):
+                    d['lastNote'] = d['note']
+                d['via'] = 'firebase'
+                devices[k] = d
+        except Exception as e:
+            fb_err = f'Firebase nicht erreichbar: {e}'
     try:
         text = fetch(NTFY + topic + '-status/json?poll=1&since=12h', timeout=20)
     except UserError as e:
-        return {'enabled': True, 'devices': [], 'error': str(e)}
-    devices = {}
+        text = b''
+        if not devices:
+            return {'enabled': True, 'devices': [], 'error': fb_err or str(e)}
     for line in text.decode('utf-8', 'replace').splitlines() if isinstance(text, bytes) else text.splitlines():
         try:
             m = json.loads(line)
@@ -983,6 +1018,8 @@ def remote_status():
             continue
         if not d.get('id'):
             continue
+        if devices.get(d['id'], {}).get('via') == 'firebase':
+            continue                                 # Gerät meldet sich schon über Firebase
         old = devices.get(d['id'], {})
         if d.get('note'):
             d['lastNote'] = d['note']
@@ -1000,7 +1037,10 @@ def remote_status():
             d['memo'] = notes[d['id']].get('note', '')
     # Tageskontingent von ntfy.sh für diesen Anschluss (gilt auch für die Sticks im selben WLAN)
     quota = None
+    on_ntfy = any(d.get('via') != 'firebase' for d in out)
     try:
+        if fb_base() and not on_ntfy:
+            raise StopIteration                      # alle Geräte über Firebase: Kontingent egal
         a = json.loads(fetch(NTFY + 'v1/account', timeout=10))
         quota = {'used': a['stats']['messages'], 'limit': a['limits']['messages'],
                  'left': a['stats']['messages_remaining']}
@@ -1021,10 +1061,36 @@ def remote_cmd(to, action, arg):
     if not topic:
         raise UserError('Fernwartung ist nicht eingeschaltet.')
     import uuid
-    body = json.dumps({'id': uuid.uuid4().hex[:12], 'to': to, 'action': action, 'arg': arg or {},
-                       't': int(time.time())}).encode()
-    with http(NTFY + topic + '-cmd', data=body, method='POST', timeout=20) as r:
-        r.read()
+    msg = {'id': uuid.uuid4().hex[:12], 'to': to, 'action': action, 'arg': arg or {}, 't': int(time.time())}
+    body = json.dumps(msg).encode()
+    sent, fb_ids = 0, set()
+    base = fb_base()
+    if base:
+        # Firebase: Befehl in den Briefkasten jedes passenden Geräts (<kanal>/inbox/<gerät>)
+        try:
+            devs = fb_devices(topic)
+        except Exception:
+            devs = {}
+        fb_ids = set(devs)
+        if to == 'all':
+            targets = list(devs)
+        elif to.startswith('list:'):
+            targets = [k for k, d in devs.items() if d.get('list') == to[5:]]
+        else:
+            targets = [to] if to in devs else []
+        for dev in targets:
+            with http(f'{base}{topic}/inbox/{dev}.json', data=body, method='POST', timeout=20) as r:
+                r.read()
+            sent += 1
+    # ntfy.sh für Geräte, die noch nicht über Firebase laufen (ältere App)
+    if not base or to in ('all',) or to.startswith('list:') or to not in fb_ids:
+        try:
+            with http(NTFY + topic + '-cmd', data=body, method='POST', timeout=20) as r:
+                r.read()
+            sent += 1
+        except UserError:
+            if not sent:
+                raise
     return {'ok': True}
 
 

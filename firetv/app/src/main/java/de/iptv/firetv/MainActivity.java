@@ -45,7 +45,26 @@ public class MainActivity extends Activity implements Remote.Target {
         a.runOnUiThread(() -> a.web.evaluateJavascript("window.IPTV&&IPTV.nativeRefresh&&IPTV.nativeRefresh()", null));
     }
     private SharedPreferences prefs;
-    private long switchingUntil;   // Ansicht wird gerade umgestellt: alte Seite nicht noch einmal den Player starten lassen
+    private long switchingUntil;
+    private long quietUntil;       // nächtlicher Neustart: Seite lädt neu, aber keinen Sender von selbst starten
+
+    /** Nachts (3–5 Uhr) einmal Liste/Speicher auffrischen und nach Updates sehen – nur wenn niemand schaut. */
+    private final Runnable nightly = new Runnable() {
+        @Override
+        public void run() {
+            handler.postDelayed(this, 10 * 60 * 1000L);
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            int h = c.get(java.util.Calendar.HOUR_OF_DAY);
+            String today = new java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.ROOT).format(c.getTime());
+            if (h < 3 || h >= 5 || today.equals(prefs.getString("nightly", ""))) return;
+            Remote.Target p = Remote.player_target;
+            if (p instanceof PlayerActivity && ((PlayerActivity) p).watching()) return;
+            prefs.edit().putString("nightly", today).apply();
+            quietUntil = System.currentTimeMillis() + 2 * 60 * 1000L;
+            web.reload();
+            handler.postDelayed(() -> { if (!isFinishing()) Updater.check(MainActivity.this, true); }, 60000);
+        }
+    };   // Ansicht wird gerade umgestellt: alte Seite nicht noch einmal den Player starten lassen
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -58,6 +77,8 @@ public class MainActivity extends Activity implements Remote.Target {
         Remote.main_target = this;
         AutostartService.start(this);
         Waechter.ensure(this);   // falls Fire OS den Wächter abgeschaltet hat
+        Reminders.start(this);
+        handler.postDelayed(nightly, 10 * 60 * 1000L);
         // Eingetragen, aber nicht verbunden (z. B. nach Neuinstallation hängengeblieben): einmal aus- und einschalten
         handler.postDelayed(() -> {
             if (!Waechter.running() && Waechter.wanted(this) && Waechter.canSwitch(this) && Waechter.supported()
@@ -208,6 +229,7 @@ public class MainActivity extends Activity implements Remote.Target {
         @JavascriptInterface
         public void playPath(String json) {
             runOnUiThread(() -> {
+                if (System.currentTimeMillis() < quietUntil) return;   // nächtliches Auffrischen
                 String url = web.getUrl();
                 if (url == null || !url.startsWith(BuildConfig.START_URL)) return;
                 PlayerActivity.pendingPath = json;
@@ -219,6 +241,7 @@ public class MainActivity extends Activity implements Remote.Target {
         @JavascriptInterface
         public void play(String json) {
             runOnUiThread(() -> {
+                if (System.currentTimeMillis() < quietUntil) return;
                 // Nur für die eigene Webapp, nicht für fremde Seiten
                 String url = web.getUrl();
                 if (url == null || !url.startsWith(BuildConfig.START_URL)) return;
@@ -286,6 +309,13 @@ public class MainActivity extends Activity implements Remote.Target {
             prefs.edit().putBoolean("autostart", !auto).apply();
             if (!auto) AutostartService.start(this);
             else stopService(new Intent(this, AutostartService.class));
+            showSettings();
+        });
+        final boolean norm = prefs.getBoolean("normvol", true);
+        labels.add("Gleichmäßige Lautstärke:  " + (norm ? "AN" : "AUS"));
+        actions.add(() -> {
+            prefs.edit().putBoolean("normvol", !norm).apply();
+            Toast.makeText(this, "Gilt ab dem nächsten Senderstart.", Toast.LENGTH_SHORT).show();
             showSettings();
         });
         labels.add("Home-Taste holt die App zurück:  " + (home ? "AN" : "AUS"));
@@ -463,6 +493,7 @@ public class MainActivity extends Activity implements Remote.Target {
     protected void onResume() {
         super.onResume();
         AutostartService.shown();
+        Reminders.front = this;
         web.onResume();
         if (takePendingSetup()) return;
         // Zurück aus dem Player: im Player geänderte Favoriten an die Webapp geben
@@ -530,6 +561,9 @@ public class MainActivity extends Activity implements Remote.Target {
                 } else if ("home".equals(key)) {
                     prefs.edit().putBoolean("homeReturns", on).apply();
                     Remote.report("Home-Rückkehr " + (on ? "an" : "aus"));
+                } else if ("normvol".equals(key)) {
+                    prefs.edit().putBoolean("normvol", on).apply();
+                    Remote.report("Gleichmäßige Lautstärke " + (on ? "an" : "aus") + " (ab dem nächsten Senderstart)");
                 } else if ("waechter".equals(key)) {
                     Remote.report(Waechter.set(this, on) ? "Wächter " + (on ? "an" : "aus")
                             : "Wächter: Recht fehlt – einmalig vor Ort mit „Stick-einrichten“ einrichten");
@@ -606,6 +640,7 @@ public class MainActivity extends Activity implements Remote.Target {
     @Override
     protected void onPause() {
         AutostartService.hidden();
+        if (Reminders.front == this) Reminders.front = null;
         web.onPause();
         super.onPause();
     }

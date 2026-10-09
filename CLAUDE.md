@@ -76,6 +76,18 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Update per Fernwartung: still laden (`Updater.remoteUpdate`), dann nur Fire-OS-„Installieren“; `UpdateReceiver`
   (MY_PACKAGE_REPLACED) öffnet die App danach wieder. Einmalig nötig: „Unbekannte Apps installieren“ für die App
   erlauben – Knopf in der Einrichtung (☰ 3 s).
+- **Fernwartung über Firebase** (ab App 57; Thomas' Projekt „iptv-fernwartung“, Spark kostenlos, Realtime Database
+  `https://iptv-fernwartung-default-rtdb.europe-west1.firebasedatabase.app/`, Regeln: nur Pfade ≥ 24 Zeichen lesbar/
+  schreibbar, Wurzel gesperrt). `fernwartung.json` im Gist enthält `topic` + `firebase`; settings.json `remoteFirebase`.
+  Stick: Status per PUT `<kanal>/status/<gerät>` (bei Änderung, alle 5 min), Befehle live per SSE aus
+  `<kanal>/inbox/<gerät>/<id>` (nach Ausführen DELETE). Editor: `fb_devices`, `remote_cmd` schreibt in die Inboxen
+  (all / list:x aufgelöst), ntfy.sh nur noch für Geräte mit älterer App. Kein Tageslimit mehr.
+- **Weitere App-Funktionen (App 57)**: Hänger-Wächter (15 s ohne Fortschritt → Sender neu, 3× in 3 min → wie Fehler),
+  Ersatz-Fassungen `x-alt` (Editor schreibt bis zu 2 Adressen je Live-Sender; App wechselt bei Fehler), gleichmäßige
+  Lautstärke (`normvol`, Einstellung/Fernwartung), Erinnerungen (⏯ in der Liste auf einem Sender = an nächste Sendung;
+  `Reminders.java`), Zustandsbericht (`Diag.java`: WLAN-RSSI, Hänger/Fehler/Ersatz heute → `diag` im Status),
+  nächtliches Auffrischen 3–5 Uhr (Webapp neu laden + Updates, nicht wenn jemand schaut; `quietUntil` verhindert
+  Autostart eines Senders), Update-Prüfung beim Wiederaufrufen (≤ alle 6 h).
 - **Fernseher aus** (Stick bleibt an, HDMI meldet `ACTION_HDMI_AUDIO_PLUG` = 0 länger als 20 s): Player hält an
   (Status `tvoff`, gibt die einzige Verbindung frei), beim Wiedereinschalten läuft es von selbst weiter. Der
   Anfangszustand zählt nicht; kurze Aussetzer (Tonformat-Wechsel) werden ignoriert. Ungetestet am echten TV.

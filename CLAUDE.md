@@ -105,6 +105,10 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   `IPTV.nativeLeaf` mit `norm`) und schickt `play {norm}`; laufender Sender markiert, Live mit laufender Sendung.
   Darstellung zum Auf-/Zuklappen (je Ebene ein Bereich offen, `nav` = Pfad, offene Köpfe bleiben oben stehen);
   im Admin-Modus keine extra „Meine Sender“-Liste (Thomas: nur „Alles auf diesem Fernseher“).
+- **Selbst-ADB geht nicht** (getestet 9.10.2026, Wohnzimmer Fire OS 6): App verband sich mit dem eigenen adbd
+  (127.0.0.1 und eigene WLAN-IP, Port 5555) → adbd schließt sofort (EOF), vom Mac aus klappt dasselbe Protokoll.
+  Fire OS sperrt ADB-Verbindungen vom Gerät selbst. Wieder entfernt (Revert). Außerdem: Fire OS erlaubt nur EINE
+  ADB-Verbindung gleichzeitig – nach Arbeiten vom Mac `adb disconnect`. Klickfreie Updates nur mit Wächter (Fire OS 7/8).
 - **Fernseher aus** (Stick bleibt an, HDMI meldet `ACTION_HDMI_AUDIO_PLUG` = 0 länger als 20 s): Player hält an
   (Status `tvoff`, gibt die einzige Verbindung frei), beim Wiedereinschalten läuft es von selbst weiter. Der
   Anfangszustand zählt nicht; kurze Aussetzer (Tonformat-Wechsel) werden ignoriert. Ungetestet am echten TV.

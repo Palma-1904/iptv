@@ -81,8 +81,8 @@ final class Updater {
             main.post(() -> {
                 running = false;
                 if (v <= BuildConfig.VERSION_CODE || a.isFinishing()) return;
-                if (Waechter.running() && installAllowed(a)) {
-                    // Wächter bestätigt selbst – nur nicht mitten in eine laufende Sendung hinein
+                if ((Waechter.running() && installAllowed(a)) || SelfAdb.ready(a)) {
+                    // Wächter bzw. Selbst-ADB installiert ohne Klick – nur nicht mitten in eine laufende Sendung hinein
                     if (a instanceof PlayerActivity && ((PlayerActivity) a).watching()) {
                         prefs.edit().remove("updateChecked").apply();
                         return;
@@ -114,7 +114,7 @@ final class Updater {
                         : "Schon aktuell (Version " + BuildConfig.VERSION_CODE + ")");
                 return;
             }
-            if (!installAllowed(a)) {
+            if (!installAllowed(a) && !SelfAdb.ready(a)) {
                 main.post(() -> running = false);
                 if (report) Remote.report("Installieren noch nicht erlaubt – einmalig vor Ort: ☰ 3 s halten → „Updates erlauben“");
                 return;
@@ -127,8 +127,8 @@ final class Updater {
                     Remote.report("Neue Version noch nicht abrufbar (GitHub-Zwischenspeicher) – in 10 Minuten erneut versuchen");
                     return;
                 }
-                Remote.report("Version " + v + " geladen – " + (Waechter.running()
-                        ? "der Wächter installiert sie jetzt" : "wartet am Gerät auf „Installieren“"));
+                Remote.report("Version " + v + " geladen – " + (SelfAdb.ready(a) ? "wird ohne Klick installiert (ADB)"
+                        : Waechter.running() ? "der Wächter installiert sie jetzt" : "wartet am Gerät auf „Installieren“"));
                 install(a, apk);
             });
         }).start();
@@ -249,9 +249,29 @@ final class Updater {
         }
     }
 
-    /** Fire-OS-Installer öffnen; nach dem Update startet die App von selbst wieder (UpdateReceiver). */
+    /**
+     * Installieren: mit Selbst-ADB ohne Installer-Fenster, sonst Fire-OS-Installer öffnen.
+     * Nach dem Update startet die App von selbst wieder (UpdateReceiver).
+     */
     private static void install(Activity a, File apk) {
         a.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit().putBoolean("restartAfterUpdate", true).apply();
+        if (SelfAdb.ready(a)) {
+            running = true;
+            new Thread(() -> {
+                String err = SelfAdb.install(a, apk);   // Erfolg: Android beendet diese App, neue Version startet
+                main.post(() -> {
+                    running = false;
+                    if (err == null) return;
+                    Remote.report("Update ohne Klick fehlgeschlagen (" + err + ") – Installer wird geöffnet");
+                    if (!a.isFinishing()) openInstaller(a, apk);
+                });
+            }, "Update-ADB").start();
+            return;
+        }
+        openInstaller(a, apk);
+    }
+
+    private static void openInstaller(Activity a, File apk) {
         AutostartService.suppress(10 * 60 * 1000L);   // Installieren-Fenster nicht verdrängen
         Waechter.expectInstall(a);                     // Wächter drückt „Installieren“
         // Nach einem erfolgreichen Update läuft dieser Prozess nicht mehr. Läuft er nach 2½ Minuten noch,

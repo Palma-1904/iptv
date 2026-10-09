@@ -354,6 +354,25 @@ public class MainActivity extends Activity implements Remote.Target {
                 .show();
     }
 
+    /** Selbst-ADB einrichten: beim ersten Mal fragt Fire OS „Debugging zulassen?“ (Immer zulassen + OK). */
+    private void setupSelfAdb() {
+        Toast.makeText(this, "Gleich fragt der Fernseher „Debugging zulassen?“ – Haken bei „Immer zulassen“, dann OK.",
+                Toast.LENGTH_LONG).show();
+        AutostartService.suppress(2 * 60 * 1000L);
+        new Thread(() -> {
+            String msg = SelfAdb.setup(this);
+            Remote.report(msg);
+            handler.post(() -> {
+                if (isFinishing()) return;
+                new AlertDialog.Builder(this)
+                        .setTitle("Updates ohne Klick")
+                        .setMessage(msg)
+                        .setPositiveButton("OK", (d, w) -> showSettings())
+                        .show();
+            });
+        }, "Selbst-ADB").start();
+    }
+
     private void showSettings() {
         final boolean auto = AutostartService.enabled(this);
         final boolean home = AutostartService.homeReturns(this);
@@ -414,6 +433,21 @@ public class MainActivity extends Activity implements Remote.Target {
         if (!overlay) {
             labels.add("⚠ Erlaubnis für Autostart fehlt – was tun?");
             actions.add(this::explainOverlay);
+        }
+        String adb = SelfAdb.state(this);
+        if (!Waechter.running() || "ok".equals(adb)) {
+            labels.add("ok".equals(adb) ? "Updates ohne Klick (ADB):  eingerichtet ✓"
+                    : "off".equals(adb) ? "Updates ohne Klick:  ADB-Debugging ist aus"
+                    : "Updates ohne Klick einrichten (ADB) …");
+            actions.add(() -> {
+                if ("off".equals(adb)) {
+                    Toast.makeText(this, "Erst ADB-Debugging einschalten: Einstellungen → Mein Fire TV → Entwickleroptionen.",
+                            Toast.LENGTH_LONG).show();
+                    showSettings();
+                    return;
+                }
+                setupSelfAdb();
+            });
         }
         if (!install) {
             labels.add("⚠ Erlaubnis für Updates fehlt – jetzt erlauben");
@@ -603,6 +637,16 @@ public class MainActivity extends Activity implements Remote.Target {
             case "update":
                 Updater.remoteUpdate(this);   // still laden, dann nur „Installieren“ am Gerät
                 break;
+            case "selfadb-test": {           // Test: die installierte App per Selbst-ADB neu installieren
+                java.io.File self = new java.io.File(getPackageCodePath());
+                prefs.edit().putBoolean("restartAfterUpdate", true).apply();
+                Remote.report("Test: installiere die App neu (ADB) …");
+                new Thread(() -> {
+                    String err = SelfAdb.install(this, self);
+                    if (err != null) Remote.report("Test fehlgeschlagen: " + err);
+                }, "Selbst-ADB-Test").start();
+                break;
+            }
             case "zap":                      // Handy: ▲▼ / ⏯, Player nicht offen → letzten Sender starten
             case "toggle":
                 java.util.List<String> rec = Memory.get(this).recent();
@@ -629,6 +673,13 @@ public class MainActivity extends Activity implements Remote.Target {
                 } else if ("home".equals(key)) {
                     prefs.edit().putBoolean("homeReturns", on).apply();
                     Remote.report("Home-Rückkehr " + (on ? "an" : "aus"));
+                } else if ("selfadb".equals(key)) {
+                    if (on) {
+                        setupSelfAdb();   // meldet das Ergebnis selbst
+                    } else {
+                        prefs.edit().putBoolean("selfAdbOk", false).apply();
+                        Remote.report("Updates ohne Klick (ADB) aus");
+                    }
                 } else if ("normvol".equals(key)) {
                     prefs.edit().putBoolean("normvol", on).apply();
                     Remote.report("Gleichmäßige Lautstärke " + (on ? "an" : "aus") + " (ab dem nächsten Senderstart)");

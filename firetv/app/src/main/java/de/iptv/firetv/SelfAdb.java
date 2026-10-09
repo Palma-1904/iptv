@@ -86,7 +86,7 @@ final class SelfAdb {
             return out.endsWith("ok") ? "Updates ohne Klick sind eingerichtet ✓" : "Unerwartete Antwort: " + out;
         } catch (Exception e) {
             prefs(c).edit().putBoolean("selfAdbOk", false).apply();
-            return "Nicht verbunden: " + e.getMessage();
+            return "Nicht verbunden: " + why(e);
         }
     }
 
@@ -100,10 +100,19 @@ final class SelfAdb {
             if (out.contains("Success")) return null;
             return "Installation abgelehnt: " + out;
         } catch (Exception e) {
-            String m = e.getMessage();
-            if (m != null && m.contains("zugelassen")) prefs(c).edit().putBoolean("selfAdbOk", false).apply();
+            String m = why(e);
+            if (m.contains("zugelassen")) prefs(c).edit().putBoolean("selfAdbOk", false).apply();
             return "ADB: " + m;
         }
+    }
+
+    /** Verständlicher Grund. Fire OS lässt nur EINE ADB-Verbindung zu: ist ein Computer verbunden, wird abgewiesen. */
+    private static String why(Exception e) {
+        if (e instanceof java.io.EOFException || e instanceof java.net.SocketException && !(e instanceof java.net.ConnectException)) {
+            return "der Stick hat abgewiesen – ist gerade ein Computer per ADB verbunden? (Fire OS erlaubt nur eine Verbindung)";
+        }
+        if (e instanceof java.net.ConnectException) return "ADB-Debugging antwortet nicht (aus?)";
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
     }
 
     // ---------- Verbindung (ADB-Protokoll) ----------

@@ -774,7 +774,15 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     private void reportPlaying() {
         Item it = current();
-        if (it != null) Remote.status("playing", it.heading != null ? it.heading : it.name, it.type);
+        if (it == null) return;
+        // Für die Handy-Fernbedienung: was läuft und Programm jetzt/danach
+        org.json.JSONArray epg = new org.json.JSONArray();
+        int i = it.now();
+        for (int k = Math.max(i, 0); i >= 0 && k < Math.min(i + 2, it.start.length); k++) {
+            epg.put(new org.json.JSONArray().put(it.start[k]).put(it.end[k]).put(it.title[k]));
+        }
+        Remote.playing(Memory.norm(it.url), epg);
+        Remote.status("playing", it.heading != null ? it.heading : it.name, it.type);
     }
 
     // ---------- Fernwartung (Befehle aus dem Editor) ----------
@@ -796,6 +804,19 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 info.setVisibility(View.GONE);
                 showStatus("Die Wiedergabe wurde aus der Ferne beendet.\n\nZum Weiterschauen eine beliebige Taste drücken.");
                 Remote.status("stopped", "", "");
+                break;
+            case "zap":                 // Handy: ▲▼
+            case "toggle":              // Handy: ⏯
+                if (sleeping || idle()) {
+                    sleeping = false;
+                    tvOff = false;
+                    status.setVisibility(View.GONE);
+                    if (!idle()) play();
+                    break;
+                }
+                if (listOpen()) closeList();
+                if ("zap".equals(action)) step(arg.optInt("d", 1) < 0 ? -1 : 1);
+                else if (player != null) togglePause();
                 break;
             case "play": {
                 Node leaf = rootNode == null ? null : findLeaf(rootNode, arg.optString("norm"));

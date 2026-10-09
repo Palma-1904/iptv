@@ -57,6 +57,16 @@ final class Remote {
     private static final Set<String> done = new HashSet<>();
     private static volatile long lastSent;
     private static boolean started;
+    // Handy-Fernbedienung (fernbedienung.html): eigener geheimer Schlüssel je Gerät (QR-Code in der Einrichtung),
+    // gleiche Ablage wie die Fernwartung: <schlüssel>/status/<gerät>, /inbox/<gerät>, /sender/<gerät>
+    private static volatile String handyKey;
+    private static volatile JSONArray nowEpg = new JSONArray();   // laufende und nächste Sendung
+    private static volatile String nowNorm = "";
+    private static String lastChannels = "";
+    private static long channelsSent;
+    /** Vom Handy erlaubt (Schlüssel am Fernseher sichtbar): nur Bedienen, keine Einstellungen. */
+    private static final Set<String> PHONE_ACTIONS = new HashSet<>(java.util.Arrays.asList(
+            "play", "zap", "toggle", "stop", "message", "reload", "watch"));
     static volatile Target main_target;    // MainActivity
     static volatile Target player_target;  // PlayerActivity (wenn offen)
 
@@ -80,12 +90,51 @@ final class Remote {
             // nicht vorhanden
         }
         deviceName = n != null && !n.isEmpty() ? n : Build.MODEL;
+        handyKey = p.getString("handyKey", null);
+        if (handyKey == null) newHandyKey();
         Thread t = new Thread(Remote::loop, "Fernwartung");
         t.setDaemon(true);
         t.start();
         Thread l = new Thread(Remote::listen, "Fernwartung-Befehle");
         l.setDaemon(true);
         l.start();
+        Thread h = new Thread(Remote::listenPhone, "Handy-Fernbedienung");
+        h.setDaemon(true);
+        h.start();
+    }
+
+    /** Neuer Schlüssel für die Handy-Fernbedienung (alte QR-Codes gelten dann nicht mehr). */
+    static void newHandyKey() {
+        String old = handyKey;
+        String k = (UUID.randomUUID().toString() + UUID.randomUUID().toString()).replace("-", "").substring(0, 32);
+        handyKey = k;
+        app.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit().putString("handyKey", k).apply();
+        lastChannels = "";
+        dirty = true;
+        String f = fb;
+        if (old != null && f != null) {
+            new Thread(() -> {
+                try {
+                    delete(f + old + ".json");   // alten Stand wegräumen
+                } catch (Exception ignored) {
+                    // egal
+                }
+            }).start();
+        }
+    }
+
+    /** Adresse der Handy-Fernbedienung für dieses Gerät (null = Fernwartung über Firebase noch nicht bereit). */
+    static String phoneLink() {
+        String f = fb, k = handyKey;
+        if (f == null || k == null) return null;
+        String host = f.replaceAll("^https://", "").replaceAll("/+$", "");
+        return BuildConfig.START_URL + "fernbedienung.html#k=" + k + "&db=" + host;
+    }
+
+    /** Vom Player: was läuft (Adresse ohne Zugangsdaten) und Programm jetzt/danach. */
+    static void playing(String norm, JSONArray epg) {
+        nowNorm = norm == null ? "" : norm;
+        nowEpg = epg == null ? new JSONArray() : epg;
     }
 
     /** Von der Webapp: welche Playlist dieses Gerät nutzt (daraus folgt der Gist mit fernwartung.json). */
@@ -131,6 +180,7 @@ final class Remote {
                 long beat = fb != null ? 5 * 60 * 1000L : HEARTBEAT_MS;
                 long gap = fb != null ? 2000 : MIN_GAP_MS;
                 if (now - lastSent > beat || (dirty && now - lastSent > gap)) send();
+                if (fb != null && now - channelsSent > 60000) sendChannels();
             } catch (InterruptedException e) {
                 return;
             } catch (Exception ignored) {
@@ -193,6 +243,39 @@ final class Remote {
      * sofort. Nach dem Ausführen wird der Befehl gelöscht, der Briefkasten bleibt leer.
      */
     private static void listenFirebase(String tp) throws Exception {
+        listenInbox(tp, false);
+    }
+
+    /** Handy-Fernbedienung: eigener Briefkasten unter dem Geräteschlüssel (nur Bedien-Befehle). */
+    private static void listenPhone() {
+        long wait = 5000;
+        while (true) {
+            try {
+                if (fb == null || handyKey == null) {
+                    Thread.sleep(5000);
+                    continue;
+                }
+                listenInbox(handyKey, true);
+                wait = 5000;
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                return;
+            } catch (Exception e) {
+                try {
+                    Thread.sleep(wait);
+                } catch (InterruptedException ie) {
+                    return;
+                }
+                wait = Math.min(wait * 2, 5 * 60 * 1000L);
+            }
+        }
+    }
+
+    private static boolean stillValid(String root, boolean phone) {
+        return fb != null && root.equals(phone ? handyKey : topic);
+    }
+
+    private static void listenInbox(String tp, boolean phone) throws Exception {
         String base = fb + tp + "/inbox/" + deviceId;
         HttpURLConnection c = (HttpURLConnection) new URL(base + ".json").openConnection();
         c.setConnectTimeout(15000);
@@ -204,7 +287,7 @@ final class Remote {
             try (BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
                 String line, event = "";
                 while ((line = r.readLine()) != null) {
-                    if (!tp.equals(topic) || fb == null) break;
+                    if (!stillValid(tp, phone)) break;
                     if (line.startsWith("event:")) {
                         event = line.substring(6).trim();
                         if (event.equals("cancel") || event.equals("auth_revoked")) break;
@@ -217,10 +300,10 @@ final class Remote {
                             for (java.util.Iterator<String> it = all.keys(); it.hasNext(); ) {
                                 String id = it.next();
                                 JSONObject cmd = all.optJSONObject(id);
-                                if (cmd != null) fbCommand(base, id, cmd);
+                                if (cmd != null) fbCommand(base, id, cmd, phone);
                             }
                         } else if (data instanceof JSONObject && path.matches("/[^/]+")) {
-                            fbCommand(base, path.substring(1), (JSONObject) data);
+                            fbCommand(base, path.substring(1), (JSONObject) data, phone);
                         }
                     }
                 }
@@ -230,7 +313,7 @@ final class Remote {
         }
     }
 
-    private static void fbCommand(String base, String id, JSONObject c) {
+    private static void fbCommand(String base, String id, JSONObject c, boolean phone) {
         new Thread(() -> {                     // gleich aus dem Briefkasten löschen
             try {
                 HttpURLConnection d = (HttpURLConnection) new URL(base + "/" + id + ".json").openConnection();
@@ -247,8 +330,10 @@ final class Remote {
         if (System.currentTimeMillis() / 1000 - c.optLong("t") > MAX_AGE_S) return;   // zu alt
         final String action = c.optString("action");
         final JSONObject arg = c.optJSONObject("arg") != null ? c.optJSONObject("arg") : new JSONObject();
+        if (phone && !PHONE_ACTIONS.contains(action)) return;
         if ("watch".equals(action)) {
             dirty = true;
+            channelsSent = 0;   // Handy öffnet die Seite: Senderliste gleich frisch
             return;
         }
         main.post(() -> dispatch(action, arg));
@@ -294,14 +379,94 @@ final class Remote {
                         .put("waechterOld", !Waechter.supported())
                         .put("pause", (Waechter.pausedFor(app) + 59999) / 60000)
                         .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true)))
-                .put("diag", Diag.json(app));
+                .put("diag", Diag.json(app))
+                .put("norm", nowNorm).put("epg", nowEpg);
         if (fb != null) {
             o.put("noteT", noteT);
             put(fb + topic + "/status/" + deviceId + ".json", o.toString());   // überschreibt: immer der neueste Stand
+            String k = handyKey;
+            if (k != null) {
+                // Handy sieht nur Bedien-Daten (keine Einstellungen/Diagnose)
+                JSONObject h = new JSONObject()
+                        .put("id", deviceId).put("name", deviceName).put("list", list).put("view", view)
+                        .put("state", state).put("title", title).put("type", type).put("t", o.get("t"))
+                        .put("note", note).put("noteT", noteT).put("norm", nowNorm).put("epg", nowEpg)
+                        .put("ver", BuildConfig.VERSION_CODE);
+                put(fb + k + "/status/" + deviceId + ".json", h.toString());
+            }
         } else {
             note = "";
             post(NTFY + topic + "-status", o.toString());
         }
+    }
+
+    /**
+     * Senderliste fürs Handy: „★ Meine Sender“ (sonst die Gruppe des laufenden Senders, sonst die erste Gruppe)
+     * mit laufender Sendung; nur bei Änderung, höchstens jede Minute.
+     */
+    private static void sendChannels() throws Exception {
+        channelsSent = System.currentTimeMillis();
+        PlayerActivity.Node root = PlayerActivity.treeRoot;
+        if (root == null) return;
+        PlayerActivity.Node group = findGroup(root, "Meine Sender", 0);
+        if (group == null && !nowNorm.isEmpty()) group = groupOf(root, nowNorm);
+        if (group == null) group = firstLiveGroup(root, 0);
+        if (group == null) return;
+        JSONArray a = new JSONArray();
+        for (PlayerActivity.Node n : group.children) {
+            if (n.item == null || !n.item.live()) continue;
+            a.put(new JSONObject().put("n", n.item.name).put("k", Memory.norm(n.item.url))
+                    .put("now", n.item.nowTitle()).put("l", n.item.logo == null ? "" : n.item.logo));
+            if (a.length() >= 80) break;
+        }
+        String body = new JSONObject().put("group", group.name).put("items", a).toString();
+        if (body.equals(lastChannels)) return;
+        lastChannels = body;
+        put(fb + topic + "/sender/" + deviceId + ".json", body);
+        String k = handyKey;
+        if (k != null) put(fb + k + "/sender/" + deviceId + ".json", body);
+    }
+
+    private static PlayerActivity.Node findGroup(PlayerActivity.Node n, String name, int depth) {
+        if (n.item != null || depth > 3) return null;
+        if (depth > 0 && n.name.contains(name) && !n.children.isEmpty() && n.children.get(0).item != null) return n;
+        for (PlayerActivity.Node c : n.children) {
+            PlayerActivity.Node g = findGroup(c, name, depth + 1);
+            if (g != null) return g;
+        }
+        return null;
+    }
+
+    private static PlayerActivity.Node groupOf(PlayerActivity.Node n, String norm) {
+        for (PlayerActivity.Node c : n.children) {
+            if (c.item != null) {
+                if (c.item.live() && Memory.norm(c.item.url).equals(norm)) return n;
+            } else {
+                PlayerActivity.Node g = groupOf(c, norm);
+                if (g != null) return g;
+            }
+        }
+        return null;
+    }
+
+    private static PlayerActivity.Node firstLiveGroup(PlayerActivity.Node n, int depth) {
+        if (depth > 3) return null;
+        for (PlayerActivity.Node c : n.children) {
+            if (c.item != null && c.item.live()) return n;
+            if (c.item == null && !c.search) {
+                PlayerActivity.Node g = firstLiveGroup(c, depth + 1);
+                if (g != null) return g;
+            }
+        }
+        return null;
+    }
+
+    private static void delete(String url) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setRequestMethod("DELETE");
+        c.setConnectTimeout(10000);
+        c.getResponseCode();
+        c.disconnect();
     }
 
     /** Eine Zeile von ntfy (message, keepalive, open) auswerten. */
@@ -334,7 +499,8 @@ final class Remote {
     /** Spielt gerade der Player, bekommt er den Befehl, sonst die Übersicht (MainActivity). */
     private static void dispatch(String action, JSONObject arg) {
         Target p = player_target, m = main_target;
-        if (p != null && ("stop".equals(action) || "play".equals(action) || "message".equals(action))) {
+        if (p != null && ("stop".equals(action) || "play".equals(action) || "message".equals(action)
+                || "zap".equals(action) || "toggle".equals(action))) {
             p.remote(action, arg);
         } else if (m != null) {
             m.remote(action, arg);

@@ -1053,7 +1053,12 @@ def remote_status():
         for p in load_state().get('playlists', []):
             slug = slugify(p.get('slug') or p.get('name') or p['id'])
             lists.append({'name': p.get('name'), 'slug': slug, 'link': f'{st["login"]}/{st["gistId"]}/{slug}'})
-    return {'enabled': True, 'devices': out, 'quota': quota, 'lists': lists}
+    # Handy-Fernbedienung für alle Geräte (Haupt-Link, nur für Thomas: gleicher geheimer Kanal wie der Editor)
+    phone = None
+    if fb_base() and st.get('pagesUrl'):
+        host = re.sub(r'^https://|/+$', '', fb_base())
+        phone = f'{st["pagesUrl"].rstrip("/")}/fernbedienung.html#k={topic}&db={host}'
+    return {'enabled': True, 'devices': out, 'quota': quota, 'lists': lists, 'phone': phone}
 
 
 def remote_cmd(to, action, arg):

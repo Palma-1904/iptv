@@ -1274,6 +1274,47 @@ const remoteChannels = {};   // Liste -> Sender (Name, Adresse ohne Zugangsdaten
 let remoteTimer = null;
 let remoteWatch = null;
 
+// Handy-Fernbedienung für alle Geräte: QR-Code (Bibliothek von cdnjs, nur bei Bedarf geladen) + Link
+let qrLib = null;
+function loadQrLib() {
+  qrLib = qrLib || new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    sc.onload = () => resolve(window.QRCode);
+    sc.onerror = () => { qrLib = null; reject(new Error('QR-Code nicht ladbar (Internet?)')); };
+    document.head.appendChild(sc);
+  });
+  return qrLib;
+}
+function phoneBox(link) {
+  const box = el('div', 'dev');
+  const b = el('button', '', '📱 Handy-Fernbedienung für alle Geräte');
+  b.type = 'button';
+  const area = el('div', '');
+  area.hidden = true;
+  b.onclick = async () => {
+    area.hidden = !area.hidden;
+    if (area.hidden || area.dataset.done) return;
+    area.dataset.done = '1';
+    area.appendChild(el('p', 'hint', 'Mit der Handy-Kamera scannen. Das Handy zeigt alle Fernseher, was läuft, das Programm und „Meine Sender“ zum Antippen; es kann umschalten, anhalten, Nachrichten schicken und die App aktualisieren. Der Link ist geheim – nur für dich. Für einzelne Fernseher (z. B. die Senioren) gibt es am Fernseher einen eigenen Code: ☰ 3 s → Weitere Einstellungen → Handy-Fernbedienung.'));
+    const qr = el('div', 'qr');
+    qr.style.cssText = 'background:#fff;padding:12px;display:inline-block;border-radius:8px';
+    area.appendChild(qr);
+    const row = el('div', 'dev-acts');
+    const copy = el('button', '', 'Link kopieren');
+    copy.type = 'button';
+    copy.onclick = async () => { try { await navigator.clipboard.writeText(link); toast('Link kopiert – z. B. per Nachricht ans eigene Handy schicken'); } catch (e) { prompt('Link:', link); } };
+    const open = el('a', 'link', 'Im Browser öffnen');
+    open.href = link;
+    open.target = '_blank';
+    row.append(copy, open);
+    area.appendChild(row);
+    try { const Q = await loadQrLib(); new Q(qr, { text: link, width: 220, height: 220 }); } catch (e) { qr.replaceWith(el('p', 'warn', e.message)); }
+  };
+  box.append(b, area);
+  return box;
+}
+
 function ago(sec) {
   if (sec < 90) return 'gerade eben';
   if (sec < 3600) return `vor ${Math.round(sec / 60)} Min.`;
@@ -1319,6 +1360,7 @@ async function renderRemote() {
       ? `ntfy.sh: Das Tageskontingent ist aufgebraucht (${q.used} von ${q.limit} Nachrichten). Befehle und Meldungen von diesem Anschluss kommen erst wieder an, wenn es sich auffüllt (etwa 10 pro Stunde, ganz bis morgen). Geräte an anderen Anschlüssen (z. B. bei den Senioren) sind nicht betroffen.`
       : `ntfy.sh: heute noch ${q.left} von ${q.limit} Nachrichten übrig (gilt für diesen Anschluss, auch für die Sticks im selben WLAN).`));
   }
+  if (st.phone) body.appendChild(phoneBox(st.phone));
   if (!st.devices.length) {
     body.appendChild(el('p', '', 'Noch keine Geräte gemeldet. Die Sticks melden sich, sobald die App (neueste Version) geöffnet wird – das kann ein paar Minuten dauern.'));
     return;

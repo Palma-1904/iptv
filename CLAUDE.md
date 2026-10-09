@@ -82,12 +82,23 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Stick: Status per PUT `<kanal>/status/<gerät>` (bei Änderung, alle 5 min), Befehle live per SSE aus
   `<kanal>/inbox/<gerät>/<id>` (nach Ausführen DELETE). Editor: `fb_devices`, `remote_cmd` schreibt in die Inboxen
   (all / list:x aufgelöst), ntfy.sh nur noch für Geräte mit älterer App. Kein Tageslimit mehr.
+- **Schnellstart** (`js/m3u.js`): letzte Liste + EPG in IndexedDB (`iptv-schnellstart`, ein Eintrag je eingerichteter
+  Adresse); Start sofort daraus, nach 1,5 s `nativeRefresh` (neue Liste im Hintergrund, Baum an die App).
 - **Weitere App-Funktionen (App 57)**: Hänger-Wächter (15 s ohne Fortschritt → Sender neu, 3× in 3 min → wie Fehler),
   Ersatz-Fassungen `x-alt` (Editor schreibt bis zu 2 Adressen je Live-Sender; App wechselt bei Fehler), gleichmäßige
   Lautstärke (`normvol`, Einstellung/Fernwartung), Erinnerungen (⏯ in der Liste auf einem Sender = an nächste Sendung;
   `Reminders.java`), Zustandsbericht (`Diag.java`: WLAN-RSSI, Hänger/Fehler/Ersatz heute → `diag` im Status),
   nächtliches Auffrischen 3–5 Uhr (Webapp neu laden + Updates, nicht wenn jemand schaut; `quietUntil` verhindert
   Autostart eines Senders), Update-Prüfung beim Wiederaufrufen (≤ alle 6 h).
+- **Handy-Fernbedienung** (`fernbedienung.html`, Link `#k=<schlüssel>&db=<firebase-host>`, im Handy gemerkt):
+  zeigt Geräte live (EventSource auf `<k>/status`), was läuft + Programm jetzt/danach (`epg`, `norm` im Status),
+  Senderliste `<k>/sender/<gerät>` („★ Meine Sender“, sonst Gruppe des laufenden Senders; vom Stick aus
+  `PlayerActivity.treeRoot`, nur bei Änderung, ≤ 1×/min), Knöpfe ▲▼ (`zap` d=±1), ⏯ (`toggle`), ⏹, Nachricht, Neu laden.
+  Befehle per POST in `<k>/inbox/<gerät>`. Zwei Schlüssel: Haupt-Link = Fernwartungs-Kanal (Editor → Fernwartung →
+  „📱 Handy-Fernbedienung für alle Geräte“, QR über qrcodejs von cdnjs; zusätzlich „App aktualisieren“) und je Stick ein
+  eigener `handyKey` (32 Zeichen, prefs; QR in ☰ 3 s → Weitere Einstellungen, zxing; „Neuer Code“ macht alte ungültig).
+  Über den Geräteschlüssel nur `PHONE_ACTIONS` (play/zap/toggle/stop/message/reload/watch), Status ohne cfg/diag.
+  Firebase speichert leere Arrays/Strings nicht (`epg` fehlt dann).
 - **Fernseher aus** (Stick bleibt an, HDMI meldet `ACTION_HDMI_AUDIO_PLUG` = 0 länger als 20 s): Player hält an
   (Status `tvoff`, gibt die einzige Verbindung frei), beim Wiedereinschalten läuft es von selbst weiter. Der
   Anfangszustand zählt nicht; kurze Aussetzer (Tonformat-Wechsel) werden ignoriert. Ungetestet am echten TV.

@@ -30,7 +30,7 @@ jobs:
       - name: Webapp-Dateien sammeln
         run: |
           mkdir _site
-          cp -r index.html senioren.html player.html config.js liste.m3u css js icons .nojekyll _site/
+          cp -r index.html senioren.html player.html fernbedienung.html config.js liste.m3u css js icons .nojekyll _site/
 
       # Fire-TV-App bauen; sie öffnet genau diese Seite. Download: <seite>/app.apk
       - uses: actions/setup-java@v4

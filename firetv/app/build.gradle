@@ -61,4 +61,5 @@ android {
 // Eingebauter Player: libVLC (spielt alle Tonformate der Sender: MP2, AC3, E-AC3, AAC)
 dependencies {
     implementation 'org.videolan.android:libvlc-all:3.6.5'
+    implementation 'com.google.zxing:core:3.5.3'   // QR-Code für die Handy-Fernbedienung
 }

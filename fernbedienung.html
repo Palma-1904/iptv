@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b1220">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Fernbedienung</title>
+<style>
+  :root {
+    --bg: #0b1220; --panel: #151f33; --panel2: #1d2a44; --text: #f1f5ff; --muted: #a9b6cf;
+    --accent: #3b6cf6; --ok: #34c77b; --warn: #f0b429; --bad: #ef5350;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #eef2f8; --panel: #ffffff; --panel2: #e3e9f4; --text: #13203a; --muted: #5b6b86;
+      --accent: #1d4ed8; --ok: #15803d; --warn: #b45309; --bad: #c62828;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 4px 0 12px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.on { background: var(--ok); }
+  .card { background: var(--panel); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .muted { color: var(--muted); font-size: 15px; }
+  .now { font-size: 21px; font-weight: 600; margin: 2px 0 6px; overflow-wrap: anywhere; }
+  .prog { font-size: 16px; margin-top: 8px; }
+  .bar { height: 6px; background: var(--panel2); border-radius: 3px; margin: 6px 0 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  button { font: inherit; color: var(--text); background: var(--panel2); border: 0; border-radius: 12px;
+    padding: 14px 8px; min-height: 56px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button:active { transform: scale(.97); background: var(--accent); }
+  button.big { font-size: 24px; }
+  button.wide { grid-column: span 3; }
+  .tabs { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; padding-bottom: 2px; }
+  .tabs button { min-height: 44px; padding: 8px 14px; white-space: nowrap; flex: none; }
+  .tabs button.sel { background: var(--accent); color: #fff; }
+  .list button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; margin-bottom: 8px;
+    padding: 10px 12px; min-height: 60px; background: var(--panel); }
+  .list button.cur { outline: 2px solid var(--accent); }
+  .list img { width: 48px; height: 32px; object-fit: contain; flex: none; }
+  .list .t { display: block; font-weight: 600; overflow-wrap: anywhere; }
+  .list .s { display: block; color: var(--muted); font-size: 14px; }
+  .toast { position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); max-width: 608px;
+    margin: 0 auto; background: var(--accent); color: #fff; padding: 12px 14px; border-radius: 12px;
+    opacity: 0; transition: opacity .25s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .err { color: var(--bad); }
+  h2 { font-size: 17px; margin: 18px 0 8px; }
+</style>
+</head>
+<body>
+<h1><span class="dot" id="dot"></span><span id="devname">Fernbedienung</span></h1>
+<div class="tabs" id="tabs" hidden></div>
+<div class="card" id="state"><span class="muted">Verbinde …</span></div>
+<div class="pad" id="pad" hidden>
+  <button class="big" data-a="zap" data-d="-1" aria-label="Vorheriger Sender">▲</button>
+  <button class="big" data-a="toggle" aria-label="Pause oder weiter">⏯</button>
+  <button class="big" data-a="stop" aria-label="Stoppen">⏹</button>
+  <button class="big" data-a="zap" data-d="1" aria-label="Nächster Sender">▼</button>
+  <button data-a="message">💬 Nachricht</button>
+  <button data-a="reload">↻ Neu laden</button>
+  <button class="wide" data-a="update" id="upd" hidden>App aktualisieren</button>
+</div>
+<h2 id="lhead" hidden></h2>
+<div class="list" id="list"></div>
+<p class="muted" id="foot"></p>
+<div class="toast" id="toast"></div>
+<script>
+(function () {
+  'use strict';
+  // Link aus dem QR-Code: #k=<geheimer Schlüssel>&db=<Firebase-Datenbank>; wird im Handy gemerkt
+  var KEY = 'iptv-fernbedienung';
+  var p = new URLSearchParams(location.hash.slice(1));
+  var cfg = { k: p.get('k'), db: p.get('db') };
+  try {
+    if (cfg.k && cfg.db) localStorage.setItem(KEY, JSON.stringify(cfg));
+    else cfg = JSON.parse(localStorage.getItem(KEY) || '{}');
+  } catch (e) { /* privater Modus */ }
+  var $ = function (id) { return document.getElementById(id); };
+  if (!/^[A-Za-z0-9_-]{24,64}$/.test(cfg.k || '') ||
+      !/^[a-z0-9-]+(\.[a-z0-9-]+)?\.(firebasedatabase\.app|firebaseio\.com)$/.test(cfg.db || '')) {
+    $('state').innerHTML = '<span class="err">Kein gültiger Link. Bitte den QR-Code am Fernseher scannen ' +
+      '(☰ 3 Sekunden halten → Weitere Einstellungen → Handy-Fernbedienung).</span>';
+    return;
+  }
+  var BASE = 'https://' + cfg.db + '/' + cfg.k + '/';
+  var devices = {}, channels = null, sel = null, chSrc = null;
+  try { sel = localStorage.getItem(KEY + '-gerät'); } catch (e) { /* egal */ }
+
+  function toast(t) {
+    var el = $('toast');
+    el.textContent = t;
+    el.classList.add('show');
+    clearTimeout(toast.h);
+    toast.h = setTimeout(function () { el.classList.remove('show'); }, 3500);
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function hhmm(sec) {
+    var d = new Date(sec * 1000);
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+  var STATE = { playing: '▶ läuft', paused: '⏸ angehalten', stopped: '⏹ gestoppt', error: '⚠ Fehler',
+    sleep: '💤 Schlaf-Timer', overview: '☰ in der Übersicht', tvoff: '📺 Fernseher aus', start: 'startet' };
+
+  // Firebase-Live-Verbindung (Server-Sent Events): put/patch mit Pfad relativ zum Abo
+  function live(url, onData) {
+    var es = new EventSource(url);
+    function handle(ev, merge) {
+      var m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      onData(m.path, m.data, merge);
+    }
+    es.addEventListener('put', function (ev) { handle(ev, false); });
+    es.addEventListener('patch', function (ev) { handle(ev, true); });
+    es.onerror = function () { $('foot').textContent = 'Verbindung unterbrochen – verbinde neu …'; };
+    es.onopen = function () { $('foot').textContent = ''; };
+    return es;
+  }
+  function apply(obj, path, data, merge) {
+    var parts = path.split('/').filter(Boolean);
+    if (!parts.length) {
+      if (merge) { for (var k in data) obj[k] = data[k]; return obj; }
+      return data || {};
+    }
+    var o = obj;
+    for (var i = 0; i < parts.length - 1; i++) o = o[parts[i]] = o[parts[i]] || {};
+    var last = parts[parts.length - 1];
+    if (data === null) delete o[last];
+    else if (merge && o[last]) for (var j in data) o[last][j] = data[j];
+    else o[last] = data;
+    return obj;
+  }
+
+  live(BASE + 'status.json', function (path, data, merge) {
+    devices = apply(devices, path, data, merge);
+    render();
+  });
+
+  function choose(id) {
+    if (id === sel && chSrc) return;
+    sel = id;
+    try { localStorage.setItem(KEY + '-gerät', id); } catch (e) { /* egal */ }
+    if (chSrc) chSrc.close();
+    channels = null;
+    chSrc = live(BASE + 'sender/' + encodeURIComponent(id) + '.json', function (path, data, merge) {
+      channels = apply(channels || {}, path, data, merge);
+      renderList();
+    });
+    send('watch', {}, true);   // Gerät meldet sich gleich mit frischem Stand
+    render();
+  }
+
+  function render() {
+    var ids = Object.keys(devices).filter(function (k) { return devices[k] && devices[k].name; });
+    ids.sort(function (a, b) { return (devices[a].name || '').localeCompare(devices[b].name || ''); });
+    if (!ids.length) {
+      $('state').innerHTML = '<span class="muted">Noch keine Meldung vom Fernseher. Ist der Stick an und die App geöffnet?</span>';
+      return;
+    }
+    if (ids.indexOf(sel) < 0) return choose(ids[0]);
+    var tabs = $('tabs');
+    tabs.hidden = ids.length < 2;
+    tabs.innerHTML = '';
+    ids.forEach(function (id) {
+      var b = document.createElement('button');
+      b.textContent = devices[id].name;
+      if (id === sel) b.className = 'sel';
+      b.onclick = function () { choose(id); };
+      tabs.appendChild(b);
+    });
+    var d = devices[sel];
+    var age = Date.now() / 1000 - (d.t || 0);
+    $('dot').className = 'dot' + (age < 12 * 60 ? ' on' : '');
+    $('devname').textContent = d.name;
+    var h = '<div class="muted">' + esc(STATE[d.state] || d.state || '') +
+      (age > 12 * 60 ? ' · zuletzt gemeldet vor ' + Math.round(age / 60) + ' min' : '') + '</div>';
+    if (d.title) h += '<div class="now">' + esc(d.title) + '</div>';
+    var epg = d.epg || [];
+    var t = Date.now() / 1000;
+    if (epg[0] && d.state === 'playing') {
+      var pc = Math.max(0, Math.min(100, (t - epg[0][0]) / (epg[0][1] - epg[0][0]) * 100));
+      h += '<div class="prog">' + hhmm(epg[0][0]) + '–' + hhmm(epg[0][1]) + '  ' + esc(epg[0][2]) + '</div>' +
+        '<div class="bar"><i style="width:' + pc.toFixed(0) + '%"></i></div>';
+      if (epg[1]) h += '<div class="muted">danach ' + hhmm(epg[1][0]) + '  ' + esc(epg[1][2]) + '</div>';
+    }
+    if (d.note && d.noteT && t - d.noteT < 120) h += '<div class="muted">↩ ' + esc(d.note) + '</div>';
+    $('state').innerHTML = h;
+    $('pad').hidden = false;
+    $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
+    renderList();
+  }
+
+  function renderList() {
+    var d = devices[sel] || {};
+    var c = channels && channels.items ? channels : null;
+    $('lhead').hidden = !c;
+    $('list').innerHTML = '';
+    if (!c) return;
+    $('lhead').textContent = c.group || 'Sender';
+    c.items.forEach(function (it) {
+      var b = document.createElement('button');
+      if (it.k === d.norm) b.className = 'cur';
+      b.innerHTML = (it.l ? '<img alt="" loading="lazy" src="' + esc(it.l.replace(/^http:/, 'https:')) + '" onerror="this.style.visibility=\'hidden\'">' : '') +
+        '<span><span class="t">' + esc(it.n) + '</span>' + (it.now ? '<span class="s">' + esc(it.now) + '</span>' : '') + '</span>';
+      b.onclick = function () { send('play', { norm: it.k }); toast('Schalte um auf ' + it.n + ' …'); };
+      $('list').appendChild(b);
+    });
+  }
+
+  function send(action, arg, quiet) {
+    if (!sel) return;
+    return fetch(BASE + 'inbox/' + encodeURIComponent(sel) + '.json', {
+      method: 'POST',
+      body: JSON.stringify({ action: action, arg: arg || {}, t: Math.floor(Date.now() / 1000) })
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!quiet) toast('Gesendet ✓');
+    }).catch(function (e) { if (!quiet) toast('Nicht gesendet: ' + e.message); });
+  }
+
+  document.querySelectorAll('#pad button').forEach(function (b) {
+    b.onclick = function () {
+      var a = b.getAttribute('data-a');
+      if (a === 'message') {
+        var text = prompt('Nachricht für den Fernseher:');
+        if (text) send('message', { text: text });
+        return;
+      }
+      if (a === 'update' && !confirm('Neue App-Version laden und installieren?')) return;
+      send(a, a === 'zap' ? { d: +b.getAttribute('data-d') } : {});
+    };
+  });
+  // Laufende Sendung (Fortschritt) jede Minute neu zeichnen
+  setInterval(render, 60000);
+})();
+</script>
+</body>
+</html>

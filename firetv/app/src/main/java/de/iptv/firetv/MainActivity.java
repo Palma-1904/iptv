@@ -297,6 +297,63 @@ public class MainActivity extends Activity implements Remote.Target {
     }
 
     /** Weitere Einstellungen: schlichte Liste, ein Klick schaltet um. */
+    /**
+     * QR-Code zur Handy-Fernbedienung (fernbedienung.html) – nur für diesen Stick, eigener geheimer Schlüssel.
+     * „Neuer Code“: alte Handys haben danach keinen Zugriff mehr.
+     */
+    private void showPhoneQr() {
+        String link = Remote.phoneLink();
+        if (link == null) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Handy-Fernbedienung")
+                    .setMessage("Noch nicht bereit: Die Fernwartung muss im Editor eingeschaltet sein und die App "
+                            + "eine Liste geladen haben. Bitte in einer Minute erneut versuchen.")
+                    .setPositiveButton("OK", (d, w) -> showSettings())
+                    .setOnCancelListener(d -> showSettings())
+                    .show();
+            return;
+        }
+        int size = 560;
+        android.widget.ImageView img = new android.widget.ImageView(this);
+        try {
+            com.google.zxing.common.BitMatrix m = new com.google.zxing.qrcode.QRCodeWriter()
+                    .encode(link, com.google.zxing.BarcodeFormat.QR_CODE, size, size);
+            android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.RGB_565);
+            int[] px = new int[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++) px[y * size + x] = m.get(x, y) ? 0xFF000000 : 0xFFFFFFFF;
+            bmp.setPixels(px, 0, size, 0, 0, size, size);
+            img.setImageBitmap(bmp);
+        } catch (Exception e) {
+            Toast.makeText(this, "QR-Code konnte nicht erzeugt werden.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        box.setPadding(40, 20, 40, 10);
+        box.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        box.addView(img, new android.widget.LinearLayout.LayoutParams(size, size));
+        android.widget.TextView tv = new android.widget.TextView(this);
+        tv.setText("Mit der Handy-Kamera scannen – dann zeigt das Handy, was hier läuft, das Programm und "
+                + "„Meine Sender“ zum Antippen, und es kann umschalten, anhalten und Nachrichten schicken.\n\n"
+                + "Gilt nur für diesen Fernseher. Der Link funktioniert auch unterwegs (übers Internet).\n\n"
+                + "„Neuer Code“: Handys, die den alten Code haben, können dann nichts mehr steuern.");
+        tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 17);
+        tv.setPadding(40, 0, 0, 0);
+        box.addView(tv, new android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        new AlertDialog.Builder(this)
+                .setTitle("📱 Handy-Fernbedienung · " + Remote.deviceName())
+                .setView(box)
+                .setPositiveButton("Fertig", (d, w) -> showSettings())
+                .setNeutralButton("Neuer Code", (d, w) -> {
+                    Remote.newHandyKey();
+                    Toast.makeText(this, "Neuer Code – alte Handy-Links gelten nicht mehr.", Toast.LENGTH_LONG).show();
+                    showPhoneQr();
+                })
+                .setOnCancelListener(d -> showSettings())
+                .show();
+    }
+
     private void showSettings() {
         final boolean auto = AutostartService.enabled(this);
         final boolean home = AutostartService.homeReturns(this);
@@ -304,6 +361,8 @@ public class MainActivity extends Activity implements Remote.Target {
         final boolean install = Updater.installAllowed(this);
         java.util.List<String> labels = new java.util.ArrayList<>();
         java.util.List<Runnable> actions = new java.util.ArrayList<>();
+        labels.add("📱 Handy-Fernbedienung (QR-Code)");
+        actions.add(this::showPhoneQr);
         labels.add("Autostart beim Einschalten:  " + (auto ? "AN" : "AUS"));
         actions.add(() -> {
             prefs.edit().putBoolean("autostart", !auto).apply();
@@ -543,6 +602,15 @@ public class MainActivity extends Activity implements Remote.Target {
                 break;
             case "update":
                 Updater.remoteUpdate(this);   // still laden, dann nur „Installieren“ am Gerät
+                break;
+            case "zap":                      // Handy: ▲▼ / ⏯, Player nicht offen → letzten Sender starten
+            case "toggle":
+                java.util.List<String> rec = Memory.get(this).recent();
+                if (!rec.isEmpty()) remotePlay(rec.get(0), 0);
+                else Remote.report("Kein Sender offen – bitte einen Sender aus der Liste wählen");
+                break;
+            case "stop":
+                Remote.report("Es läuft gerade nichts");
                 break;
             case "refresh": {                // neu veröffentlichte Liste sofort laden, Sendung läuft weiter
                 String rev = arg.optString("rev").replaceAll("[^0-9a-f]", "");

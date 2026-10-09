@@ -15,7 +15,8 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * Erinnerungen an Sendungen: in der Senderliste ⏯ auf einem Sender = an seine nächste Sendung erinnern.
+ * Erinnerungen an Sendungen: in der Senderliste ⏯ auf einem Sender = an seine nächste Sendung erinnern;
+ * vom Handy (Fernwartung „remind“) jede beliebige Sendung.
  * Eine Minute vor Beginn erscheint „Gleich beginnt …“ mit „Umschalten“.
  */
 final class Reminders {
@@ -63,8 +64,28 @@ final class Reminders {
             }
         }
         prefs(c).edit().putString("reminders", out.toString()).apply();
+        Remote.changed();
         return removed ? "Erinnerung gelöscht: " + when + " " + title
                 : "🔔 Erinnerung: " + when + " „" + title + "“ (" + channel + ")";
+    }
+
+    /** Vom Handy: Erinnerung gezielt an (on) oder aus; url darf schon die Kurzform (norm) sein. */
+    static String set(Context c, String url, String channel, long start, String title, boolean on) {
+        if (isSet(c, url, start) == on) {
+            return on ? "Erinnerung war schon gesetzt" : "Erinnerung war schon gelöscht";
+        }
+        return toggle(c, url, channel, start, title);
+    }
+
+    /** Alle kommenden Erinnerungen (für die Handy-Seite). */
+    static JSONArray upcoming(Context c) {
+        JSONArray a = all(c), out = new JSONArray();
+        long now = System.currentTimeMillis() / 1000;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject r = a.optJSONObject(i);
+            if (r != null && r.optLong("t") + 5 * 60 > now) out.put(r);
+        }
+        return out;
     }
 
     static boolean isSet(Context c, String url, long start) {
@@ -107,6 +128,7 @@ final class Reminders {
         }
         if (due == null) return;
         prefs(c).edit().putString("reminders", keep.toString()).apply();
+        Remote.changed();
         show(due);
     }
 

@@ -66,7 +66,7 @@ final class Remote {
     private static long channelsSent;
     /** Vom Handy erlaubt (Schlüssel am Fernseher sichtbar): nur Bedienen, keine Einstellungen. */
     private static final Set<String> PHONE_ACTIONS = new HashSet<>(java.util.Arrays.asList(
-            "play", "zap", "toggle", "stop", "message", "reload", "watch"));
+            "play", "zap", "toggle", "stop", "message", "reload", "watch", "remind"));
     static volatile Target main_target;    // MainActivity
     static volatile Target player_target;  // PlayerActivity (wenn offen)
 
@@ -380,7 +380,7 @@ final class Remote {
                         .put("pause", (Waechter.pausedFor(app) + 59999) / 60000)
                         .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true)))
                 .put("diag", Diag.json(app))
-                .put("norm", nowNorm).put("epg", nowEpg);
+                .put("norm", nowNorm).put("epg", nowEpg).put("rem", Reminders.upcoming(app));
         if (fb != null) {
             o.put("noteT", noteT);
             put(fb + topic + "/status/" + deviceId + ".json", o.toString());   // überschreibt: immer der neueste Stand
@@ -391,6 +391,7 @@ final class Remote {
                         .put("id", deviceId).put("name", deviceName).put("list", list).put("view", view)
                         .put("state", state).put("title", title).put("type", type).put("t", o.get("t"))
                         .put("note", note).put("noteT", noteT).put("norm", nowNorm).put("epg", nowEpg)
+                        .put("rem", Reminders.upcoming(app))
                         .put("ver", BuildConfig.VERSION_CODE);
                 put(fb + k + "/status/" + deviceId + ".json", h.toString());
             }
@@ -415,8 +416,14 @@ final class Remote {
         JSONArray a = new JSONArray();
         for (PlayerActivity.Node n : group.children) {
             if (n.item == null || !n.item.live()) continue;
+            // Programm der nächsten Stunden (für Erinnerungen vom Handy)
+            JSONArray pr = new JSONArray();
+            long nowS = System.currentTimeMillis() / 1000;
+            for (int i = 0; i < n.item.start.length && pr.length() < 8; i++) {
+                if (n.item.end[i] > nowS) pr.put(new JSONArray().put(n.item.start[i]).put(n.item.end[i]).put(n.item.title[i]));
+            }
             a.put(new JSONObject().put("n", n.item.name).put("k", Memory.norm(n.item.url))
-                    .put("now", n.item.nowTitle()).put("l", n.item.logo == null ? "" : n.item.logo));
+                    .put("now", n.item.nowTitle()).put("l", n.item.logo == null ? "" : n.item.logo).put("p", pr));
             if (a.length() >= 80) break;
         }
         String body = new JSONObject().put("group", group.name).put("items", a).toString();
@@ -498,6 +505,13 @@ final class Remote {
 
     /** Spielt gerade der Player, bekommt er den Befehl, sonst die Übersicht (MainActivity). */
     private static void dispatch(String action, JSONObject arg) {
+        if ("remind".equals(action)) {          // Handy: Erinnerung an eine Sendung an/aus
+            String norm = arg.optString("norm");
+            long t = arg.optLong("t");
+            if (norm.isEmpty() || t <= 0) return;
+            report(Reminders.set(app, norm, arg.optString("ch"), t, arg.optString("title"), arg.optBoolean("on", true)));
+            return;
+        }
         Target p = player_target, m = main_target;
         if (p != null && ("stop".equals(action) || "play".equals(action) || "message".equals(action)
                 || "zap".equals(action) || "toggle".equals(action))) {
@@ -523,6 +537,11 @@ final class Remote {
             if (d.isShowing()) d.dismiss();
         }, 3 * 60 * 1000L);
         report("Nachricht angezeigt");
+    }
+
+    /** Etwas Neues zu melden (z. B. Erinnerungen geändert). */
+    static void changed() {
+        dirty = true;
     }
 
     /** Rückmeldung zu einem Befehl (z. B. „Sender nicht gefunden“). */

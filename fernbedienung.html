@@ -51,6 +51,18 @@
     opacity: 0; transition: opacity .25s; pointer-events: none; }
   .toast.show { opacity: 1; }
   .err { color: var(--bad); }
+  .list .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .list .row > button { margin-bottom: 0; }
+  .list .row > button.main { flex: 1; width: auto; min-width: 0; }
+  .list .row > button.bell { flex: none; width: 56px; justify-content: center; padding: 0; font-size: 20px; }
+  .list .row > button.bell { opacity: .45; }
+  .list .row > button.bell.set, .list .row > button.bell.open { opacity: 1; }
+  .list .row > button.bell.open { background: var(--accent); }
+  .list .prog { margin: 0 0 10px 16px; }
+  .list .prog button { min-height: 46px; font-size: 15px; padding: 8px 12px; margin-bottom: 6px; }
+  .list .prog button.on { outline: 2px solid var(--warn); }
+  .list .prog .tm { flex: none; width: 74px; color: var(--muted); }
+  #rems .x { margin-left: auto; color: var(--muted); flex: none; }
   .ver { margin-top: 8px; font-size: 15px; color: var(--muted); }
   .ver b { color: var(--text); }
   .ver.old { color: var(--warn); }
@@ -78,6 +90,7 @@
   <button data-a="reload">↻ Neu laden</button>
   <button class="wide" data-a="update" id="upd" hidden>App aktualisieren</button>
 </div>
+<div class="list" id="rems"></div>
 <h2 id="lhead" hidden></h2>
 <div class="list" id="list"></div>
 <section id="all" hidden>
@@ -243,6 +256,7 @@
     $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
     $('upd').textContent = latest && d.ver < latest ? 'App aktualisieren auf Version ' + latest : 'App aktualisieren';
     $('upd').classList.toggle('hot', !!(latest && d.ver < latest));
+    renderRems(d);
     renderList();
     adminFor(d);
   }
@@ -307,10 +321,11 @@
       loadList(d.list).then(function () { drawTree(); }, function (e) {
         $('tree').innerHTML = '<p class="err">Liste nicht ladbar: ' + esc(e.message) + '</p>';
       });
-    } else if (d.norm !== adminFor.norm) {
-      drawTree();   // anderer Sender läuft: neu markieren
+    } else if (d.norm !== adminFor.norm || JSON.stringify(d.rem || null) !== adminFor.rem) {
+      drawTree();   // anderer Sender läuft / Erinnerungen geändert: neu zeichnen
     }
     adminFor.norm = d.norm;
+    adminFor.rem = JSON.stringify(d.rem || null);
   }
 
   function nowTitle(epg, id) {
@@ -331,6 +346,11 @@
   // nav = Pfad der offenen Bereiche (Knoten des Baums).
   var LIMIT = 300, limits = new WeakMap();
   function leafButton(x, data, depth, name) {
+    if (x.t === 'live') {
+      var progs = x.id && data.epg[x.id] ? data.epg[x.id].filter(function (p) { return p[1] > Date.now() / 1000; }) : [];
+      return channelRow({ norm: x.k, name: name || x.n, sub: nowTitle(data.epg, x.id), logo: x.l, progs: progs,
+        depth: depth, redraw: function () { drawTree(); } });
+    }
     var b = document.createElement('button');
     if (x.k === (devices[sel] || {}).norm) b.className = 'cur';
     var sub = x.t === 'live' ? nowTitle(data.epg, x.id) : '';
@@ -435,6 +455,86 @@
     }, 250);
   });
 
+  // ---------- Erinnerungen (🔔 beim Sender → Programm → Sendung antippen; der Stick meldet „rem“) ----------
+  var bellOpen = null;   // Sender (norm), dessen Programm aufgeklappt ist
+  function remOf(d) {
+    var r = d && d.rem;
+    if (!r) return [];
+    return Array.isArray(r) ? r : Object.keys(r).map(function (k) { return r[k]; });
+  }
+  function isRem(d, norm, t) {
+    return remOf(d).some(function (r) { return r.norm === norm && +r.t === +t; });
+  }
+  function when(sec) {
+    var d = new Date(sec * 1000), today = new Date();
+    var day = d.toDateString() === today.toDateString() ? '' : ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][d.getDay()] + ' ';
+    return day + hhmm(sec);
+  }
+  function remind(norm, ch, p, on) {
+    send('remind', { norm: norm, ch: ch, t: p[0], title: p[2], on: on }, true);
+    toast(on ? '🔔 Erinnerung: ' + when(p[0]) + ' „' + p[2] + '“' : 'Erinnerung gelöscht');
+  }
+  // Zeile eines Senders: antippen = umschalten, 🔔 = Programm zum Erinnern auf-/zuklappen
+  function channelRow(o) {
+    var d = devices[sel] || {};
+    var wrap = document.createElement('div');
+    if (o.depth) wrap.style.marginLeft = o.depth * 14 + 'px';
+    var row = document.createElement('div');
+    row.className = 'row';
+    var b = document.createElement('button');
+    b.className = 'main' + (o.norm === d.norm ? ' cur' : '');
+    b.innerHTML = (o.logo ? '<img alt="" loading="lazy" src="' + esc(o.logo.replace(/^http:/, 'https:')) + '" onerror="this.style.display=\'none\'">' : '') +
+      '<span><span class="t">' + esc(o.name) + '</span>' + (o.sub ? '<span class="s">' + esc(o.sub) + '</span>' : '') + '</span>';
+    b.onclick = function () { send('play', { norm: o.norm }); toast('Startet auf dem Fernseher: ' + o.name); };
+    row.appendChild(b);
+    var progs = (o.progs || []).filter(function (p) { return p[1] > Date.now() / 1000; });
+    if (progs.length) {
+      var has = progs.some(function (p) { return isRem(d, o.norm, p[0]); });
+      var bell = document.createElement('button');
+      bell.className = 'bell' + (bellOpen === o.norm ? ' open' : '') + (has ? ' set' : '');
+      bell.textContent = '🔔';
+      bell.title = 'An eine Sendung erinnern';
+      bell.onclick = function () { bellOpen = bellOpen === o.norm ? null : o.norm; o.redraw(); };
+      row.appendChild(bell);
+    }
+    wrap.appendChild(row);
+    if (bellOpen === o.norm && progs.length) {
+      var box = document.createElement('div');
+      box.className = 'prog';
+      var hint = document.createElement('p');
+      hint.className = 'muted';
+      hint.textContent = 'Sendung antippen: Eine Minute vorher erscheint am Fernseher „Gleich beginnt … Umschalten“.';
+      box.appendChild(hint);
+      progs.slice(0, 12).forEach(function (p, i) {
+        var on = isRem(d, o.norm, p[0]);
+        var pb = document.createElement('button');
+        if (on) pb.className = 'on';
+        var running = i === 0 && p[0] <= Date.now() / 1000;
+        pb.innerHTML = '<span class="tm">' + (running ? 'läuft' : esc(when(p[0]))) + '</span><span>' + (on ? '🔔 ' : '') + esc(p[2]) + '</span>';
+        if (running) pb.disabled = true;
+        else pb.onclick = function () { remind(o.norm, o.name, p, !on); };
+        box.appendChild(pb);
+      });
+      wrap.appendChild(box);
+    }
+    return wrap;
+  }
+  function renderRems(d) {
+    var box = $('rems');
+    box.innerHTML = '';
+    var r = remOf(d).slice().sort(function (a, b) { return a.t - b.t; });
+    if (!r.length) return;
+    var h = document.createElement('h2');
+    h.textContent = '🔔 Erinnerungen';
+    box.appendChild(h);
+    r.forEach(function (x) {
+      var b = document.createElement('button');
+      b.innerHTML = '<span><span class="t">' + esc(when(x.t)) + '  ' + esc(x.title) + '</span><span class="s">' + esc(x.ch) + '</span></span><span class="x">✕ löschen</span>';
+      b.onclick = function () { remind(x.norm, x.ch, [x.t, 0, x.title], false); };
+      box.appendChild(b);
+    });
+  }
+
   function renderList() {
     var d = devices[sel] || {};
     var c = channels && channels.items ? channels : null;
@@ -444,12 +544,7 @@
     if (!c) return;
     $('lhead').textContent = c.group || 'Sender';
     c.items.forEach(function (it) {
-      var b = document.createElement('button');
-      if (it.k === d.norm) b.className = 'cur';
-      b.innerHTML = (it.l ? '<img alt="" loading="lazy" src="' + esc(it.l.replace(/^http:/, 'https:')) + '" onerror="this.style.display=\'none\'">' : '') +
-        '<span><span class="t">' + esc(it.n) + '</span>' + (it.now ? '<span class="s">' + esc(it.now) + '</span>' : '') + '</span>';
-      b.onclick = function () { send('play', { norm: it.k }); toast('Schalte um auf ' + it.n + ' …'); };
-      $('list').appendChild(b);
+      $('list').appendChild(channelRow({ norm: it.k, name: it.n, sub: it.now, logo: it.l, progs: it.p, redraw: renderList }));
     });
   }
 

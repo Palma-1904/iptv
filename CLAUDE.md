@@ -99,6 +99,10 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   eigener `handyKey` (32 Zeichen, prefs; QR in ☰ 3 s → Weitere Einstellungen, zxing; „Neuer Code“ macht alte ungültig).
   Über den Geräteschlüssel nur `PHONE_ACTIONS` (play/zap/toggle/stop/message/reload/watch), Status ohne cfg/diag.
   Firebase speichert leere Arrays/Strings nicht (`epg` fehlt dann).
+  **Erinnerungen vom Handy**: 🔔 neben jedem Live-Sender klappt das Programm auf (Admin: aus epg.json; Geräte-Link: `p`
+  = nächste 8 Sendungen je Eintrag in `sender/<gerät>`), Sendung antippen → `remind {norm, t, title, ch, on}`
+  (`Reminders.set`, auch über den Geräteschlüssel erlaubt); Stick meldet `rem` im Status, Liste „🔔 Erinnerungen“ oben.
+  Webapp übergibt den Baum auch nach dem Laden aus dem Netz (`loadNet` → `pushTree`), sonst fehlte er bis zum ersten Senderstart.
   **Admin-Ansicht** (nur Haupt-Link): Editor schreibt `<kanal>/lists/<slug>` = {name, link, rev} (`fb_sync_lists`, bei
   Fernwartung-Status und nach Veröffentlichen mit Gist-Revision). Die Seite lädt M3U + EPG der Liste des gewählten
   Sticks direkt aus dem Gist, baut mit `js/tree.js` denselben Baum wie die App (Live TV/Filme/Serien/Suche, Shim

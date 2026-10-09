@@ -327,6 +327,8 @@
   function loadNet() {
     return fetchAll().then(function (res) {
       lastText = res[0];
+      // App: Baum gleich übergeben (Senderliste/Programm für die Handy-Fernbedienung, auch ohne Senderstart)
+      setTimeout(pushTree, 2000);
       return parse(res[0]);
     });
   }

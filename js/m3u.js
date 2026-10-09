@@ -40,6 +40,7 @@
       tvgName: attrs['tvg-name'] || '',
       work: attrs['x-work'] || '',               // gleiche Kennung = gleicher Film/Serie in anderer Sprache
       lang: (attrs['x-lang'] || '').toUpperCase(),
+      alt: attrs['x-alt'] ? attrs['x-alt'].split(/\s+/) : [],   // Ersatz-Fassungen (App wechselt bei Fehler)
       typeHint: normalize(attrs['tvg-type'] || attrs['type'] || '')
     };
   }
@@ -173,6 +174,12 @@
   var epg = null;
   var epgOrder = []; // Senderreihenfolge im Reiter „Programm“ (aus dem Editor)
 
+  var lastEpgData = null;   // zuletzt geladenes Programm (für den Schnellstart-Speicher)
+  function setEpg(d) {
+    epg = d && d.channels ? d.channels : null;
+    epgOrder = d && d.order ? d.order : [];
+  }
+
   function loadEpg() {
     var u = playlistUrl();
     // EPG gibt es nur zu Listen aus dem Editor (nicht zur Beispielliste im Repo).
@@ -180,8 +187,8 @@
     return fetch(fresh(u.replace(/\.m3u8?(?=\?|$)/i, '.epg.json')), { cache: 'no-cache' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        epg = d && d.channels ? d.channels : null;
-        epgOrder = d && d.order ? d.order : [];
+        setEpg(d);
+        if (epg) lastEpgData = d;
         return epg;
       })
       .catch(function () { return null; });
@@ -267,8 +274,58 @@
     });
   }
 
-  function load() {
+  // ---------- Schnellstart: letzte Liste + Programm im Gerät (IndexedDB, eine Liste) ----------
+  // Beim Öffnen sofort die gespeicherte Liste zeigen, die neue kommt im Hintergrund (ohne Unterbrechung).
+  // Ohne Internet bleibt so wenigstens die letzte Liste.
+  function cacheStore(mode, fn) {
+    return new Promise(function (resolve) {
+      var done = false;
+      function finish(v) { if (!done) { done = true; resolve(v); } }
+      setTimeout(function () { finish(null); }, 2000);   // hängt IndexedDB, nicht warten
+      try {
+        var r = indexedDB.open('iptv-schnellstart', 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore('liste'); };
+        r.onerror = function () { finish(null); };
+        r.onsuccess = function () {
+          try {
+            var q = fn(r.result.transaction('liste', mode).objectStore('liste'));
+            q.onsuccess = function () { finish(q.result || null); };
+            q.onerror = function () { finish(null); };
+          } catch (e) { finish(null); }
+        };
+      } catch (e) { finish(null); }
+    });
+  }
+  function cacheGet() {
+    return cacheStore('readonly', function (st) { return st.get('aktuell'); }).then(function (c) {
+      return c && c.url === playlistUrl() && c.text ? c : null;   // andere Liste eingerichtet: nicht nehmen
+    });
+  }
+  function cachePut(text) {
+    var rec = { url: playlistUrl(), text: text, epg: lastEpgData, t: Date.now() };
+    cacheStore('readwrite', function (st) { return st.put(rec, 'aktuell'); });
+  }
+
+  function fetchAll() {
     return Promise.all([fetchText(), loadEpg()]).then(function (res) {
+      cachePut(res[0]);
+      return res;
+    });
+  }
+
+  function load() {
+    return cacheGet().then(function (c) {
+      if (!c) return loadNet();
+      lastText = c.text;
+      setEpg(c.epg);
+      lastEpgData = c.epg;
+      setTimeout(nativeRefresh, 1500);   // neue Liste/Programm im Hintergrund, Änderungen an watch()
+      return parse(c.text);
+    });
+  }
+
+  function loadNet() {
+    return fetchAll().then(function (res) {
       lastText = res[0];
       return parse(res[0]);
     });
@@ -283,7 +340,7 @@
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
       if (Date.now() - lastLoad < REFRESH_AFTER) return;
-      Promise.all([fetchText(), loadEpg()]).then(function (res) {
+      fetchAll().then(function (res) {
         if (res[0] === lastText) return refreshEpgEls();
         lastText = res[0];
         onChange(parse(res[0]));
@@ -389,6 +446,7 @@
     if (e.logo) o.l = absUrl(e.logo);
     if (e.tvgId) o.id = e.tvgId;
     if (e.type === 'live' && e.tvgId) o.e = programmes(e.tvgId).slice(0, 12);
+    if (e.type === 'live' && e.alt && e.alt.length) o.a = e.alt;
     return o;
   }
 
@@ -406,7 +464,7 @@
   // Sender zu unterbrechen): neu laden, bei Änderungen neu zeichnen, neuen Baum übergeben.
   var watchers = [];
   function nativeRefresh() {
-    return Promise.all([fetchText(), loadEpg()]).then(function (res) {
+    return fetchAll().then(function (res) {
       if (res[0] !== lastText) {
         lastText = res[0];
         var entries = parse(res[0]);

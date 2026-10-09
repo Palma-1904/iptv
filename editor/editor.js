@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 22; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 23; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -1302,7 +1302,7 @@ async function renderRemote() {
   body.textContent = '';
   if (!st.enabled) {
     body.appendChild(el('p', '', 'Mit der Fernwartung siehst du, was auf den Fire-TV-Sticks läuft, und kannst sie aus der Ferne steuern: umschalten, Nachricht anzeigen, stoppen, neu laden, Update anstoßen, Ansicht wechseln.'));
-    body.appendChild(el('p', 'hint', 'Die Sticks melden sich über einen geheimen Kanal beim Dienst ntfy.sh (Meldungen werden dort nach 12 Stunden gelöscht). Übertragen werden nur Gerätename, Liste, Ansicht, laufender Titel und App-Version – keine Zugangsdaten. Funktioniert ab App-Version mit Fernwartung.'));
+    body.appendChild(el('p', 'hint', 'Die Sticks melden sich über einen geheimen Kanal (Firebase, ältere Apps über ntfy.sh). Übertragen werden nur Gerätename, Liste, Ansicht, laufender Titel und App-Version – keine Zugangsdaten. Funktioniert ab App-Version mit Fernwartung.'));
     const on = el('button', 'primary', 'Fernwartung einschalten');
     on.type = 'button';
     on.onclick = async () => {
@@ -1311,7 +1311,7 @@ async function renderRemote() {
     body.appendChild(on);
     return;
   }
-  if (st.error) body.appendChild(el('p', 'warn', 'ntfy.sh nicht erreichbar: ' + st.error));
+  if (st.error) body.appendChild(el('p', 'warn', /Firebase/.test(st.error) ? st.error : 'ntfy.sh nicht erreichbar: ' + st.error));
   if (st.quota) {
     const q = st.quota;
     const low = q.left <= 0 ? 'warnbox' : q.left < 40 ? 'warnbox' : 'hint';
@@ -1347,6 +1347,22 @@ async function renderRemote() {
     if (d.memo) box.appendChild(el('p', 'dev-memo', '📝 ' + d.memo));
     box.appendChild(el('p', 'dev-now', (STATE_TEXT[d.state] || d.state || '') + (d.title ? ': ' + d.title : '')));
     if (d.lastNote) box.appendChild(el('p', 'hint', 'Letzte Rückmeldung: ' + d.lastNote));
+    // Zustandsbericht (ab App 57): Netz, Hänger/Fehler heute, letzter Fehler
+    if (d.diag) {
+      const g = d.diag, parts = [];
+      if (g.net === 'wlan') {
+        const r = g.rssi;
+        parts.push('WLAN ' + (r === undefined ? '' : r >= -60 ? 'gut' : r >= -70 ? 'mittel' : 'schwach ⚠️') + (r === undefined ? '' : ` (${r} dBm)`));
+      } else if (g.net === 'lan') parts.push('Kabel (LAN)');
+      else if (g.net === 'offline') parts.push('kein Netz ⚠️');
+      parts.push(`heute ${g.stalls || 0}× Hänger, ${g.errors || 0}× Fehler` + (g.alt ? `, ${g.alt}× auf Ersatz gewechselt` : ''));
+      if (g.uptimeMin !== undefined) parts.push(`App läuft seit ${g.uptimeMin < 120 ? g.uptimeMin + ' min' : Math.round(g.uptimeMin / 60) + ' h'}`);
+      box.appendChild(el('p', 'hint', '📶 ' + parts.join(' · ')));
+      if (g.lastError) box.appendChild(el('p', 'hint', `Letzter Fehler${g.lastErrorAt ? ' (' + ago(Math.floor(Date.now() / 1000) - g.lastErrorAt) + ')' : ''}: ${g.lastError}`));
+    }
+    if (d.via !== 'firebase' && st.devices.some((x) => x.via === 'firebase')) {
+      box.appendChild(el('p', 'hint', 'Meldet sich noch über ntfy.sh (ältere App) – nach dem nächsten Update über Firebase ohne Tageslimit.'));
+    }
     // Einstellungen des Geräts (ab App mit Fernwartungs-Einstellungen)
     if (d.cfg) {
       const cfg = el('div', 'dev-acts dev-cfg');
@@ -1359,6 +1375,7 @@ async function renderRemote() {
       };
       toggle('autostart', 'Autostart beim Einschalten', d.cfg.autostart);
       toggle('home', 'Home-Taste: App kommt zurück', d.cfg.home);
+      if (d.cfg.normvol !== undefined) toggle('normvol', 'Gleichmäßige Lautstärke', d.cfg.normvol);
       cfg.appendChild(el('span', d.cfg.overlay ? 'ok' : 'warn', d.cfg.overlay ? '✓ Autostart erlaubt' : '✕ Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)'));
       cfg.appendChild(el('span', d.cfg.install ? 'ok' : 'warn', d.cfg.install ? '✓ Updates erlaubt' : '✕ Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)'));
       box.appendChild(cfg);
@@ -1446,7 +1463,7 @@ async function renderRemote() {
     box.appendChild(msg);
     body.appendChild(box);
   }
-  body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. Die Sticks melden sich von selbst nur alle 3 Stunden (ntfy.sh erlaubt 250 Nachrichten am Tag je Anschluss); solange dieses Fenster offen ist, melden sie sich sofort und zeigen Änderungen live (ab App-Version 37). „Update“ lädt die neue App still im Hintergrund. Mit aktivem Wächter installiert sie sich ganz von selbst; ohne Wächter muss vor Ort einmal „Installieren“ gedrückt werden (Vorgabe von Fire OS). Danach startet die App von selbst wieder. Rückmeldungen erscheinen unter „Letzte Rückmeldung“.'));
+  body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. Ab App 57 läuft die Fernwartung über Firebase: Befehle kommen sofort an, die Sticks melden sich alle 5 Minuten und bei jeder Änderung, ohne Tageslimit. Ältere Apps nutzen noch ntfy.sh (250 Nachrichten am Tag je Anschluss, Meldung nur alle 3 Stunden bzw. live, solange dieses Fenster offen ist). „Update“ lädt die neue App still im Hintergrund. Mit aktivem Wächter installiert sie sich ganz von selbst; ohne Wächter muss vor Ort einmal „Installieren“ gedrückt werden (Vorgabe von Fire OS). Danach startet die App von selbst wieder. Rückmeldungen erscheinen unter „Letzte Rückmeldung“.'));
 }
 
 function openRemote() {

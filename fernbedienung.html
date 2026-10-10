@@ -63,6 +63,16 @@
   .list .prog button.on { outline: 2px solid var(--warn); }
   .list .prog .tm { flex: none; width: 74px; color: var(--muted); }
   #rems .x { margin-left: auto; color: var(--muted); flex: none; }
+  #cfg { padding: 0; }
+  #cfg > button.head { width: 100%; background: none; text-align: left; display: flex; gap: 8px; min-height: 52px; }
+  #cfg .body { padding: 0 14px 14px; }
+  #cfg .sw { display: flex; width: 100%; justify-content: space-between; margin-bottom: 8px; min-height: 50px;
+    padding: 10px 14px; text-align: left; }
+  #cfg .sw b { color: var(--muted); font-weight: 600; }
+  #cfg .sw.on b { color: var(--ok); }
+  #cfg .chk { margin: 4px 0; font-size: 15px; }
+  #cfg .chk.no { color: var(--bad); }
+  #cfg .chk.yes { color: var(--ok); }
   .ver { margin-top: 8px; font-size: 15px; color: var(--muted); }
   .ver b { color: var(--text); }
   .ver.old { color: var(--warn); }
@@ -90,6 +100,7 @@
   <button data-a="reload">↻ Neu laden</button>
   <button class="wide" data-a="update" id="upd" hidden>App aktualisieren</button>
 </div>
+<div class="card" id="cfg" hidden></div>
 <div class="list" id="rems"></div>
 <h2 id="lhead" hidden></h2>
 <div class="list" id="list"></div>
@@ -256,6 +267,7 @@
     $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
     $('upd').textContent = latest && d.ver < latest ? 'App aktualisieren auf Version ' + latest : 'App aktualisieren';
     $('upd').classList.toggle('hot', !!(latest && d.ver < latest));
+    renderCfg(d);
     renderRems(d);
     renderList();
     adminFor(d);
@@ -454,6 +466,73 @@
       if (slug && trees[slug]) trees[slug].then(function (data) { drawResults(data, (parseInt($('q').style.marginLeft, 10) || 14) / 14); });
     }, 250);
   });
+
+  // ---------- Einstellungen des Sticks (nur Haupt-Link: der Status enthält dann „cfg“) ----------
+  var cfgOpen = false;
+  function renderCfg(d) {
+    var box = $('cfg'), c = d.cfg;
+    box.hidden = !c;
+    if (!c) return;
+    var missing = !c.overlay || !c.install || (c.waechterSwitch && !c.waechter && c.home);
+    box.innerHTML = '';
+    var head = document.createElement('button');
+    head.className = 'head';
+    head.innerHTML = '<span>' + (cfgOpen ? '▾' : '▸') + '</span><span>⚙️ Einstellungen' + (missing ? ' ⚠️' : '') + '</span>';
+    head.onclick = function () { cfgOpen = !cfgOpen; renderCfg(devices[sel] || {}); };
+    box.appendChild(head);
+    if (!cfgOpen) return;
+    var body = document.createElement('div');
+    body.className = 'body';
+    function sw(key, label, on) {
+      var b = document.createElement('button');
+      b.className = 'sw' + (on ? ' on' : '');
+      b.innerHTML = '<span>' + esc(label) + '</span><b>' + (on ? 'AN' : 'AUS') + '</b>';
+      b.onclick = function () {
+        send('setting', { key: key, on: !on });
+        toast(label + ' wird ' + (on ? 'ausgeschaltet' : 'eingeschaltet') + ' …');
+      };
+      body.appendChild(b);
+    }
+    function chk(ok, yes, no) {
+      var p = document.createElement('div');
+      p.className = 'chk ' + (ok ? 'yes' : 'no');
+      p.textContent = ok ? '✓ ' + yes : '✕ ' + no;
+      body.appendChild(p);
+    }
+    sw('autostart', 'Autostart beim Einschalten', c.autostart);
+    sw('home', 'Home-Taste: App kommt zurück', c.home);
+    if (c.normvol !== undefined) sw('normvol', 'Gleichmäßige Lautstärke', c.normvol);
+    if (c.waechterOld) {
+      chk(false, '', 'Wächter: auf diesem älteren Stick (Fire OS 6) nicht möglich – Updates brauchen einen Klick vor Ort');
+    } else if (c.waechterSwitch) {
+      sw('waechter', 'Wächter (hält die App vorne, Updates ohne Klick)', c.waechter);
+      if (c.waechter) {
+        var pb = document.createElement('button');
+        pb.className = 'sw';
+        pb.innerHTML = '<span>' + (c.pause > 0 ? 'Wächter pausiert noch ' + c.pause + ' Min. – Pause beenden' : 'Wächter 10 Min. pausieren') + '</span><b></b>';
+        pb.onclick = function () {
+          send('pause', { min: c.pause > 0 ? 0 : 10 });
+          toast(c.pause > 0 ? 'Pause wird beendet …' : 'Wächter pausiert 10 Minuten …');
+        };
+        body.appendChild(pb);
+      }
+    } else if (c.waechter !== undefined) {
+      chk(c.waechter, 'Wächter aktiv', 'Wächter nicht eingerichtet (vor Ort mit „Stick-einrichten“)');
+    }
+    chk(c.overlay, 'Autostart erlaubt', 'Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)');
+    chk(c.install, 'Updates erlaubt', 'Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)');
+    var g = d.diag;
+    if (g) {
+      var r = g.rssi, p = document.createElement('div');
+      p.className = 'muted';
+      p.style.marginTop = '8px';
+      p.textContent = '📶 ' + (g.net === 'lan' ? 'Kabel (LAN)' : g.net === 'offline' ? 'kein Netz'
+        : 'WLAN' + (r === undefined ? '' : (r >= -60 ? ' gut' : r >= -70 ? ' mittel' : ' schwach ⚠️') + ' (' + r + ' dBm)')) +
+        ' · heute ' + (g.stalls || 0) + '× Hänger, ' + (g.errors || 0) + '× Fehler';
+      body.appendChild(p);
+    }
+    box.appendChild(body);
+  }
 
   // ---------- Erinnerungen (🔔 beim Sender → Programm → Sendung antippen; der Stick meldet „rem“) ----------
   var bellOpen = null;   // Sender (norm), dessen Programm aufgeklappt ist

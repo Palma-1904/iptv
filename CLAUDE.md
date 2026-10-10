@@ -99,6 +99,9 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   eigener `handyKey` (32 Zeichen, prefs; QR in ☰ 3 s → Weitere Einstellungen, zxing; „Neuer Code“ macht alte ungültig).
   Über den Geräteschlüssel nur `PHONE_ACTIONS` (play/zap/toggle/stop/message/reload/watch), Status ohne cfg/diag.
   Firebase speichert leere Arrays/Strings nicht (`epg` fehlt dann).
+  **⚙️ Einstellungen** (nur Haupt-Link, aufklappbar, ⚠️ wenn Erlaubnis fehlt): Schalter autostart/home/normvol/waechter
+  (`setting`), Wächter-Pause (`pause`), Häkchen Autostart/Updates erlaubt, WLAN/Hänger aus `diag`.
+  **Anitas Fire TV Stick** (10.10.2026): 192.168.6.116, AFTMA08C15 (4K Max, Fire OS 8), Liste asw, Senioren, Wächter an.
   **Erinnerungen vom Handy**: 🔔 neben jedem Live-Sender klappt das Programm auf (Admin: aus epg.json; Geräte-Link: `p`
   = nächste 8 Sendungen je Eintrag in `sender/<gerät>`), Sendung antippen → `remind {norm, t, title, ch, on}`
   (`Reminders.set`, auch über den Geräteschlüssel erlaubt); Stick meldet `rem` im Status, Liste „🔔 Erinnerungen“ oben.

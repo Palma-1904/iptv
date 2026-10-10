@@ -251,12 +251,28 @@
   var openSeries = null;    // geöffnete Serie (Name) im rechten Bereich
   try { catSel = JSON.parse(localStorage.getItem('iptv-cat') || '{}') || {}; } catch (err) { /* privat-Modus */ }
 
+  function recentIdx(u, recent) {
+    var best = 99;
+    (u.variants || [u.entry]).forEach(function (v) { var i = recent.indexOf(v); if (i >= 0 && i < best) best = i; });
+    return best;
+  }
+
   // Kategorien eines Reiters: [{ name, count, items|units|series }]
   function catsOf(type) {
     var out = [];
+    var recent = recentOf(type).slice(0, 12);
     if (type === 'live') {
+      if (recent.length) out.push({ name: '🕘 Zuletzt gesehen', count: recent.length, items: recent });
       groupsOf(byType.live).forEach(function (items, name) { out.push({ name: name, count: items.length, items: items }); });
     } else if (type === 'movie') {
+      if (recent.length) {
+        var ru = [], seenW = {};
+        units(byType.movie).forEach(function (u) {
+          (u.variants || [u.entry]).forEach(function (v) { if (recent.indexOf(v) >= 0 && !seenW[favKey(u.entry)]) { seenW[favKey(u.entry)] = 1; ru.push(u); } });
+        });
+        ru.sort(function (a, b) { return recentIdx(a, recent) - recentIdx(b, recent); });
+        out.push({ name: '🕘 Zuletzt gesehen', count: ru.length, units: ru });
+      }
       var fu = favMovies();
       if (fu.length) out.push({ name: '★ Meine Favoriten', count: fu.length, units: fu });
       groupsOf(byType.movie).forEach(function (items, name) {
@@ -273,6 +289,11 @@
         byCat.get(cat).set(name, eps);
         if (favs.series.indexOf(name) >= 0) favSeries.set(name, eps);
       });
+      if (recent.length) {
+        var rs = new Map(), all = groupsOf(byType.series);
+        recent.forEach(function (e) { if (!rs.has(e.group) && all.has(e.group)) rs.set(e.group, all.get(e.group)); });
+        if (rs.size) out.push({ name: '🕘 Zuletzt gesehen', count: rs.size, series: rs });
+      }
       if (favSeries.size) out.push({ name: '★ Meine Favoriten', count: favSeries.size, series: favSeries });
       byCat.forEach(function (m, cat) { out.push({ name: cat, count: m.size, series: m }); });
     }
@@ -283,11 +304,104 @@
     try { localStorage.setItem('iptv-cat', JSON.stringify(catSel)); } catch (err) { /* privat-Modus */ }
   }
 
+  // ---------- Zuletzt gesehen und Schnell-Leiste (Outplayer & Co. öffnen eine eigene App) ----------
+  var RECENT_KEY = 'iptv-recent', LAST_KEY = 'iptv-lastplay';
+  var byUrl = new Map();
+  function readJson(store, key, def) {
+    try { return JSON.parse(store.getItem(key) || 'null') || def; } catch (err) { return def; }
+  }
+  function writeJson(store, key, v) {
+    try { store.setItem(key, JSON.stringify(v)); } catch (err) { /* privat-Modus */ }
+  }
+  function remember(e, list) {
+    var r = readJson(localStorage, RECENT_KEY, []).filter(function (x) { return x.u !== e.url; });
+    r.unshift({ u: e.url, t: e.type });
+    writeJson(localStorage, RECENT_KEY, r.slice(0, 36));
+    writeJson(localStorage, LAST_KEY, {
+      u: e.url, t: Date.now(),
+      l: (list || [e]).length <= 600 ? (list || [e]).map(function (x) { return x.url; }) : [e.url]
+    });
+  }
+  function recentOf(type) {
+    return readJson(localStorage, RECENT_KEY, []).filter(function (x) { return x.t === type; })
+      .map(function (x) { return byUrl.get(x.u); }).filter(Boolean);
+  }
+  // Jeder Start eines Senders/Films/einer Folge im Browser: merken (Zuletzt gesehen, Schnell-Leiste)
+  if (SPLIT) {
+    document.addEventListener('click', function (ev) {
+      var a = ev.target.closest ? ev.target.closest('a') : null;
+      if (!a || !a._play || ev.target.closest('.fav')) return;
+      remember(a._play.entry, a._play.list);
+      setTimeout(render, 500);   // beim Zurückkommen ist die Leiste schon da
+    }, true);
+  }
+  function play(e, list) {
+    remember(e, list);
+    location.href = IPTV.playerHref(e);
+    setTimeout(render, 500);
+  }
+  // Leiste oben: „Zuletzt: ARD  ◀ · ▶ nochmal · ▶“ – mit einem Tipp weiterzappen
+  function quickBar() {
+    var last = readJson(localStorage, LAST_KEY, null);
+    if (!last || Date.now() - last.t > 12 * 3600 * 1000) return null;
+    var e = byUrl.get(last.u);
+    if (!e) return null;
+    var list = (last.l || []).map(function (u) { return byUrl.get(u); }).filter(Boolean);
+    var i = list.indexOf(e);
+    var bar = document.createElement('div');
+    bar.className = 'quick';
+    var t = document.createElement('span');
+    t.className = 'qname';
+    t.innerHTML = 'Zuletzt: <b></b>';
+    t.querySelector('b').textContent = e.name;
+    bar.appendChild(t);
+    function btn(label, cls, target) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'qbtn ' + cls;
+      b.textContent = label;
+      b.addEventListener('click', function () { play(target, list.length ? list : [target]); });
+      bar.appendChild(b);
+    }
+    var live = e.type === 'live' && list.length > 1 && i >= 0;
+    if (live) btn('◀', 'prev', list[(i - 1 + list.length) % list.length]);
+    btn(e.type === 'live' ? '▶ nochmal' : '▶ weiter', 'again', e);
+    if (live) btn('▶▶', 'next', list[(i + 1) % list.length]);
+    else if (e.type === 'series' && i >= 0 && i + 1 < list.length) btn('nächste Folge ▶', 'next', list[i + 1]);
+    var x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'qbtn qclose';
+    x.textContent = '✕';
+    x.title = 'Leiste ausblenden';
+    x.addEventListener('click', function () { localStorage.removeItem(LAST_KEY); render(); });
+    bar.appendChild(x);
+    // die ersten Male: wie man aus Outplayer zurückkommt
+    var hints = +(localStorage.getItem('iptv-backhint') || 0);
+    if (IPTV.platform === 'ios' && hints < 5) {
+      var h = document.createElement('div');
+      h.className = 'qhint';
+      h.textContent = 'Zurück aus Outplayer: oben links auf „◀“ tippen – die Liste bleibt, wo sie war.';
+      bar.appendChild(h);
+      try { localStorage.setItem('iptv-backhint', String(hints + 1)); } catch (err) { /* egal */ }
+    }
+    return bar;
+  }
+
   function renderSplit(type) {
     content.textContent = '';
     var cats = catsOf(type);
     if (!cats.length) return status('Keine Einträge in dieser Kategorie.');
-    var cur = cats.filter(function (c) { return c.name === catSel[type]; })[0] || cats[0];
+    // gewählte Kategorie, sonst die erste echte (nicht „Zuletzt gesehen“) – und merken, damit die Ansicht
+    // nach dem Starten eines Senders nicht wegspringt
+    var cur = cats.filter(function (c) { return c.name === catSel[type]; })[0]
+      || cats.filter(function (c) { return c.name.indexOf('🕘') !== 0; })[0] || cats[0];
+    if (catSel[type] !== cur.name) { catSel[type] = cur.name; saveCat(); }
+    var qb = quickBar();
+    if (qb) content.appendChild(qb);
+    // Kategorienspalte unter der Leiste mitlaufen lassen
+    setTimeout(function () {
+      document.documentElement.style.setProperty('--qh', qb && qb.isConnected ? (qb.offsetHeight + 12) + 'px' : '0px');
+    }, 0);
     var wrap = document.createElement('div');
     wrap.className = 'splitwrap';
     var side = document.createElement('nav');
@@ -776,7 +890,8 @@
     all = entries;
     dataVersion++;
     byType = { live: [], movie: [], series: [] };
-    entries.forEach(function (e) { byType[e.type].push(e); });
+    byUrl = new Map();
+    entries.forEach(function (e) { byType[e.type].push(e); byUrl.set(e.url, e); });
     // Zählen wie man es erwartet: Filme (nicht Sprachfassungen), Serien (nicht Folgen).
     var counts = {
       live: byType.live.length,

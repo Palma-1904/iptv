@@ -386,3 +386,19 @@ main { max-width: 1100px; margin: 16px auto 0; }
   .tiles { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
   .pane .list.live { grid-template-columns: minmax(0, 1fr); }
 }
+/* Schnell-Leiste: zuletzt gestartet, mit einem Tipp nochmal / weiterzappen */
+.quick {
+  position: sticky; top: var(--hdr, 150px); z-index: 6;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0 0 12px; padding: 8px 10px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--accent);
+}
+.quick .qname { flex: 1; min-width: 140px; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick .qbtn {
+  min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: var(--surface-2);
+  color: var(--text); font: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
+}
+.quick .qbtn.again { background: var(--accent); color: var(--accent-text); }
+.quick .qclose { background: transparent; color: var(--muted); padding: 0 8px; }
+.quick .qhint { flex-basis: 100%; font-size: 14px; color: var(--muted); }
+.split .cats { top: calc(var(--hdr, 150px) + var(--qh, 0px)); }

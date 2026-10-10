@@ -16,6 +16,9 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
     „Weitere anzeigen“), Serien = Kacheln → Staffeln/Folgen mit Sprachleiste. iPhone (≤ 700 px): Kategorien als
     waagerechte Leiste. Gewählte Kategorie in `iptv-cat`. Serien-Kategorie aus `x-cat` (Editor: Gruppe der Playlist).
     Fire TV/App: unverändert aufklappbare Gruppen (Thomas: Stick-App nicht ändern).
+    **Outplayer bequemer** (kein automatischer Rücksprung möglich – Outplayer hat kein x-callback): Schnell-Leiste
+    oben „Zuletzt: X  ◀ · ▶ nochmal · ▶▶ / nächste Folge ✕“ (`iptv-lastplay`, 12 h), Kategorie „🕘 Zuletzt gesehen“
+    je Reiter (`iptv-recent`, 36), Hinweis „oben links ◀“ die ersten 5 Male (iOS). Gewählte Kategorie bleibt.
     **Im Browser keine Seniorenansicht und kein Reiter „Programm“** (Thomas 10.10.): `mode.js` leitet senioren.html
     im Browser auf index.html (ansicht=komplett) um, Code „04“ wirkt dort wie die Hauptansicht; Editor zeigt fürs
     iPhone/iPad nur noch einen QR-Code. App (UA „IPTVApp“) und Fire-TV-Browser behalten Senioren und „Programm“.

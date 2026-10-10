@@ -75,14 +75,19 @@
   #live { grid-column: span 3; }
   #liveimg { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: 8px; display: block; }
   #live p { margin: 6px 0 0; }
-  #dpadbox { padding: 0; }
-  #dpadbox > button.head { width: 100%; background: none; text-align: left; display: flex; gap: 8px; min-height: 52px; }
-  .dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 14px 14px; }
-  .dpad button { min-height: 64px; font-size: 20px; }
-  .dpad button.big { font-size: 26px; }
+  .remote { padding: 12px; }
+  .rrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+  .rrow button { min-height: 56px; font-size: 20px; }
+  .rrow button.pw.on { background: var(--warn); color: #1b1300; }
+  .rrow button.sel { background: var(--accent); color: #fff; }
+  .remote .rrow:last-of-type button { font-size: 15px; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 4px 0 12px; align-items: center; }
+  .dpad button { min-height: 64px; font-size: 26px; }
   .dpad button.ok { background: var(--accent); color: #fff; font-weight: 700; border-radius: 50%; aspect-ratio: 1;
-    min-height: 0; width: 76px; justify-self: center; }
-  .dpad .wide { grid-column: span 3; margin: 0; }
+    min-height: 0; width: 84px; justify-self: center; font-size: 22px; }
+  #live { margin-bottom: 10px; }
+  .remote > p { margin: 0; font-size: 14px; }
+  .state-upd { margin-top: 10px; width: 100%; }
   #cfg { padding: 0; }
   #cfg > button.head { width: 100%; background: none; text-align: left; display: flex; gap: 8px; min-height: 52px; }
   #cfg .body { padding: 0 14px 14px; }
@@ -112,39 +117,36 @@
 <div id="warn" hidden></div>
 <div class="tabs" id="tabs" hidden></div>
 <div class="card" id="state"><span class="muted">Verbinde …</span></div>
-<div class="pad" id="pad" hidden>
-  <button class="big" data-a="zap" data-d="-1" aria-label="Vorheriger Sender">▲</button>
-  <button class="big" data-a="toggle" aria-label="Pause oder weiter">⏯</button>
-  <button class="big" data-a="stop" aria-label="Stoppen">⏹</button>
-  <button class="big" data-a="zap" data-d="1" aria-label="Nächster Sender">▼</button>
-  <button data-a="message">💬 Nachricht</button>
-  <button data-a="reload">↻ Neu laden</button>
-  <button class="wide" data-a="wake" id="wake" hidden>⏻ Einschalten / App öffnen</button>
-  <button class="wide" data-a="sleep" id="sleep" hidden>⏾ Ausschalten (Standby)</button>
-  <button class="wide" data-a="restart" id="restart" hidden>⟳ App neu starten</button>
-  <button class="wide" data-a="update" id="upd" hidden>App aktualisieren</button>
-</div>
-<div class="card" id="dpadbox" hidden>
-  <button class="head" id="dpadhead"><span id="dpadarrow">▸</span><span>🎮 Steuerkreuz (wie die Fernbedienung)</span></button>
-  <div class="dpad" id="dpad" hidden>
-    <div id="live" hidden>
-      <img id="liveimg" alt="Bild vom Fernseher">
-      <p class="muted" id="liveinfo">Warte auf das erste Bild …</p>
-    </div>
+<div class="card remote" id="remote" hidden>
+  <div class="rrow">
+    <button id="power" class="pw" hidden>⏻</button>
     <button data-k="menu" aria-label="Menü">☰</button>
-    <button data-k="up" class="big" aria-label="Hoch">▲</button>
-    <button data-k="playpause" aria-label="Play/Pause">⏯</button>
+    <button data-k="back" aria-label="Zurück">↩</button>
+    <button id="livebtn" hidden aria-label="Livebild">📷</button>
+  </div>
+  <div id="live" hidden>
+    <img id="liveimg" alt="Bild vom Fernseher">
+    <p class="muted" id="liveinfo">Warte auf das erste Bild …</p>
+  </div>
+  <div class="dpad">
+    <span></span><button data-k="up" class="big" aria-label="Hoch">▲</button><span></span>
     <button data-k="left" class="big" aria-label="Links">◀</button>
     <button data-k="ok" class="ok" aria-label="OK">OK</button>
     <button data-k="right" class="big" aria-label="Rechts">▶</button>
-    <button data-k="back" aria-label="Zurück">↩</button>
-    <button data-k="down" class="big" aria-label="Runter">▼</button>
-    <span></span>
-    <button data-k="rew" aria-label="Zurückspulen">⏪</button>
-    <span></span>
-    <button data-k="ff" aria-label="Vorspulen">⏩</button>
-    <p class="muted wide">Wirkt nur in „Fernsehen“ (nicht im Fire-TV-Menü). Jeder Druck braucht etwa eine Sekunde.</p>
+    <span></span><button data-k="down" class="big" aria-label="Runter">▼</button><span></span>
   </div>
+  <div class="rrow">
+    <button data-k="rew" aria-label="Zurückspulen">⏪</button>
+    <button data-k="playpause" aria-label="Play/Pause">⏯</button>
+    <button data-k="ff" aria-label="Vorspulen">⏩</button>
+  </div>
+  <div class="rrow">
+    <button data-a="stop">⏹ Stopp</button>
+    <button data-a="message">💬 Nachricht</button>
+    <button data-a="reload">↻ Neu laden</button>
+  </div>
+  <p class="muted">▲▼ schaltet beim Fernsehen die Sender um, ☰ öffnet die Senderliste. Wirkt nur in „Fernsehen“,
+    jeder Druck braucht etwa eine Sekunde.</p>
 </div>
 <div class="card" id="cfg" hidden></div>
 <div class="list" id="rems"></div>
@@ -350,17 +352,23 @@
       var old = latest && d.ver < latest;
       h += '<div class="ver' + (old ? ' old' : '') + '">App auf dem Stick: <b>' + esc(d.ver) + '</b>' +
         (latest ? ' · neueste: <b>' + latest + '</b>' + (old ? ' – Update verfügbar' : ' ✓ aktuell') : '') + '</div>';
+      if (old) h += '<button class="state-upd hot" id="stupd">⬆️ Jetzt auf Version ' + latest + ' aktualisieren</button>';
     }
     $('state').innerHTML = h;
-    $('pad').hidden = false;
-    $('dpadbox').hidden = false;
+    if ($('stupd')) $('stupd').onclick = function () {
+      if (confirm('Neue App-Version laden und installieren?')) send('update', {});
+    };
+    $('remote').hidden = false;
+    // Admin: Ein/Aus und Livebild
+    var off = standby || d.state === 'closed';
+    var pw = $('power');
+    pw.hidden = !d.cfg;
+    pw.textContent = off ? '⏻ Ein' : d.cfg && d.cfg.waechter ? '⏾ Aus' : '⏻ App';
+    pw.title = off ? 'Einschalten / App öffnen' : d.cfg && d.cfg.waechter ? 'Ausschalten (Standby)' : 'App nach vorne holen';
+    pw.classList.toggle('on', !!off);
+    $('livebtn').hidden = !d.cfg;
+    $('livebtn').classList.toggle('sel', liveWanted);
     updLive();
-    $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
-    $('wake').hidden = $('restart').hidden = !d.cfg;
-    $('sleep').hidden = !d.cfg || standby || !d.cfg.waechter;   // nur mit laufendem Wächter (Fire OS 7/8)
-    $('wake').classList.toggle('hot', !!(d.cfg && (standby || d.state === 'closed')));
-    $('upd').textContent = latest && d.ver < latest ? 'App aktualisieren auf Version ' + latest : 'App aktualisieren';
-    $('upd').classList.toggle('hot', !!(latest && d.ver < latest));
     renderCfg(d);
     renderRems(d);
     renderList();
@@ -571,7 +579,7 @@
     box.innerHTML = '';
     var head = document.createElement('button');
     head.className = 'head';
-    head.innerHTML = '<span>' + (cfgOpen ? '▾' : '▸') + '</span><span>⚙️ Einstellungen' + (missing ? ' ⚠️' : '') + '</span>';
+    head.innerHTML = '<span>' + (cfgOpen ? '▾' : '▸') + '</span><span>⚙️ Einstellungen & Wartung' + (missing ? ' ⚠️' : '') + '</span>';
     head.onclick = function () { cfgOpen = !cfgOpen; renderCfg(devices[sel] || {}); };
     box.appendChild(head);
     if (!cfgOpen) return;
@@ -593,6 +601,16 @@
       p.textContent = ok ? '✓ ' + yes : '✕ ' + no;
       body.appendChild(p);
     }
+    // Wartung
+    [['restart', '⟳ App neu starten', 'App auf diesem Fernseher neu starten? (Liste wird frisch geladen)'],
+     ['update', latest && d.ver < latest ? '⬆️ App aktualisieren auf Version ' + latest : 'App aktualisieren (nach neuer Version sehen)',
+      'Neue App-Version laden und installieren?']].forEach(function (w) {
+      var b = document.createElement('button');
+      b.className = 'sw' + (w[0] === 'update' && latest && d.ver < latest ? ' hot' : '');
+      b.innerHTML = '<span>' + esc(w[1]) + '</span><b></b>';
+      b.onclick = function () { if (confirm(w[2])) send(w[0], {}); };
+      body.appendChild(b);
+    });
     // Ansicht und Liste (wie im Editor)
     var seg = document.createElement('div');
     seg.className = 'seg';
@@ -782,7 +800,7 @@
     }).catch(function (e) { if (!quiet) toast('Nicht gesendet: ' + e.message); });
   }
 
-  document.querySelectorAll('#pad button').forEach(function (b) {
+  document.querySelectorAll('#remote [data-a]').forEach(function (b) {
     b.onclick = function () {
       var a = b.getAttribute('data-a');
       if (a === 'message') {
@@ -802,7 +820,7 @@
   // Livebild gehört zum Steuerkreuz: läuft, solange es aufgeklappt ist (nur Haupt-Link)
   function updLive() {
     var d = devices[sel] || {};
-    var want = dpadOn && !!d.cfg && !document.hidden;
+    var want = liveWanted && !!d.cfg && !document.hidden;
     $('live').hidden = !want;
     if (want === liveOn && (!want || liveDev === sel)) return;
     liveOn = want;
@@ -840,26 +858,28 @@
   }, 1000);
   document.addEventListener('visibilitychange', updLive);
 
-  // Steuerkreuz: Tasten wie auf der Fire-TV-Fernbedienung (Fernwartung „key“), auf-/zuklappbar (gemerkt)
-  var dpadOn = false;
-  try { dpadOn = localStorage.getItem(KEY + '-steuerkreuz') === '1'; } catch (e) { /* egal */ }
-  function showDpad() {
-    $('dpad').hidden = !dpadOn;
-    $('dpadarrow').textContent = dpadOn ? '▾' : '▸';
-    updLive();
-  }
-  $('dpadhead').onclick = function () {
-    dpadOn = !dpadOn;
-    try { localStorage.setItem(KEY + '-steuerkreuz', dpadOn ? '1' : '0'); } catch (e) { /* egal */ }
-    showDpad();
-  };
-  showDpad();
-  document.querySelectorAll('#dpad button').forEach(function (b) {
+  // Tasten wie auf der Fire-TV-Fernbedienung (Fernwartung „key“)
+  document.querySelectorAll('#remote [data-k]').forEach(function (b) {
     b.onclick = function () {
       if (navigator.vibrate) navigator.vibrate(15);
       send('key', { k: b.getAttribute('data-k') }, true);
     };
   });
+  // 📷 Livebild an/aus (gemerkt; nur Haupt-Link)
+  var liveWanted = false;
+  try { liveWanted = localStorage.getItem(KEY + '-livebild') === '1'; } catch (e) { /* egal */ }
+  $('livebtn').onclick = function () {
+    liveWanted = !liveWanted;
+    try { localStorage.setItem(KEY + '-livebild', liveWanted ? '1' : '0'); } catch (e) { /* egal */ }
+    render();
+  };
+  // ⏻ Ein/Aus: im Standby oder bei geschlossener App „Einschalten“, sonst mit Wächter „Ausschalten“
+  $('power').onclick = function () {
+    var d = devices[sel] || {};
+    var off = d.screen === false || d.state === 'closed';
+    if (off || !(d.cfg && d.cfg.waechter)) { send('wake', {}); return; }
+    if (confirm('Fernseher/Stick ausschalten (Standby)?')) send('sleep', {});
+  };
 
   // Laufende Sendung (Fortschritt) jede Minute neu zeichnen
   setInterval(render, 60000);

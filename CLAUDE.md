@@ -108,12 +108,16 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Admin-Seite außerdem: eigene Namen/Notizen (`<kanal>/notes`), Abo-Ablauf (`<kanal>/accounts`, aus `cache/expires.json`,
   `fb_sync_meta`), Warnungen oben (offline > 30 min, WLAN < -72 dBm, Update verfügbar, Abo ≤ 30 Tage),
   Ansicht/Liste wechseln in ⚙️.
-  **🎮 Steuerkreuz** (Handy-Seite, aufklappbar, gemerkt): `key {k}` (up/down/left/right/ok/back/menu/playpause/rew/ff)
+  **Aufbau der Handy-Seite** (aufgeräumt 10.10.): Warnungen · Reiter · „Was läuft“ (+ Knopf „Jetzt aktualisieren“) ·
+  eine Fernbedienung (⏻ Ein/Aus · ☰ · ↩ · 📷 Livebild an/aus, Kreuz mit OK, ⏪ ⏯ ⏩, ⏹ Stopp/💬/↻) · ⚙️ Einstellungen &
+  Wartung (neu starten, aktualisieren, Ansicht, Liste, Schalter) · 🔔 Erinnerungen · Alles auf diesem Fernseher.
+  Die alten ▲▼ (zap) sind weg – das Kreuz schaltet im Player genauso um.
+  **🎮 Steuerkreuz** (`key`): `key {k}` (up/down/left/right/ok/back/menu/playpause/rew/ff)
   → `Instrumentation.sendKeyDownUpSync` im eigenen Fenster (auch Dialoge); fremde Fenster (Fire-TV-Menü) gehen nicht
   (SecurityException → Rückmeldung). Getestet Anita: ☰ öffnet Senderliste, ▼ bewegt Auswahl.
   **⏾ Ausschalten** (`sleep`): Player stoppen (Verbindung frei), dann Wächter `GLOBAL_ACTION_LOCK_SCREEN` (API 28+) →
   Standby; ohne Wächter nur Stopp. Knopf nur bei laufendem Wächter. Getestet Anita: aus → 20 s → `wake` → Sender läuft.
-  **📷 Livebild** (`LiveShot.java`, nur Haupt-Link, läuft solange das Steuerkreuz offen ist): `shot {on}` (60 s gültig,
+  **📷 Livebild** (`LiveShot.java`, nur Haupt-Link, Knopf 📷 in der Fernbedienung, gemerkt): `shot {on}` (60 s gültig,
   Seite fragt alle 40 s), Stick schickt ~alle 1,5 s + 0,5 s nach jeder Taste ein JPEG 480×270 (~20 KB) nach
   `<kanal>/shot/<gerät>`. Video per PixelCopy aus der SurfaceView, Oberfläche per PixelCopy des Fensters (API 26+;
   Senderlogos sind Hardware-Bitmaps), Fire OS 6: nachzeichnen. Dialoge nicht mit drauf. Getestet Anita: Bild + Liste.

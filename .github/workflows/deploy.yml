@@ -31,6 +31,10 @@ jobs:
         run: |
           mkdir _site
           cp -r index.html senioren.html player.html fernbedienung.html config.js liste.m3u css js icons .nojekyll _site/
+          # Jede Veröffentlichung eigene Versionsnummer an JS/CSS: Geräte laden nach dem Neuladen alles frisch
+          # und passend zueinander (GitHub erlaubt sonst bis zu 10 Minuten alte Dateien)
+          sed -i -E 's#(src|href)="((js|css)/[^"?]+|config\.js)"#\1="\2?v=${{ github.run_number }}"#g' _site/*.html
+          grep -c '?v=' _site/index.html
 
       # Fire-TV-App bauen; sie öffnet genau diese Seite. Download: <seite>/app.apk
       - uses: actions/setup-java@v4

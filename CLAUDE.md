@@ -5,6 +5,8 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
 ## Aufbau
 - **Webapp** (statisch, `index.html`, `senioren.html`, `player.html`, `js/`, `css/`, `config.js`):
   online unter https://palma-1904.github.io/iptv/ (GitHub Pages, Workflow `.github/workflows/deploy.yml`).
+  GitHub Pages: `cache-control: max-age=600` – Geräte zeigen bis zu 10 min alte Dateien. Der Workflow hängt
+  `?v=<run_number>` an alle js/css/config.js-Verweise in den HTML-Dateien (nur in `_site`), damit nach dem Neuladen alles zusammenpasst.
   - Uhr oben: 5× tippen → Code `1904` = Hauptansicht, `04` = Seniorenansicht (`config.js` → `codes`).
   - Geräteerkennung in `js/m3u.js` (ios → Outplayer, mac → IINA `iina://weblink?url=` (iina.io; VLC-mac spielt vlc://-Links nicht),
     tv/web → `player.html`, app → eingebauter Player).

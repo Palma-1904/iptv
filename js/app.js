@@ -784,11 +784,13 @@
       series: groupsOf(byType.series).size,
       epg: epgChannels().length
     };
+    if (SPLIT) counts.epg = 0;   // Browser: Programm steht bei jedem Sender, kein eigener Reiter
     tabCounts = counts;
     tabs.forEach(function (b) {
       b.querySelector('.count').textContent = counts[b.dataset.type];
       b.hidden = b.dataset.type === 'epg' && !counts.epg; // ohne EPG-Daten kein Programm-Reiter
     });
+    if (activeType === 'epg' && !counts.epg) activeType = 'live';
   }
 
   // Neue Playlist im Hintergrund: Ansicht neu zeichnen, offene Gruppen bleiben offen.

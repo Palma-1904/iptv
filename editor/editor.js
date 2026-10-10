@@ -1824,9 +1824,9 @@ function linksBox(r) {
   }
 
   if (r.webLinks) {
-    const web = section('📱', 'iPhone, iPad, Computer', 'QR-Code mit der Kamera scannen oder Link auf dem Gerät öffnen. Fürs iPhone danach in Safari: Teilen → „Zum Home-Bildschirm“.');
+    const web = section('📱', 'iPhone, iPad, Computer', 'QR-Code mit der Kamera scannen oder Link auf dem Gerät öffnen. Fürs iPhone danach in Safari: Teilen → „Zum Home-Bildschirm“. Im Browser gibt es nur eine Ansicht (Kategorien links, Inhalt rechts) – die Seniorenansicht gibt es nur in der Fire-TV-App.');
     const cols = el('div', 'lcols');
-    [['Komplett', r.webLinks.komplett], ['Senioren', r.webLinks.senioren]].forEach(([name, url]) => {
+    [['iPhone / iPad / Computer', r.webLinks.komplett]].forEach(([name, url]) => {
       const col = el('div', 'lcol');
       col.appendChild(el('strong', '', name));
       col.appendChild(qrEl(url, ''));

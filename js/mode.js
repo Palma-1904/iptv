@@ -21,9 +21,23 @@
   // Läuft im <head>, also vor dem ersten Zeichnen; senioren.js nimmt es zurück, falls nötig.
   if (page === 'senior' && /IPTVApp/.test(navigator.userAgent)) document.documentElement.classList.add('appplayer');
 
+  // Im Browser (iPad, iPhone, Mac) gibt es nur die Hauptansicht mit Kategorien – Senioren nur in der Fire-TV-App
+  // (und im Fire-TV-Browser). Erkennung wie in m3u.js.
+  var ua = navigator.userAgent;
+  var tvFlag = false;
+  try { tvFlag = localStorage.getItem('iptv-tv') === '1'; } catch (err) { /* egal */ }
+  var browser = !/IPTVApp/.test(ua) && !tvFlag && !/[?&]tv=1/.test(location.search)
+    && !/AFT[A-Z0-9]|Android ?TV|GoogleTV|SMART-TV|SmartTV|BRAVIA/i.test(ua);
+  if (browser && getMode() === 'senior') setMode('main');
+
   var wanted = new URLSearchParams(location.hash.slice(1)).get('ansicht');
-  if (wanted === 'senioren') setMode('senior');
+  if (wanted === 'senioren') setMode(browser ? 'main' : 'senior');
   if (wanted === 'komplett') setMode('main');
+  if (browser && page === 'senior') {
+    setMode('main');
+    location.replace('index.html' + location.search + location.hash.replace('ansicht=senioren', 'ansicht=komplett'));
+    return;
+  }
 
   var saved = getMode();
   if (saved && saved !== page && PAGES[saved]) {
@@ -94,6 +108,7 @@
       Object.keys(PAGES).forEach(function (m) {
         if (codes[m] && input.value === String(codes[m])) target = m;
       });
+      if (target === 'senior' && browser) target = 'main';   // Senioren nur in der Fire-TV-App
       if (!target) {
         error.hidden = false;
         input.value = '';

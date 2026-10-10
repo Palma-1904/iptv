@@ -15,7 +15,10 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
     „★ Meine Favoriten“), rechts Inhalt: Live = Zeilen mit jetzt/danach/Fortschritt, Filme = Kacheln (200 je Seite,
     „Weitere anzeigen“), Serien = Kacheln → Staffeln/Folgen mit Sprachleiste. iPhone (≤ 700 px): Kategorien als
     waagerechte Leiste. Gewählte Kategorie in `iptv-cat`. Serien-Kategorie aus `x-cat` (Editor: Gruppe der Playlist).
-    Fire TV/App: unverändert aufklappbare Gruppen. Seniorenansicht unverändert.
+    Fire TV/App: unverändert aufklappbare Gruppen (Thomas: Stick-App nicht ändern).
+    **Im Browser keine Seniorenansicht und kein Reiter „Programm“** (Thomas 10.10.): `mode.js` leitet senioren.html
+    im Browser auf index.html (ansicht=komplett) um, Code „04“ wirkt dort wie die Hauptansicht; Editor zeigt fürs
+    iPhone/iPad nur noch einen QR-Code. App (UA „IPTVApp“) und Fire-TV-Browser behalten Senioren und „Programm“.
 - **Playlist-Editor** (`editor/`, Python-Standardbibliothek, Start: `Start-Editor.command`, Port 8790):
   Quellen (Xtream/M3U), Länderfilter, Playlists mit Gruppen, Sprach-Zusammenfassung, Qualitätstest,
   Verbindungs-Anzeige, Player (▶, Durchleitung über `/api/play`), „Streams beenden“.

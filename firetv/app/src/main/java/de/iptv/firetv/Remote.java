@@ -585,6 +585,14 @@ final class Remote {
             wake();
             return;
         }
+        if ("sleep".equals(action)) {           // Admin: ausschalten (Standby)
+            Target pl = player_target;
+            if (pl != null) pl.remote("stop", new JSONObject());   // Verbindung zum Anbieter freigeben
+            report(Waechter.sleep() ? "Ausgeschaltet (Standby)"
+                    : "Ausschalten geht nur mit Wächter (ab Fire OS 7) – Wiedergabe gestoppt");
+            dirty = true;
+            return;
+        }
         if ("key".equals(action)) {
             key(arg.optString("k"));
             main.postDelayed(LiveShot::kick, 500);   // Livebild: gleich zeigen, was der Druck bewirkt hat

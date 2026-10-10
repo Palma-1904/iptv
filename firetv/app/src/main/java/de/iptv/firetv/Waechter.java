@@ -73,6 +73,13 @@ public class Waechter extends AccessibilityService {
     }
 
     /** Läuft der Wächter gerade (von Android eingeschaltet und verbunden)? */
+    /** Stick in den Standby schicken (Fernseher geht per HDMI-CEC meist mit aus); ab Android 9, nur mit Wächter. */
+    static boolean sleep() {
+        Waechter w = running;
+        if (w == null || android.os.Build.VERSION.SDK_INT < 28) return false;
+        return w.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+    }
+
     static boolean running() {
         return running != null;
     }

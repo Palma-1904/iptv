@@ -111,6 +111,8 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   **🎮 Steuerkreuz** (Handy-Seite, aufklappbar, gemerkt): `key {k}` (up/down/left/right/ok/back/menu/playpause/rew/ff)
   → `Instrumentation.sendKeyDownUpSync` im eigenen Fenster (auch Dialoge); fremde Fenster (Fire-TV-Menü) gehen nicht
   (SecurityException → Rückmeldung). Getestet Anita: ☰ öffnet Senderliste, ▼ bewegt Auswahl.
+  **⏾ Ausschalten** (`sleep`): Player stoppen (Verbindung frei), dann Wächter `GLOBAL_ACTION_LOCK_SCREEN` (API 28+) →
+  Standby; ohne Wächter nur Stopp. Knopf nur bei laufendem Wächter. Getestet Anita: aus → 20 s → `wake` → Sender läuft.
   **📷 Livebild** (`LiveShot.java`, nur Haupt-Link, läuft solange das Steuerkreuz offen ist): `shot {on}` (60 s gültig,
   Seite fragt alle 40 s), Stick schickt ~alle 1,5 s + 0,5 s nach jeder Taste ein JPEG 480×270 (~20 KB) nach
   `<kanal>/shot/<gerät>`. Video per PixelCopy aus der SurfaceView, Oberfläche per PixelCopy des Fensters (API 26+;

@@ -120,6 +120,7 @@
   <button data-a="message">💬 Nachricht</button>
   <button data-a="reload">↻ Neu laden</button>
   <button class="wide" data-a="wake" id="wake" hidden>⏻ Einschalten / App öffnen</button>
+  <button class="wide" data-a="sleep" id="sleep" hidden>⏾ Ausschalten (Standby)</button>
   <button class="wide" data-a="restart" id="restart" hidden>⟳ App neu starten</button>
   <button class="wide" data-a="update" id="upd" hidden>App aktualisieren</button>
 </div>
@@ -356,6 +357,7 @@
     updLive();
     $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
     $('wake').hidden = $('restart').hidden = !d.cfg;
+    $('sleep').hidden = !d.cfg || standby || !d.cfg.waechter;   // nur mit laufendem Wächter (Fire OS 7/8)
     $('wake').classList.toggle('hot', !!(d.cfg && (standby || d.state === 'closed')));
     $('upd').textContent = latest && d.ver < latest ? 'App aktualisieren auf Version ' + latest : 'App aktualisieren';
     $('upd').classList.toggle('hot', !!(latest && d.ver < latest));
@@ -789,6 +791,7 @@
         return;
       }
       if (a === 'update' && !confirm('Neue App-Version laden und installieren?')) return;
+      if (a === 'sleep' && !confirm('Fernseher/Stick ausschalten (Standby)?')) return;
       if (a === 'restart' && !confirm('App auf diesem Fernseher neu starten? (Liste wird frisch geladen)')) return;
       send(a, a === 'zap' ? { d: +b.getAttribute('data-d') } : {});
     };

@@ -101,6 +101,13 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Firebase speichert leere Arrays/Strings nicht (`epg` fehlt dann).
   **⚙️ Einstellungen** (nur Haupt-Link, aufklappbar, ⚠️ wenn Erlaubnis fehlt): Schalter autostart/home/normvol/waechter
   (`setting`), Wächter-Pause (`pause`), Häkchen Autostart/Updates erlaubt, WLAN/Hänger aus `diag`.
+  **Einschalten/App öffnen** (`wake`, ab App 63): WakeLock ACQUIRE_CAUSES_WAKEUP + MainActivity starten; Remote läuft
+  auch nur mit `AutostartService` (init dort, letzte Liste in prefs `remoteList`); Befehle ohne offene App öffnen sie
+  und werden nach 8 s nachgereicht. Getestet Anita (Fire OS 8): 2 min Standby → 4 s bis wach, Sender läuft. Länger im
+  Standby (Tiefschlaf) ungetestet. Status `screen` (false = Standby), `closed` = App zu. `restart` = Webapp neu + Update.
+  Admin-Seite außerdem: eigene Namen/Notizen (`<kanal>/notes`), Abo-Ablauf (`<kanal>/accounts`, aus `cache/expires.json`,
+  `fb_sync_meta`), Warnungen oben (offline > 30 min, WLAN < -72 dBm, Update verfügbar, Abo ≤ 30 Tage),
+  Ansicht/Liste wechseln in ⚙️.
   **Anitas Fire TV Stick** (10.10.2026): 192.168.6.116, AFTMA08C15 (4K Max, Fire OS 8), Liste asw, Senioren, Wächter an.
   **Erinnerungen vom Handy**: 🔔 neben jedem Live-Sender klappt das Programm auf (Admin: aus epg.json; Geräte-Link: `p`
   = nächste 8 Sendungen je Eintrag in `sender/<gerät>`), Sendung antippen → `remind {norm, t, title, ch, on}`

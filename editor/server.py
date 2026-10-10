@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 24  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 25  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -379,6 +379,10 @@ def source_info(src):
     if reported:
         write_json(os.path.join(CACHE, f'serverinfo_{src["id"]}.json'), {'url': reported, 'port': si.get('port'), 't': int(time.time())})
     configured = urllib.parse.urlsplit(xtream_base(src)).hostname or ''
+    if num(ui.get('exp_date')):              # für die Admin-Fernbedienung (Abo-Ablauf) merken
+        exp = read_json(os.path.join(CACHE, 'expires.json'), {})
+        exp[src['id']] = {'name': src.get('name') or src['id'], 'expires': num(ui.get('exp_date'))}
+        write_json(os.path.join(CACHE, 'expires.json'), exp)
     return {
         'type': 'xtream', 'auth': str(ui.get('auth')) == '1', 'status': ui.get('status'),
         'expires': num(ui.get('exp_date')), 'maxConnections': num(ui.get('max_connections')),
@@ -971,12 +975,38 @@ def fb_devices(topic):
 
 
 _fb_lists_sent = None
+_fb_meta_sent = {}
+
+
+def fb_sync_meta():
+    """Für die Admin-Fernbedienung: eigene Gerätenamen/Notizen und Abo-Ablauf der Zugänge (nur bei Änderung)."""
+    st, base = load_settings(), fb_base()
+    topic = st.get('remoteTopic')
+    if not base or not topic:
+        return
+    sources = {x['id']: x.get('name') or x['id'] for x in load_state().get('sources', [])}
+    exp = read_json(os.path.join(CACHE, 'expires.json'), {})
+    meta = {
+        'notes': st.get('deviceNotes') or {},
+        'accounts': {sid: {'name': sources.get(sid, e.get('name')), 'expires': e['expires']}
+                     for sid, e in exp.items() if sid in sources and e.get('expires')},
+    }
+    for key, val in meta.items():
+        if _fb_meta_sent.get(key) == val:
+            continue
+        with http(f'{base}{topic}/{key}.json', data=json.dumps(val).encode(), method='PUT', timeout=20):
+            pass
+        _fb_meta_sent[key] = val
 
 
 def fb_sync_lists(rev=None):
     """Listen-Links für die Admin-Fernbedienung (Haupt-Link): <kanal>/lists/<slug> = {link, rev}.
     Nur unter dem geheimen Fernwartungs-Kanal – die Handy-Codes einzelner Sticks sehen das nicht."""
     global _fb_lists_sent
+    try:
+        fb_sync_meta()
+    except Exception:
+        pass
     st, base = load_settings(), fb_base()
     topic = st.get('remoteTopic')
     if not base or not topic or not st.get('login') or not st.get('gistId'):

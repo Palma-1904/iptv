@@ -51,6 +51,15 @@
     opacity: 0; transition: opacity .25s; pointer-events: none; }
   .toast.show { opacity: 1; }
   .err { color: var(--bad); }
+  #warn { background: var(--panel); border-left: 4px solid var(--warn); border-radius: 12px; padding: 10px 14px;
+    margin-bottom: 12px; font-size: 15px; }
+  #warn div { margin: 3px 0; }
+  .memo { font-size: 15px; color: var(--muted); margin: -6px 0 10px; }
+  #cfg .seg { display: flex; gap: 8px; margin-bottom: 8px; }
+  #cfg .seg button { flex: 1; min-height: 46px; }
+  #cfg .seg button.sel { background: var(--accent); color: #fff; }
+  #cfg select { width: 100%; font: inherit; padding: 12px; border-radius: 12px; border: 0; background: var(--panel2);
+    color: var(--text); margin-bottom: 8px; }
   .list .row { display: flex; gap: 8px; margin-bottom: 8px; }
   .list .row > button { margin-bottom: 0; }
   .list .row > button.main { flex: 1; width: auto; min-width: 0; }
@@ -89,6 +98,7 @@
 </head>
 <body>
 <h1><span class="dot" id="dot"></span><span id="devname">Fernbedienung</span></h1>
+<div id="warn" hidden></div>
 <div class="tabs" id="tabs" hidden></div>
 <div class="card" id="state"><span class="muted">Verbinde …</span></div>
 <div class="pad" id="pad" hidden>
@@ -98,6 +108,8 @@
   <button class="big" data-a="zap" data-d="1" aria-label="Nächster Sender">▼</button>
   <button data-a="message">💬 Nachricht</button>
   <button data-a="reload">↻ Neu laden</button>
+  <button class="wide" data-a="wake" id="wake" hidden>⏻ Einschalten / App öffnen</button>
+  <button class="wide" data-a="restart" id="restart" hidden>⟳ App neu starten</button>
   <button class="wide" data-a="update" id="upd" hidden>App aktualisieren</button>
 </div>
 <div class="card" id="cfg" hidden></div>
@@ -163,7 +175,46 @@
     return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
   var STATE = { playing: '▶ läuft', paused: '⏸ angehalten', stopped: '⏹ gestoppt', error: '⚠ Fehler',
-    sleep: '💤 Schlaf-Timer', overview: '☰ in der Übersicht', tvoff: '📺 Fernseher aus', start: 'startet' };
+    sleep: '💤 Schlaf-Timer', overview: '☰ in der Übersicht', tvoff: '📺 Fernseher aus', start: 'startet',
+    closed: '⏻ App geschlossen' };
+
+  // Admin: eigene Gerätenamen/Notizen und Abo-Ablauf (legt der Editor ab), alle 5 Minuten neu
+  var notes = {}, accounts = {};
+  function loadMeta() {
+    ['notes', 'accounts'].forEach(function (key) {
+      fetch(BASE + key + '.json').then(function (r) { return r.ok ? r.json() : null; }).then(function (v) {
+        if (key === 'notes') notes = v || {}; else accounts = v || {};
+        render();
+      }).catch(function () { /* egal */ });
+    });
+  }
+  loadMeta();
+  setInterval(loadMeta, 5 * 60 * 1000);
+  function label(id) {
+    var n = notes[id], d = devices[id] || {};
+    return n && n.label ? n.label : d.name || 'Gerät';
+  }
+
+  // Warnungen über alle Sticks: offline, schwaches WLAN, Update verfügbar, Abo läuft ab
+  function renderWarn(ids) {
+    var w = [], now = Date.now() / 1000;
+    ids.forEach(function (id) {
+      var d = devices[id], age = now - (d.t || 0);
+      if (age > 30 * 60) w.push('📴 ' + esc(label(id)) + ': seit ' + (age < 5400 ? Math.round(age / 60) + ' Min.' : age < 172800 ? Math.round(age / 3600) + ' Std.' : Math.round(age / 86400) + ' Tagen') + ' keine Meldung');
+      var r = d.diag && d.diag.rssi;
+      if (age <= 30 * 60 && r !== undefined && r < -72) w.push('📶 ' + esc(label(id)) + ': WLAN schwach (' + r + ' dBm)');
+      if (d.cfg && latest && d.ver && d.ver < latest) w.push('⬆️ ' + esc(label(id)) + ': App ' + d.ver + ', neu ist ' + latest);
+      if (d.cfg && !d.cfg.install) w.push('⚠️ ' + esc(label(id)) + ': Updates nicht erlaubt');
+    });
+    Object.keys(accounts).forEach(function (k) {
+      var a = accounts[k], days = Math.round((a.expires - now) / 86400);
+      var date = new Date(a.expires * 1000).toLocaleDateString('de-DE');
+      if (days < 0) w.push('❌ Zugang ' + esc(a.name) + ' ist seit ' + date + ' abgelaufen');
+      else if (days <= 30) w.push('⏳ Zugang ' + esc(a.name) + ' läuft am ' + date + ' ab (in ' + days + ' Tagen)');
+    });
+    $('warn').hidden = !w.length;
+    $('warn').innerHTML = w.map(function (x) { return '<div>' + x + '</div>'; }).join('');
+  }
 
   // Firebase-Live-Verbindung (Server-Sent Events): put/patch mit Pfad relativ zum Abo
   function live(url, onData) {
@@ -225,7 +276,8 @@
 
   function render() {
     var ids = Object.keys(devices).filter(function (k) { return devices[k] && devices[k].name; });
-    ids.sort(function (a, b) { return (devices[a].name || '').localeCompare(devices[b].name || ''); });
+    ids.sort(function (a, b) { return label(a).localeCompare(label(b)); });
+    renderWarn(ids);
     if (!ids.length) {
       $('state').innerHTML = '<span class="muted">Noch keine Meldung vom Fernseher. Ist der Stick an und die App geöffnet?</span>';
       return;
@@ -236,7 +288,7 @@
     tabs.innerHTML = '';
     ids.forEach(function (id) {
       var b = document.createElement('button');
-      b.textContent = devices[id].name;
+      b.textContent = label(id);
       if (id === sel) b.className = 'sel';
       b.onclick = function () { choose(id); };
       tabs.appendChild(b);
@@ -244,8 +296,11 @@
     var d = devices[sel];
     var age = Date.now() / 1000 - (d.t || 0);
     $('dot').className = 'dot' + (age < 12 * 60 ? ' on' : '');
-    $('devname').textContent = d.name;
-    var h = '<div class="muted">' + esc(STATE[d.state] || d.state || '') +
+    $('devname').textContent = label(sel);
+    var memo = notes[sel] && notes[sel].note;
+    var standby = d.screen === false;
+    var h = (memo ? '<div class="memo">📝 ' + esc(memo) + '</div>' : '') +
+      '<div class="muted">' + (standby ? '💤 Stick im Standby · ' : '') + esc(STATE[d.state] || d.state || '') +
       (age > 12 * 60 ? ' · zuletzt gemeldet vor ' + Math.round(age / 60) + ' min' : '') + '</div>';
     if (d.title) h += '<div class="now">' + esc(d.title) + '</div>';
     var epg = d.epg || [];
@@ -265,6 +320,8 @@
     $('state').innerHTML = h;
     $('pad').hidden = false;
     $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
+    $('wake').hidden = $('restart').hidden = !d.cfg;
+    $('wake').classList.toggle('hot', !!(d.cfg && (standby || d.state === 'closed')));
     $('upd').textContent = latest && d.ver < latest ? 'App aktualisieren auf Version ' + latest : 'App aktualisieren';
     $('upd').classList.toggle('hot', !!(latest && d.ver < latest));
     renderCfg(d);
@@ -499,6 +556,39 @@
       p.textContent = ok ? '✓ ' + yes : '✕ ' + no;
       body.appendChild(p);
     }
+    // Ansicht und Liste (wie im Editor)
+    var seg = document.createElement('div');
+    seg.className = 'seg';
+    [['komplett', 'Komplett'], ['senioren', 'Senioren']].forEach(function (v) {
+      var b = document.createElement('button');
+      b.textContent = v[1];
+      if (d.view === v[0]) b.className = 'sel';
+      b.onclick = function () {
+        if (d.view === v[0]) return;
+        send('view', { view: v[0] });
+        toast('Ansicht wird umgestellt auf ' + v[1] + ' …');
+      };
+      seg.appendChild(b);
+    });
+    body.appendChild(seg);
+    if (lists) {
+      var selEl = document.createElement('select');
+      Object.keys(lists).forEach(function (slug) {
+        var o = document.createElement('option');
+        o.value = slug;
+        o.textContent = 'Liste: ' + (lists[slug].name || slug);
+        if (slug === d.list) o.selected = true;
+        selEl.appendChild(o);
+      });
+      selEl.onchange = function () {
+        var l = lists[selEl.value];
+        if (!confirm('Diesen Fernseher auf die Liste „' + (l.name || selEl.value) + '“ umstellen?\n' +
+            'Achtung: Jede Liste hat ihren eigenen Zugang mit nur einer Verbindung.')) { selEl.value = d.list; return; }
+        send('list', { link: l.link });
+        toast('Liste wird umgestellt …');
+      };
+      body.appendChild(selEl);
+    }
     sw('autostart', 'Autostart beim Einschalten', c.autostart);
     sw('home', 'Home-Taste: App kommt zurück', c.home);
     if (c.normvol !== undefined) sw('normvol', 'Gleichmäßige Lautstärke', c.normvol);
@@ -530,6 +620,16 @@
         : 'WLAN' + (r === undefined ? '' : (r >= -60 ? ' gut' : r >= -70 ? ' mittel' : ' schwach ⚠️') + ' (' + r + ' dBm)')) +
         ' · heute ' + (g.stalls || 0) + '× Hänger, ' + (g.errors || 0) + '× Fehler';
       body.appendChild(p);
+    }
+    var acc = Object.keys(accounts).map(function (k) { return accounts[k]; });
+    if (acc.length) {
+      var ap = document.createElement('div');
+      ap.className = 'muted';
+      ap.style.marginTop = '6px';
+      ap.textContent = '📅 Abos: ' + acc.map(function (a) {
+        return a.name + ' bis ' + new Date(a.expires * 1000).toLocaleDateString('de-DE');
+      }).join(' · ');
+      body.appendChild(ap);
     }
     box.appendChild(body);
   }
@@ -647,6 +747,7 @@
         return;
       }
       if (a === 'update' && !confirm('Neue App-Version laden und installieren?')) return;
+      if (a === 'restart' && !confirm('App auf diesem Fernseher neu starten? (Liste wird frisch geladen)')) return;
       send(a, a === 'zap' ? { d: +b.getAttribute('data-d') } : {});
     };
   });

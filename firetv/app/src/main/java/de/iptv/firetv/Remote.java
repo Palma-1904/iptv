@@ -91,6 +91,9 @@ final class Remote {
         }
         deviceName = n != null && !n.isEmpty() ? n : Build.MODEL;
         handyKey = p.getString("handyKey", null);
+        // Zuletzt gemeldete Liste: so verbindet die Fernwartung auch, wenn nur der Autostart-Dienst läuft
+        // (App geschlossen / Stick im Standby) – dann kann „Einschalten“ die App öffnen
+        if (playlistUrl.isEmpty()) setPlaylist(p.getString("remoteList", ""), p.getString("remoteView", ""));
         if (handyKey == null) newHandyKey();
         Thread t = new Thread(Remote::loop, "Fernwartung");
         t.setDaemon(true);
@@ -143,6 +146,10 @@ final class Remote {
         boolean changed = !url.equals(playlistUrl) || !v.equals(view);
         playlistUrl = url;
         view = v;
+        if (app != null && changed && !url.isEmpty()) {
+            app.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit()
+                    .putString("remoteList", url).putString("remoteView", v).apply();
+        }
         String file = url.replaceAll("[?#].*$", "");
         file = file.substring(file.lastIndexOf('/') + 1);
         list = file.replaceAll("\\.m3u8?$", "");
@@ -380,7 +387,8 @@ final class Remote {
                         .put("pause", (Waechter.pausedFor(app) + 59999) / 60000)
                         .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true)))
                 .put("diag", Diag.json(app))
-                .put("norm", nowNorm).put("epg", nowEpg).put("rem", Reminders.upcoming(app));
+                .put("norm", nowNorm).put("epg", nowEpg).put("rem", Reminders.upcoming(app))
+                .put("screen", screenOn());
         if (fb != null) {
             o.put("noteT", noteT);
             put(fb + topic + "/status/" + deviceId + ".json", o.toString());   // überschreibt: immer der neueste Stand
@@ -503,8 +511,36 @@ final class Remote {
         }
     }
 
+    /**
+     * Fernseher/Stick aufwecken (Bildschirm an → Fire TV schaltet den Fernseher meist per HDMI-CEC mit ein)
+     * und die App nach vorne holen.
+     */
+    @SuppressWarnings("deprecation")
+    static void wake() {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) app.getSystemService(Context.POWER_SERVICE);
+            android.os.PowerManager.WakeLock wl = pm.newWakeLock(android.os.PowerManager.FULL_WAKE_LOCK
+                    | android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP | android.os.PowerManager.ON_AFTER_RELEASE, "iptv:wake");
+            wl.acquire(10000);
+        } catch (Exception ignored) {
+            // kein Aufwecken möglich
+        }
+        android.content.Intent start = new android.content.Intent(app, MainActivity.class)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            app.startActivity(start);
+            report("Eingeschaltet – App geöffnet");
+        } catch (Exception e) {
+            report("App konnte nicht geöffnet werden (Erlaubnis „Über anderen Apps einblenden“ fehlt?)");
+        }
+    }
+
     /** Spielt gerade der Player, bekommt er den Befehl, sonst die Übersicht (MainActivity). */
     private static void dispatch(String action, JSONObject arg) {
+        if ("wake".equals(action)) {
+            wake();
+            return;
+        }
         if ("remind".equals(action)) {          // Handy: Erinnerung an eine Sendung an/aus
             String norm = arg.optString("norm");
             long t = arg.optLong("t");
@@ -518,6 +554,12 @@ final class Remote {
             p.remote(action, arg);
         } else if (m != null) {
             m.remote(action, arg);
+        } else if (!"watch".equals(action)) {
+            // App ist zu (nur der Autostart-Dienst läuft): öffnen, dann den Befehl nachreichen
+            wake();
+            main.postDelayed(() -> {
+                if (main_target != null) dispatch(action, arg);
+            }, 8000);
         }
     }
 
@@ -537,6 +579,15 @@ final class Remote {
             if (d.isShowing()) d.dismiss();
         }, 3 * 60 * 1000L);
         report("Nachricht angezeigt");
+    }
+
+    /** Bildschirm an (false = Stick im Standby). */
+    private static boolean screenOn() {
+        try {
+            return ((android.os.PowerManager) app.getSystemService(Context.POWER_SERVICE)).isInteractive();
+        } catch (Exception e) {
+            return true;
+        }
     }
 
     /** Etwas Neues zu melden (z. B. Erinnerungen geändert). */

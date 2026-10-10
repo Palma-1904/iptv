@@ -118,6 +118,7 @@ public class AutostartService extends Service {
             }
         };
         registerReceiver(screenOn, new IntentFilter(Intent.ACTION_SCREEN_ON));
+        Remote.init(this);   // Fernwartung hört auch zu, wenn die App geschlossen ist („Einschalten“)
     }
 
     @Override

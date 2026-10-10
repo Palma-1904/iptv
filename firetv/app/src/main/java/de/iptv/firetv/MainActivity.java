@@ -603,6 +603,12 @@ public class MainActivity extends Activity implements Remote.Target {
             case "update":
                 Updater.remoteUpdate(this);   // still laden, dann nur „Installieren“ am Gerät
                 break;
+            case "restart":                  // Admin: App neu starten (Liste frisch, nach Updates sehen)
+                if (player != null) player.remote("close", arg);
+                web.reload();
+                handler.postDelayed(() -> Updater.check(this, true), 4000);
+                Remote.report("App neu gestartet");
+                break;
             case "zap":                      // Handy: ▲▼ / ⏯, Player nicht offen → letzten Sender starten
             case "toggle":
                 java.util.List<String> rec = Memory.get(this).recent();
@@ -694,7 +700,10 @@ public class MainActivity extends Activity implements Remote.Target {
     @Override
     protected void onDestroy() {
         if (instance == this) instance = null;
-        if (Remote.main_target == this) Remote.main_target = null;
+        if (Remote.main_target == this) {
+            Remote.main_target = null;
+            Remote.status("closed", "", "");   // Handy zeigt „App geschlossen“ → „Einschalten“
+        }
         super.onDestroy();
     }
 

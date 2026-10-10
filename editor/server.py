@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 25  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 26  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -1349,7 +1349,7 @@ def build_playlist(pl, state, warnings):
                             if e['title'] and e['title'] not in t:
                                 t += f' – {e["title"]}'
                             lines.append(f'#EXTINF:-1 tvg-type="series" tvg-logo="{logo}" x-work="{work}" '
-                                         f'x-lang="{lang}" group-title="{attr(title)}",{t}')
+                                         f'x-lang="{lang}" x-cat="{attr(gname)}" group-title="{attr(title)}",{t}')
                             lines.append(e['url'])
                             count += 1
                     else:
@@ -1366,8 +1366,9 @@ def build_playlist(pl, state, warnings):
                     t = f'{name} S{e["season"]:02d} E{e["episode"]:02d}'
                     if e['title'] and e['title'] not in t:
                         t += f' – {e["title"]}'
+                    # x-cat = Gruppe der Playlist (Kategorie links in der Webapp), group-title = Serie
                     lines.append(f'#EXTINF:-1 tvg-type="series" tvg-logo="{attr(ch["logo"])}" '
-                                 f'group-title="{attr(name)}",{t}')
+                                 f'x-cat="{attr(gname)}" group-title="{attr(name)}",{t}')
                     lines.append(e['url'])
                     count += 1
                 continue

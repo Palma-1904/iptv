@@ -237,11 +237,262 @@
     content.appendChild(box);
   }
 
+  // ---------- Browser (iPad, iPhone, Mac): links Kategorien, rechts Inhalt ----------
+  // Fernseher und App behalten die aufklappbaren Gruppen (Fernbedienung).
+  var SPLIT = !IPTV.isTv && !window.IPTVNative;
+  document.body.classList.toggle('split', SPLIT);
+  // Höhe der Kopfzeile für die mitlaufende Kategorienspalte
+  function measureHeader() {
+    var top = document.querySelector('.top');
+    if (top) document.documentElement.style.setProperty('--hdr', (top.offsetHeight + 8) + 'px');
+  }
+  if (SPLIT) { window.addEventListener('resize', measureHeader); setTimeout(measureHeader, 0); }
+  var catSel = {};          // gewählte Kategorie je Reiter
+  var openSeries = null;    // geöffnete Serie (Name) im rechten Bereich
+  try { catSel = JSON.parse(localStorage.getItem('iptv-cat') || '{}') || {}; } catch (err) { /* privat-Modus */ }
+
+  // Kategorien eines Reiters: [{ name, count, items|units|series }]
+  function catsOf(type) {
+    var out = [];
+    if (type === 'live') {
+      groupsOf(byType.live).forEach(function (items, name) { out.push({ name: name, count: items.length, items: items }); });
+    } else if (type === 'movie') {
+      var fu = favMovies();
+      if (fu.length) out.push({ name: '★ Meine Favoriten', count: fu.length, units: fu });
+      groupsOf(byType.movie).forEach(function (items, name) {
+        var u = units(items);
+        out.push({ name: name, count: u.length, units: u });
+      });
+    } else {
+      // Serien: Kategorie aus dem Editor (x-cat), darin die Serien (group-title)
+      var byCat = new Map();
+      var favSeries = new Map();
+      groupsOf(byType.series).forEach(function (eps, name) {
+        var cat = eps[0].cat || 'Serien';
+        if (!byCat.has(cat)) byCat.set(cat, new Map());
+        byCat.get(cat).set(name, eps);
+        if (favs.series.indexOf(name) >= 0) favSeries.set(name, eps);
+      });
+      if (favSeries.size) out.push({ name: '★ Meine Favoriten', count: favSeries.size, series: favSeries });
+      byCat.forEach(function (m, cat) { out.push({ name: cat, count: m.size, series: m }); });
+    }
+    return out;
+  }
+
+  function saveCat() {
+    try { localStorage.setItem('iptv-cat', JSON.stringify(catSel)); } catch (err) { /* privat-Modus */ }
+  }
+
+  function renderSplit(type) {
+    content.textContent = '';
+    var cats = catsOf(type);
+    if (!cats.length) return status('Keine Einträge in dieser Kategorie.');
+    var cur = cats.filter(function (c) { return c.name === catSel[type]; })[0] || cats[0];
+    var wrap = document.createElement('div');
+    wrap.className = 'splitwrap';
+    var side = document.createElement('nav');
+    side.className = 'cats';
+    cats.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cat' + (c === cur ? ' sel' : '');
+      var n = document.createElement('span');
+      n.className = 'cname';
+      n.textContent = c.name;
+      var k = document.createElement('span');
+      k.className = 'ccount';
+      k.textContent = c.count;
+      b.appendChild(n);
+      b.appendChild(k);
+      b.addEventListener('click', function () {
+        catSel[type] = c.name;
+        openSeries = null;
+        saveCat();
+        render();
+        var pane = content.querySelector('.pane');
+        if (pane) pane.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
+      side.appendChild(b);
+    });
+    var pane = document.createElement('section');
+    pane.className = 'pane';
+    var h = document.createElement('h2');
+    h.className = 'panehead';
+    h.textContent = cur.name;
+    pane.appendChild(h);
+    if (type === 'live') pane.appendChild(liveList(cur.items));
+    else if (type === 'movie') pane.appendChild(movieGrid(cur.units));
+    else if (openSeries && cur.series.has(openSeries)) pane.appendChild(seriesDetail(openSeries, cur.series.get(openSeries)));
+    else pane.appendChild(seriesGrid(cur.series));
+    wrap.appendChild(side);
+    wrap.appendChild(pane);
+    content.appendChild(wrap);
+    // gewählte Kategorie in der (waagerechten) Leiste sichtbar machen
+    var sel = side.querySelector('.sel');
+    if (sel && sel.scrollIntoView && side.scrollWidth > side.clientWidth) sel.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
+
+  // Sender mit „jetzt“, „danach“ und Fortschritt
+  function liveList(items) {
+    var box = document.createElement('div');
+    box.className = 'list live';
+    items.forEach(function (e) {
+      var a = itemEl(e, false, items);
+      if (e.tvgId) {
+        var nn = IPTV.nowNext(e.tvgId);
+        var text = a.querySelector('.text');
+        if (nn && nn.next) {
+          var nx = document.createElement('span');
+          nx.className = 'meta next';
+          nx.textContent = 'danach ' + IPTV.hhmm(nn.next[0]) + '  ' + nn.next[2];
+          text.appendChild(nx);
+        }
+        text.appendChild(progressEl(e.tvgId));
+      }
+      box.appendChild(a);
+    });
+    return box;
+  }
+
+  // Große Gruppen (z. B. 6000 Filme) stückweise zeigen
+  var PAGE = 200;
+  function paged(list, make) {
+    var wrap = document.createElement('div');
+    var box = document.createElement('div');
+    box.className = 'tiles';
+    wrap.appendChild(box);
+    var shown = 0;
+    var more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'retry more';
+    function step() {
+      var f = document.createDocumentFragment();
+      list.slice(shown, shown + PAGE).forEach(function (x) { f.appendChild(make(x)); });
+      box.appendChild(f);
+      shown = Math.min(list.length, shown + PAGE);
+      more.hidden = shown >= list.length;
+      more.textContent = 'Weitere ' + Math.min(PAGE, list.length - shown) + ' anzeigen (noch ' + (list.length - shown) + ')';
+    }
+    more.addEventListener('click', step);
+    wrap.appendChild(more);
+    step();
+    return wrap;
+  }
+
+  function movieGrid(us) {
+    return paged(us, function (u) {
+      var a = unitEl(u, false);
+      a.classList.add('tile');
+      return a;
+    });
+  }
+
+  function seriesGrid(series) {
+    var arr = [];
+    series.forEach(function (eps, name) { arr.push([name, eps]); });
+    return paged(arr, function (x) {
+      var name = x[0], eps = x[1];
+      var b = document.createElement('a');
+      b.href = '#';
+      b.className = 'item tile';
+      b._fav = eps[0];
+      b.appendChild(IPTV.logoEl(eps[0].logo, 'logo'));
+      var text = document.createElement('span');
+      text.className = 'text';
+      var n = document.createElement('span');
+      n.className = 'name';
+      n.textContent = name;
+      text.appendChild(n);
+      var langs = seriesLangs(eps);
+      var m = document.createElement('span');
+      m.className = 'meta';
+      m.textContent = (langs.length > 1 ? eps.filter(function (e) { return e.lang === langs[0]; }).length : eps.length)
+        + ' Folgen' + (langs.length > 1 ? ' · ' + langs.join(' ') : '');
+      text.appendChild(m);
+      b.appendChild(text);
+      b.appendChild(favEl(eps[0]));
+      b.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        openSeries = name;
+        render();
+        window.scrollTo(0, 0);
+      });
+      return b;
+    });
+  }
+
+  function seriesDetail(name, eps) {
+    var box = document.createElement('div');
+    box.className = 'seriesdetail';
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'back';
+    back.textContent = '‹ Alle Serien';
+    back.addEventListener('click', function () { openSeries = null; render(); });
+    var head = document.createElement('div');
+    head.className = 'shead';
+    head.appendChild(back);
+    var t = document.createElement('strong');
+    t.textContent = name;
+    head.appendChild(t);
+    head.appendChild(favEl(eps[0]));
+    box.appendChild(head);
+    var langs = seriesLangs(eps);
+    var list = document.createElement('div');
+    var current = langs[0];
+    var bar = document.createElement('div');
+    bar.className = 'langbar';
+    function draw() {
+      list.textContent = '';
+      var shown = langs.length > 1 ? eps.filter(function (e) { return e.lang === current; }) : eps;
+      var season = null, grid = null;
+      shown.forEach(function (e) {
+        var m = /\bS(\d{1,3})E\d/i.exec(e.name);
+        var sn = m ? +m[1] : 0;
+        if (!grid || sn !== season) {   // Staffel-Überschrift
+          season = sn;
+          if (sn) {
+            var h = document.createElement('div');
+            h.className = 'day';
+            h.textContent = 'Staffel ' + sn;
+            list.appendChild(h);
+          }
+          grid = document.createElement('div');
+          grid.className = 'list';
+          list.appendChild(grid);
+        }
+        var a = itemEl(e, false, shown);
+        var label = e.name.indexOf(name) === 0 ? e.name.slice(name.length).replace(/^[\s–:-]+/, '') : e.name;
+        a.querySelector('.name').textContent = label || e.name;
+        grid.appendChild(a);
+      });
+      Array.prototype.forEach.call(bar.children, function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.lang === current));
+      });
+    }
+    if (langs.length > 1) {
+      langs.forEach(function (l) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'langsel';
+        b.dataset.lang = l;
+        b.textContent = langName(l);
+        b.addEventListener('click', function () { current = l; draw(); });
+        bar.appendChild(b);
+      });
+      box.appendChild(bar);
+    }
+    box.appendChild(list);
+    draw();
+    return box;
+  }
+
   function render() {
     var q = search.value.trim();
     document.body.classList.toggle('searching', q.length > 0);
     if (q.length >= 2) renderSearch(q);
     else if (activeType === 'epg') renderEpg();
+    else if (SPLIT) renderSplit(activeType);
     else renderType(activeType);
   }
 
@@ -500,6 +751,7 @@
 
   function setTab(type) {
     activeType = type;
+    openSeries = null;
     tabs.forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.type === type)); });
     try { localStorage.setItem('iptv-tab', type); } catch (err) { /* privat-Modus */ }
     if (search.value) search.value = '';

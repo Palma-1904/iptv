@@ -11,6 +11,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   - Einrichtungs-Link `#liste=BENUTZER/GIST/name` bzw. `#m3u=…` + `&ansicht=komplett|senioren`, wird im localStorage gespeichert.
   - Reiter Live/Filme/Serien/Programm (EPG aus `<liste>.epg.json`), Sprachfassungen über `x-work`/`x-lang`,
     HEVC → automatisch HD-Fassung im Browser-Player.
+  - **Browser (iPad/iPhone/Mac, `SPLIT` = nicht TV und nicht App)**: links Kategorien (Gruppen; Filme/Serien mit
+    „★ Meine Favoriten“), rechts Inhalt: Live = Zeilen mit jetzt/danach/Fortschritt, Filme = Kacheln (200 je Seite,
+    „Weitere anzeigen“), Serien = Kacheln → Staffeln/Folgen mit Sprachleiste. iPhone (≤ 700 px): Kategorien als
+    waagerechte Leiste. Gewählte Kategorie in `iptv-cat`. Serien-Kategorie aus `x-cat` (Editor: Gruppe der Playlist).
+    Fire TV/App: unverändert aufklappbare Gruppen. Seniorenansicht unverändert.
 - **Playlist-Editor** (`editor/`, Python-Standardbibliothek, Start: `Start-Editor.command`, Port 8790):
   Quellen (Xtream/M3U), Länderfilter, Playlists mit Gruppen, Sprach-Zusammenfassung, Qualitätstest,
   Verbindungs-Anzeige, Player (▶, Durchleitung über `/api/play`), „Streams beenden“.

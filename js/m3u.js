@@ -41,6 +41,7 @@
       work: attrs['x-work'] || '',               // gleiche Kennung = gleicher Film/Serie in anderer Sprache
       lang: (attrs['x-lang'] || '').toUpperCase(),
       alt: attrs['x-alt'] ? attrs['x-alt'].split(/\s+/) : [],   // Ersatz-Fassungen (App wechselt bei Fehler)
+      cat: attrs['x-cat'] || '',                 // Serien: Gruppe der Playlist (Kategorie), group-title = Serie
       typeHint: normalize(attrs['tvg-type'] || attrs['type'] || '')
     };
   }

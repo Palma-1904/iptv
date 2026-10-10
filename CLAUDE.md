@@ -21,6 +21,8 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
     **Outplayer bequemer** (kein automatischer Rücksprung möglich – Outplayer hat kein x-callback): Schnell-Leiste
     oben „Zuletzt: X  ◀ · ▶ nochmal · ▶▶ / nächste Folge ✕“ (`iptv-lastplay`, 12 h), Kategorie „🕘 Zuletzt gesehen“
     je Reiter (`iptv-recent`, 36), Hinweis „oben links ◀“ die ersten 5 Male (iOS). Gewählte Kategorie bleibt.
+    Outplayer fehlt? Nach dem Tippen 4 s warten: bleibt die Seite sichtbar → Dialog mit App-Store-Link (id1449923287);
+    einmal erfolgreich geöffnet (Seite ging in den Hintergrund) → `iptv-outplayer-ok`, nie wieder prüfen.
     **Im Browser keine Seniorenansicht und kein Reiter „Programm“** (Thomas 10.10.): `mode.js` leitet senioren.html
     im Browser auf index.html (ansicht=komplett) um, Code „04“ wirkt dort wie die Hauptansicht; Editor zeigt fürs
     iPhone/iPad nur noch einen QR-Code. App (UA „IPTVApp“) und Fire-TV-Browser behalten Senioren und „Programm“.

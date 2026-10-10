@@ -332,13 +332,77 @@
       var a = ev.target.closest ? ev.target.closest('a') : null;
       if (!a || !a._play || ev.target.closest('.fav')) return;
       remember(a._play.entry, a._play.list);
+      checkPlayerApp(a.getAttribute('href'));
       setTimeout(render, 500);   // beim Zurückkommen ist die Leiste schon da
     }, true);
   }
   function play(e, list) {
     remember(e, list);
-    location.href = IPTV.playerHref(e);
+    var href = IPTV.playerHref(e);
+    checkPlayerApp(href);
+    location.href = href;
     setTimeout(render, 500);
+  }
+
+  // iPad/iPhone: Ist Outplayer installiert? Eine Webseite darf das nicht direkt fragen – aber geht die App auf,
+  // verschwindet die Seite in den Hintergrund. Bleibt sie 4 s vorne, fehlt Outplayer wohl → App Store anbieten.
+  // Einmal erfolgreich geöffnet: auf diesem Gerät nie wieder prüfen.
+  var OUTPLAYER_STORE = 'https://apps.apple.com/de/app/outplayer/id1449923287';
+  function checkPlayerApp(href) {
+    if (!/^outplayer:/i.test(href || '')) return;
+    try { if (localStorage.getItem('iptv-outplayer-ok')) return; } catch (err) { /* egal */ }
+    var left = false;
+    function gone() {
+      if (document.visibilityState !== 'hidden') return;
+      left = true;
+      try { localStorage.setItem('iptv-outplayer-ok', '1'); } catch (err) { /* egal */ }
+    }
+    document.addEventListener('visibilitychange', gone);
+    window.addEventListener('pagehide', gone);
+    setTimeout(function () {
+      document.removeEventListener('visibilitychange', gone);
+      window.removeEventListener('pagehide', gone);
+      if (!left && document.visibilityState === 'visible') missingPlayer();
+    }, 4000);
+  }
+  function missingPlayer() {
+    if (document.querySelector('.lang-overlay.noplayer')) return;
+    var ov = document.createElement('div');
+    ov.className = 'lang-overlay noplayer';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    var box = document.createElement('div');
+    box.className = 'lang-box';
+    var h = document.createElement('h2');
+    h.textContent = 'Startet nichts?';
+    var p = document.createElement('p');
+    p.textContent = 'Zum Abspielen braucht dieses Gerät die kostenlose App „Outplayer“. Einmal installieren, dann zurück hierher und den Sender noch einmal antippen.';
+    var store = document.createElement('a');
+    store.className = 'lang-btn';
+    store.href = OUTPLAYER_STORE;
+    store.textContent = 'Outplayer im App Store laden';
+    var have = document.createElement('button');
+    have.type = 'button';
+    have.className = 'lang-cancel';
+    have.textContent = 'Outplayer ist schon installiert';
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'lang-cancel';
+    close.textContent = 'Schließen';
+    box.appendChild(h);
+    box.appendChild(p);
+    box.appendChild(store);
+    box.appendChild(have);
+    box.appendChild(close);
+    ov.appendChild(box);
+    function shut() { ov.remove(); }
+    close.addEventListener('click', shut);
+    have.addEventListener('click', function () {
+      try { localStorage.setItem('iptv-outplayer-ok', '1'); } catch (err) { /* egal */ }
+      shut();
+    });
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) shut(); });
+    document.body.appendChild(ov);
   }
   // Leiste oben: „Zuletzt: ARD  ◀ · ▶ nochmal · ▶“ – mit einem Tipp weiterzappen
   function quickBar() {

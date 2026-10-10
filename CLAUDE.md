@@ -142,6 +142,9 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   (`#expiry-warn`, ≤ 30 Tage). Gerätenamen/Notizen der Fernwartung in settings.json `deviceNotes`.
   „Nur deutsche Fassungen“ je Playlist (`pl.germanOnly`, wirkt beim Veröffentlichen; ASW 5,1 → 1,4 MB).
   „Trotzdem prüfen“: Geräte der Liste per Fernwartung `stop`, danach `reload`.
+- **Länderfilter Filme/Serien**: Deutsch (DE/AT/CH) + MULTI vorausgewählt, andere Kürzel nur nach Antippen (`src.vodShown`),
+  `hiddenCountries` gilt weiter für alle Reiter (`ccHidden`/`toggleCc`, nur Anzeige links; `variantsOf` unverändert).
+  Neue Gruppen in der Playlist kommen zugeklappt an; zugeklappte Gruppen im localStorage `editor-collapsed`.
 - **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.
 - **Wächter** (`Waechter.java`, Bedienungshilfe/AccessibilityService, `res/xml/waechter.xml`): fängt Home/Einstellungen/
   Alle-Apps-Taste ab und holt die App sofort zurück, wenn ein fremder Bildschirm (Activity/Startseite) erscheint –

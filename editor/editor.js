@@ -88,6 +88,12 @@ function countryOf(group) {
   return (m && COUNTRY_NAMES[m[1].toUpperCase()]) || '—';
 }
 
+// Zugeklappte Gruppen der Playlists merken (bleiben nach Neuladen zu)
+function saveCollapsed() {
+  try { localStorage.setItem('editor-collapsed', JSON.stringify([...ui.collapsed])); } catch (e) { /* egal */ }
+}
+try { JSON.parse(localStorage.getItem('editor-collapsed') || '[]').forEach((id) => ui.collapsed.add(id)); } catch (e) { /* egal */ }
+
 const source = () => state.sources.find((s) => s.id === ui.sourceId) || null;
 const playlist = () => state.playlists.find((p) => p.id === ui.playlistId) || null;
 const catalog = () => catalogs[ui.sourceId] || null;
@@ -395,11 +401,33 @@ function syncSourceType() {
 
 // ---------- Linke Spalte: Länder und Gruppen ----------
 
+// Filme/Serien: Deutsch und Mehrsprachig vorausgewählt (wie Thomas es bei Serien eingestellt hatte); andere Sprachen
+// erst nach Antippen sichtbar (src.vodShown). Live wie bisher nur hiddenCountries. Betrifft nur die Anzeige links.
+function ccHidden(src, k, type) {
+  if ((src.hiddenCountries || []).includes(k)) return true;
+  return type !== 'live' && !PREFERRED.includes(k) && !(src.vodShown || []).includes(k);
+}
+
+function toggleCc(src, k, type) {
+  const hid = new Set(src.hiddenCountries || []), shown = new Set(src.vodShown || []);
+  const byDefault = type !== 'live' && !PREFERRED.includes(k);   // ohne Zutun ausgeblendet
+  if (ccHidden(src, k, type)) {
+    hid.delete(k);
+    if (byDefault) shown.add(k);
+  } else if (byDefault) {
+    shown.delete(k);
+  } else {
+    hid.add(k);
+  }
+  src.hiddenCountries = [...hid];
+  src.vodShown = [...shown];
+}
+
 function visibleItems() {
   const c = catalog();
-  if (!c) return [];
-  const hidden = new Set((source() || {}).hiddenCountries || []);
-  return c.items.filter((it) => it.type === ui.type && !hidden.has(it.cc));
+  const src = source();
+  if (!c || !src) return [];
+  return c.items.filter((it) => it.type === ui.type && !ccHidden(src, it.cc, ui.type));
 }
 
 function renderCountries() {
@@ -414,15 +442,13 @@ function renderCountries() {
     const k = it.cc;
     counts.set(k, (counts.get(k) || 0) + 1);
   });
-  const hidden = new Set(src.hiddenCountries || []);
   [...counts.entries()].sort((a, b) => langRank(a[0]) - langRank(b[0]) || b[1] - a[1]).forEach(([k, n]) => {
-    const b = el('button', 'chip' + (hidden.has(k) ? ' off' : ''), `${k === '—' ? 'ohne Kürzel' : k} ${n}`);
+    const off = ccHidden(src, k, ui.type);
+    const b = el('button', 'chip' + (off ? ' off' : ''), `${k === '—' ? 'ohne Kürzel' : k} ${n}`);
     b.type = 'button';
-    b.title = hidden.has(k) ? 'Einblenden' : 'Ausblenden';
+    b.title = off ? 'Einblenden' : 'Ausblenden';
     b.onclick = () => {
-      const set = new Set(src.hiddenCountries || []);
-      set.has(k) ? set.delete(k) : set.add(k);
-      src.hiddenCountries = [...set];
+      toggleCc(src, k, ui.type);
       save();
       renderAll();
     };
@@ -432,8 +458,7 @@ function renderCountries() {
     const all = el('button', 'chip', 'alle umkehren');
     all.type = 'button';
     all.onclick = () => {
-      const set = new Set(src.hiddenCountries || []);
-      src.hiddenCountries = [...counts.keys()].filter((k) => !set.has(k));
+      [...counts.keys()].forEach((k) => toggleCc(src, k, ui.type));
       save();
       renderAll();
     };
@@ -625,7 +650,12 @@ function addToPlaylist(items, fallbackGroup) {
     if (!g) {
       const name = fallbackGroup || it.group || 'Sonstige';
       g = pl.groups.find((x) => x.name === name);
-      if (!g) { g = { id: 'g' + uid(), name, items: [] }; pl.groups.push(g); }
+      if (!g) {
+        g = { id: 'g' + uid(), name, items: [] };
+        pl.groups.push(g);
+        ui.collapsed.add(g.id);                      // neue Gruppe erst einmal zugeklappt
+        saveCollapsed();
+      }
     }
     const item = toPlaylistItem(it);
     if (!item) return;
@@ -684,6 +714,7 @@ function renderPlaylist() {
     head.onclick = (ev) => {
       if (ev.target.classList.contains('tg')) {
         ui.collapsed.has(g.id) ? ui.collapsed.delete(g.id) : ui.collapsed.add(g.id);
+        saveCollapsed();
       } else {
         ui.targetGroupId = ui.targetGroupId === g.id ? null : g.id;
       }
@@ -2366,6 +2397,7 @@ function bind() {
     if (!pl) return;
     const allClosed = pl.groups.every((g) => ui.collapsed.has(g.id));
     pl.groups.forEach((g) => (allClosed ? ui.collapsed.delete(g.id) : ui.collapsed.add(g.id)));
+    saveCollapsed();
     renderPlaylist();
     renderPlSource();
   };

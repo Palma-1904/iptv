@@ -72,6 +72,14 @@
   .list .prog button.on { outline: 2px solid var(--warn); }
   .list .prog .tm { flex: none; width: 74px; color: var(--muted); }
   #rems .x { margin-left: auto; color: var(--muted); flex: none; }
+  #dpadbox { padding: 0; }
+  #dpadbox > button.head { width: 100%; background: none; text-align: left; display: flex; gap: 8px; min-height: 52px; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 14px 14px; }
+  .dpad button { min-height: 64px; font-size: 20px; }
+  .dpad button.big { font-size: 26px; }
+  .dpad button.ok { background: var(--accent); color: #fff; font-weight: 700; border-radius: 50%; aspect-ratio: 1;
+    min-height: 0; width: 76px; justify-self: center; }
+  .dpad .wide { grid-column: span 3; margin: 0; }
   #cfg { padding: 0; }
   #cfg > button.head { width: 100%; background: none; text-align: left; display: flex; gap: 8px; min-height: 52px; }
   #cfg .body { padding: 0 14px 14px; }
@@ -111,6 +119,24 @@
   <button class="wide" data-a="wake" id="wake" hidden>⏻ Einschalten / App öffnen</button>
   <button class="wide" data-a="restart" id="restart" hidden>⟳ App neu starten</button>
   <button class="wide" data-a="update" id="upd" hidden>App aktualisieren</button>
+</div>
+<div class="card" id="dpadbox" hidden>
+  <button class="head" id="dpadhead"><span id="dpadarrow">▸</span><span>🎮 Steuerkreuz (wie die Fernbedienung)</span></button>
+  <div class="dpad" id="dpad" hidden>
+    <button data-k="menu" aria-label="Menü">☰</button>
+    <button data-k="up" class="big" aria-label="Hoch">▲</button>
+    <button data-k="playpause" aria-label="Play/Pause">⏯</button>
+    <button data-k="left" class="big" aria-label="Links">◀</button>
+    <button data-k="ok" class="ok" aria-label="OK">OK</button>
+    <button data-k="right" class="big" aria-label="Rechts">▶</button>
+    <button data-k="back" aria-label="Zurück">↩</button>
+    <button data-k="down" class="big" aria-label="Runter">▼</button>
+    <span></span>
+    <button data-k="rew" aria-label="Zurückspulen">⏪</button>
+    <span></span>
+    <button data-k="ff" aria-label="Vorspulen">⏩</button>
+    <p class="muted wide">Wirkt nur in „Fernsehen“ (nicht im Fire-TV-Menü). Jeder Druck braucht etwa eine Sekunde.</p>
+  </div>
 </div>
 <div class="card" id="cfg" hidden></div>
 <div class="list" id="rems"></div>
@@ -319,6 +345,7 @@
     }
     $('state').innerHTML = h;
     $('pad').hidden = false;
+    $('dpadbox').hidden = false;
     $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
     $('wake').hidden = $('restart').hidden = !d.cfg;
     $('wake').classList.toggle('hot', !!(d.cfg && (standby || d.state === 'closed')));
@@ -751,6 +778,26 @@
       send(a, a === 'zap' ? { d: +b.getAttribute('data-d') } : {});
     };
   });
+  // Steuerkreuz: Tasten wie auf der Fire-TV-Fernbedienung (Fernwartung „key“), auf-/zuklappbar (gemerkt)
+  var dpadOn = false;
+  try { dpadOn = localStorage.getItem(KEY + '-steuerkreuz') === '1'; } catch (e) { /* egal */ }
+  function showDpad() {
+    $('dpad').hidden = !dpadOn;
+    $('dpadarrow').textContent = dpadOn ? '▾' : '▸';
+  }
+  $('dpadhead').onclick = function () {
+    dpadOn = !dpadOn;
+    try { localStorage.setItem(KEY + '-steuerkreuz', dpadOn ? '1' : '0'); } catch (e) { /* egal */ }
+    showDpad();
+  };
+  showDpad();
+  document.querySelectorAll('#dpad button').forEach(function (b) {
+    b.onclick = function () {
+      if (navigator.vibrate) navigator.vibrate(15);
+      send('key', { k: b.getAttribute('data-k') }, true);
+    };
+  });
+
   // Laufende Sendung (Fortschritt) jede Minute neu zeichnen
   setInterval(render, 60000);
 })();

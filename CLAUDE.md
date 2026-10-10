@@ -108,6 +108,9 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Admin-Seite außerdem: eigene Namen/Notizen (`<kanal>/notes`), Abo-Ablauf (`<kanal>/accounts`, aus `cache/expires.json`,
   `fb_sync_meta`), Warnungen oben (offline > 30 min, WLAN < -72 dBm, Update verfügbar, Abo ≤ 30 Tage),
   Ansicht/Liste wechseln in ⚙️.
+  **🎮 Steuerkreuz** (Handy-Seite, aufklappbar, gemerkt): `key {k}` (up/down/left/right/ok/back/menu/playpause/rew/ff)
+  → `Instrumentation.sendKeyDownUpSync` im eigenen Fenster (auch Dialoge); fremde Fenster (Fire-TV-Menü) gehen nicht
+  (SecurityException → Rückmeldung). Getestet Anita: ☰ öffnet Senderliste, ▼ bewegt Auswahl.
   **Anitas Fire TV Stick** (10.10.2026): 192.168.6.116, AFTMA08C15 (4K Max, Fire OS 8), Liste asw, Senioren, Wächter an.
   **Erinnerungen vom Handy**: 🔔 neben jedem Live-Sender klappt das Programm auf (Admin: aus epg.json; Geräte-Link: `p`
   = nächste 8 Sendungen je Eintrag in `sender/<gerät>`), Sendung antippen → `remind {norm, t, title, ch, on}`

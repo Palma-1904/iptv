@@ -66,7 +66,39 @@ final class Remote {
     private static long channelsSent;
     /** Vom Handy erlaubt (Schlüssel am Fernseher sichtbar): nur Bedienen, keine Einstellungen. */
     private static final Set<String> PHONE_ACTIONS = new HashSet<>(java.util.Arrays.asList(
-            "play", "zap", "toggle", "stop", "message", "reload", "watch", "remind"));
+            "play", "zap", "toggle", "stop", "message", "reload", "watch", "remind", "key"));
+    /** Steuerkreuz vom Handy: Tasten wie auf der Fire-TV-Fernbedienung (nur innerhalb unserer App). */
+    private static final java.util.Map<String, Integer> KEYS = new java.util.HashMap<>();
+    static {
+        KEYS.put("up", android.view.KeyEvent.KEYCODE_DPAD_UP);
+        KEYS.put("down", android.view.KeyEvent.KEYCODE_DPAD_DOWN);
+        KEYS.put("left", android.view.KeyEvent.KEYCODE_DPAD_LEFT);
+        KEYS.put("right", android.view.KeyEvent.KEYCODE_DPAD_RIGHT);
+        KEYS.put("ok", android.view.KeyEvent.KEYCODE_DPAD_CENTER);
+        KEYS.put("back", android.view.KeyEvent.KEYCODE_BACK);
+        KEYS.put("menu", android.view.KeyEvent.KEYCODE_MENU);
+        KEYS.put("playpause", android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
+        KEYS.put("rew", android.view.KeyEvent.KEYCODE_MEDIA_REWIND);
+        KEYS.put("ff", android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD);
+    }
+    private static final java.util.concurrent.ExecutorService keyThread =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    /** Taste ins gerade sichtbare Fenster der App geben (auch in Dialoge wie „Weiterschauen?“). */
+    private static void key(String k) {
+        final Integer code = KEYS.get(k);
+        if (code == null) return;
+        keyThread.execute(() -> {
+            try {
+                new android.app.Instrumentation().sendKeyDownUpSync(code);
+            } catch (SecurityException e) {
+                // anderes Fenster vorne (Fire-TV-Startseite, Einstellungen): dort dürfen wir nicht drücken
+                report("Taste geht nicht – „Fernsehen“ ist am Fernseher gerade nicht vorne (⏻ Einschalten / App öffnen)");
+            } catch (Exception e) {
+                report("Taste ging nicht: " + e.getClass().getSimpleName());
+            }
+        });
+    }
     static volatile Target main_target;    // MainActivity
     static volatile Target player_target;  // PlayerActivity (wenn offen)
 
@@ -539,6 +571,10 @@ final class Remote {
     private static void dispatch(String action, JSONObject arg) {
         if ("wake".equals(action)) {
             wake();
+            return;
+        }
+        if ("key".equals(action)) {
+            key(arg.optString("k"));
             return;
         }
         if ("remind".equals(action)) {          // Handy: Erinnerung an eine Sendung an/aus

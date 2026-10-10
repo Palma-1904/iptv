@@ -72,6 +72,9 @@
   .list .prog button.on { outline: 2px solid var(--warn); }
   .list .prog .tm { flex: none; width: 74px; color: var(--muted); }
   #rems .x { margin-left: auto; color: var(--muted); flex: none; }
+  #live { grid-column: span 3; }
+  #liveimg { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; border-radius: 8px; display: block; }
+  #live p { margin: 6px 0 0; }
   #dpadbox { padding: 0; }
   #dpadbox > button.head { width: 100%; background: none; text-align: left; display: flex; gap: 8px; min-height: 52px; }
   .dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 14px 14px; }
@@ -123,6 +126,10 @@
 <div class="card" id="dpadbox" hidden>
   <button class="head" id="dpadhead"><span id="dpadarrow">▸</span><span>🎮 Steuerkreuz (wie die Fernbedienung)</span></button>
   <div class="dpad" id="dpad" hidden>
+    <div id="live" hidden>
+      <img id="liveimg" alt="Bild vom Fernseher">
+      <p class="muted" id="liveinfo">Warte auf das erste Bild …</p>
+    </div>
     <button data-k="menu" aria-label="Menü">☰</button>
     <button data-k="up" class="big" aria-label="Hoch">▲</button>
     <button data-k="playpause" aria-label="Play/Pause">⏯</button>
@@ -346,6 +353,7 @@
     $('state').innerHTML = h;
     $('pad').hidden = false;
     $('dpadbox').hidden = false;
+    updLive();
     $('upd').hidden = !d.cfg;   // nur mit dem Haupt-Link aus dem Editor
     $('wake').hidden = $('restart').hidden = !d.cfg;
     $('wake').classList.toggle('hot', !!(d.cfg && (standby || d.state === 'closed')));
@@ -754,6 +762,13 @@
     });
   }
 
+  function sendTo(dev, action, arg) {
+    return fetch(BASE + 'inbox/' + encodeURIComponent(dev) + '.json', {
+      method: 'POST',
+      body: JSON.stringify({ action: action, arg: arg || {}, t: Math.floor(Date.now() / 1000) })
+    }).catch(function () { /* egal */ });
+  }
+
   function send(action, arg, quiet) {
     if (!sel) return;
     return fetch(BASE + 'inbox/' + encodeURIComponent(sel) + '.json', {
@@ -778,12 +793,57 @@
       send(a, a === 'zap' ? { d: +b.getAttribute('data-d') } : {});
     };
   });
+  // Livebild (nur Haupt-Link): Stick schickt ~alle 1,5 s ein kleines Standbild, solange es angefordert wird (60 s,
+  // die Seite fragt alle 40 s nach). Aus beim Zuklappen, beim Gerätewechsel und wenn die Seite im Hintergrund ist.
+  var liveOn = false, liveSrc = null, liveDev = null, liveTimer = null, liveT = 0;
+  // Livebild gehört zum Steuerkreuz: läuft, solange es aufgeklappt ist (nur Haupt-Link)
+  function updLive() {
+    var d = devices[sel] || {};
+    var want = dpadOn && !!d.cfg && !document.hidden;
+    $('live').hidden = !want;
+    if (want === liveOn && (!want || liveDev === sel)) return;
+    liveOn = want;
+    liveT = 0;
+    if (want) liveStart(); else liveStop();
+  }
+  function liveStop() {
+    if (liveSrc) liveSrc.close();
+    liveSrc = null;
+    clearInterval(liveTimer);
+    if (liveDev) sendTo(liveDev, 'shot', { on: false });
+    liveDev = null;
+  }
+  function liveStart() {
+    liveStop();
+    if (!liveOn || !sel || document.hidden) return;
+    liveDev = sel;
+    $('liveinfo').textContent = 'Warte auf das erste Bild …';
+    sendTo(liveDev, 'shot', { on: true });
+    liveTimer = setInterval(function () { if (liveDev) sendTo(liveDev, 'shot', { on: true }); }, 40000);
+    var shot = null;
+    liveSrc = live(BASE + 'shot/' + encodeURIComponent(liveDev) + '.json', function (path, data, merge) {
+      shot = apply(shot || {}, path, data, merge);
+      if (shot && shot.img && shot.t > liveT - 1) {
+        liveT = shot.t;
+        $('liveimg').src = 'data:image/jpeg;base64,' + shot.img;
+      }
+    });
+  }
+  setInterval(function () {   // Alter des Bildes anzeigen
+    if (!liveOn || !liveT) return;
+    var s = Math.round((Date.now() - liveT) / 1000);
+    $('liveinfo').textContent = s < 5 ? 'live (Standbild alle 1–2 s, ohne Ton)' : 'Bild von vor ' + s + ' s'
+      + (s > 15 ? ' – ist „Fernsehen“ am Fernseher vorne?' : '');
+  }, 1000);
+  document.addEventListener('visibilitychange', updLive);
+
   // Steuerkreuz: Tasten wie auf der Fire-TV-Fernbedienung (Fernwartung „key“), auf-/zuklappbar (gemerkt)
   var dpadOn = false;
   try { dpadOn = localStorage.getItem(KEY + '-steuerkreuz') === '1'; } catch (e) { /* egal */ }
   function showDpad() {
     $('dpad').hidden = !dpadOn;
     $('dpadarrow').textContent = dpadOn ? '▾' : '▸';
+    updLive();
   }
   $('dpadhead').onclick = function () {
     dpadOn = !dpadOn;

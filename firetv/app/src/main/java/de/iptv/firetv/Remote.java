@@ -352,6 +352,11 @@ final class Remote {
         }
     }
 
+    /** Firebase-Wurzel des Kanals aus der Briefkasten-Adresse (<fb><kanal>/inbox/<gerät>). */
+    private static String tp(String inboxBase) {
+        return inboxBase.substring(0, inboxBase.lastIndexOf("/inbox/"));
+    }
+
     private static void fbCommand(String base, String id, JSONObject c, boolean phone) {
         new Thread(() -> {                     // gleich aus dem Briefkasten löschen
             try {
@@ -370,6 +375,13 @@ final class Remote {
         final String action = c.optString("action");
         final JSONObject arg = c.optJSONObject("arg") != null ? c.optJSONObject("arg") : new JSONObject();
         if (phone && !PHONE_ACTIONS.contains(action)) return;
+        if ("shot".equals(action)) {            // Admin: Livebild an/aus (gilt 60 s, Handy fragt erneut)
+            final String root = tp(base);
+            LiveShot.request(arg.optBoolean("on", true), (img, w, h) ->
+                    put(root + "/shot/" + deviceId + ".json", new JSONObject().put("t", System.currentTimeMillis())
+                            .put("img", img).put("w", w).put("h", h).toString()));
+            return;
+        }
         if ("watch".equals(action)) {
             dirty = true;
             channelsSent = 0;   // Handy öffnet die Seite: Senderliste gleich frisch
@@ -575,6 +587,7 @@ final class Remote {
         }
         if ("key".equals(action)) {
             key(arg.optString("k"));
+            main.postDelayed(LiveShot::kick, 500);   // Livebild: gleich zeigen, was der Druck bewirkt hat
             return;
         }
         if ("remind".equals(action)) {          // Handy: Erinnerung an eine Sendung an/aus

@@ -241,6 +241,11 @@ TKH bis 26.10.2027, ASW bis 04.10.2027, KMH bis 04.10.2027 (player_api für KMH/
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
 ## Stand / nächste Schritte (15.10.2026)
+- **15.10. Mittag**: **App 72 online, alles gepusht** (inkl. Admin-Auswahlliste, Handy-Code je Stick, Einstellungen
+  übertragen, Erlaubnisse über den Wächter). Sticks noch auf altem Stand: Anita 65 (seit 10.10. offline!), Küche 69,
+  Wohnzimmer 69 (Fire OS 6: Update braucht Klick vor Ort), Max 70, Schlafzimmer 62 (ohne Wächter, Autostart-Erlaubnis
+  fehlt). Erlaubnisse: Anita/Küche/Max alles ✓; Wohnzimmer Overlay+Install ✓, Wächter unmöglich; Schlafzimmer
+  Install ✓, Overlay ✗, Wächter aus (fernschaltbar) → nach App 72: Wächter an, dann 🔧 Erlaubnisse setzen.
 - **15.10. ~11 Uhr**: Thomas hat gepusht → **App 71** (EPG-Ausbau, Admin: Wer schaut/Links/Editor aus der Ferne/
   Zeitpläne, eigene Listen A+B, Stick nur Senioren, Mini-Erklärung). Editor **VERSION 29** läuft (10:52 neu
   gestartet, Listen-Schlüssel angelegt). Lokal, noch nicht gepusht → **App 72**: Admin-Auswahlliste, Handy-Code je

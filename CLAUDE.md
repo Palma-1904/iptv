@@ -27,6 +27,10 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
     einmal erfolgreich geöffnet (Seite ging in den Hintergrund) → `iptv-outplayer-ok`, nie wieder prüfen.
     Link neben der Uhr (`#getapp`, `updateAppLink`): „⬇ Outplayer laden“ (iOS, App Store) bzw. „⬇ IINA laden“ (Mac,
     iina.io), bis `iptv-outplayer-ok`/`iptv-iina-ok` auf diesem Gerät gesetzt ist (je Gerät, localStorage).
+    **iOS: Outplayer oder VLC** (`iptv-iosplayer`, Standard Outplayer; Knopf „mit X“ in der Schnell-Leiste bzw. Dialog
+    „Startet nichts?“ → „Stattdessen … verwenden“). VLC über `config.js` `player.iosVlc` =
+    `vlc-x-callback://x-callback-url/stream?url=…&x-success=<Webapp>` → springt nach dem Schließen zurück
+    (auf echtem iPhone/iPad noch ungetestet; evtl. öffnet Safari dabei einen neuen Tab). `iptv-vlc-ok` wie bei Outplayer.
     **Im Browser keine Seniorenansicht und kein Reiter „Programm“** (Thomas 10.10.): `mode.js` leitet senioren.html
     im Browser auf index.html (ansicht=komplett) um, Code „04“ wirkt dort wie die Hauptansicht; Editor zeigt fürs
     iPhone/iPad nur noch einen QR-Code. App (UA „IPTVApp“) und Fire-TV-Browser behalten Senioren und „Programm“.

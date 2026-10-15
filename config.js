@@ -12,6 +12,9 @@ window.IPTV_CONFIG = {
     // iPad/iPhone. Browser schreiben das intern zu "outplayer://https//…" um. Falls Outplayer
     // damit nicht startet: "outplayer://x-callback-url/play?url={urlEncoded}"
     ios: "outplayer://{url}",
+    // iPad/iPhone, wenn dort „VLC“ gewählt ist (Webapp: Schnell-Leiste bzw. „Startet nichts?“). VLC springt nach
+    // dem Schließen über x-success von selbst zur Webapp zurück ({backEncoded} = Adresse der Webapp).
+    iosVlc: "vlc-x-callback://x-callback-url/stream?url={urlEncoded}&x-success={backEncoded}",
     // Fire TV im Silk-Browser: eingebauter Player (Knopf "In VLC öffnen" inklusive)
     tv: "player.html?url={urlEncoded}&name={nameEncoded}&id={idEncoded}",
     // Eigene Fire-TV-App: direkt an VLC übergeben

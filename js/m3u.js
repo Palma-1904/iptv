@@ -387,10 +387,16 @@
     try { return !!localStorage.getItem('iptv-iina-ok'); } catch (err) { return false; }
   }
 
+  // iPad/iPhone: gewählte Abspiel-App – 'outplayer' (Standard) oder 'vlc'
+  function iosPlayer() {
+    try { return localStorage.getItem('iptv-iosplayer') === 'vlc' ? 'vlc' : 'outplayer'; } catch (err) { return 'outplayer'; }
+  }
+
   function playerTemplate() {
     var p = CFG.player || '{url}';
     if (typeof p === 'string') return p;
     if (platform === 'mac' && !iinaOk()) return p.web || '{url}';
+    if (platform === 'ios' && iosPlayer() === 'vlc' && p.iosVlc) return p.iosVlc;
     return p[platform] || p.web || '{url}';
   }
 
@@ -407,6 +413,7 @@
       .replace('{urlEncoded}', encodeURIComponent(url))
       .replace('{nameEncoded}', encodeURIComponent(entry.name || ''))
       .replace('{idEncoded}', encodeURIComponent(entry.tvgId || ''))
+      .replace('{backEncoded}', encodeURIComponent(location.origin + location.pathname))
       .replace('{intent}', intentUrl(url))
       .replace('{url}', url);
   }
@@ -630,6 +637,7 @@
     nativeTree: function () { return treeProvider ? treeProvider() : null; },   // zum Testen
     nativeLeaf: nativeLeaf,
     platform: platform,
+    iosPlayer: iosPlayer,
     isTv: isTv,
     playerHref: playerHref,
     intentUrl: intentUrl,

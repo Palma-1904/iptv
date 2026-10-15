@@ -344,63 +344,78 @@
     setTimeout(render, 500);
   }
 
-  // iPad/iPhone: Ist Outplayer installiert? Eine Webseite darf das nicht direkt fragen – aber geht die App auf,
-  // verschwindet die Seite in den Hintergrund. Bleibt sie 4 s vorne, fehlt Outplayer wohl → App Store anbieten.
+  // iPad/iPhone: Abspiel-App wählbar – Outplayer (Standard) oder VLC (`iptv-iosplayer`, m3u.js wählt die Vorlage).
+  // Ist sie installiert? Eine Webseite darf das nicht direkt fragen – aber geht die App auf, verschwindet die
+  // Seite in den Hintergrund. Bleibt sie 4 s vorne, fehlt die App wohl → App Store anbieten.
   // Einmal erfolgreich geöffnet: auf diesem Gerät nie wieder prüfen.
-  var OUTPLAYER_STORE = 'https://apps.apple.com/de/app/outplayer/id1449923287';
+  var IOS_APPS = {
+    outplayer: { name: 'Outplayer', store: 'https://apps.apple.com/de/app/outplayer/id1449923287', ok: 'iptv-outplayer-ok', scheme: /^outplayer:/i },
+    vlc: { name: 'VLC', store: 'https://apps.apple.com/de/app/vlc-media-player/id650377962', ok: 'iptv-vlc-ok', scheme: /^vlc(-x-callback)?:/i }
+  };
+  function iosApp() { return IOS_APPS[IPTV.iosPlayer()]; }
+  function appOk(app) {
+    try { return !!localStorage.getItem(app.ok); } catch (err) { return false; }
+  }
+  function setAppOk(app) {
+    try { localStorage.setItem(app.ok, '1'); } catch (err) { /* egal */ }
+  }
   function checkPlayerApp(href) {
-    if (!/^outplayer:/i.test(href || '')) return;
-    try { if (localStorage.getItem('iptv-outplayer-ok')) return; } catch (err) { /* egal */ }
+    var app = [IOS_APPS.outplayer, IOS_APPS.vlc].filter(function (x) { return x.scheme.test(href || ''); })[0];
+    if (!app || appOk(app)) return;
     var left = false;
     function gone() {
       if (document.visibilityState !== 'hidden') return;
       left = true;
-      try { localStorage.setItem('iptv-outplayer-ok', '1'); } catch (err) { /* egal */ }
+      setAppOk(app);
     }
     document.addEventListener('visibilitychange', gone);
     window.addEventListener('pagehide', gone);
     setTimeout(function () {
       document.removeEventListener('visibilitychange', gone);
       window.removeEventListener('pagehide', gone);
-      if (!left && document.visibilityState === 'visible') missingPlayer();
+      if (!left && document.visibilityState === 'visible') playerDialog(true);
     }, 4000);
   }
-  function missingPlayer() {
-    if (document.querySelector('.lang-overlay.noplayer')) return;
+  // „Startet nichts?“ (missing) bzw. „Abspielen mit …“ (aus der Schnell-Leiste): App laden, bestätigen, wechseln
+  function playerDialog(missing) {
+    var old = document.querySelector('.lang-overlay.noplayer');
+    if (old) old.remove();
+    var app = iosApp();
+    var other = app === IOS_APPS.vlc ? IOS_APPS.outplayer : IOS_APPS.vlc;
     var ov = document.createElement('div');
     ov.className = 'lang-overlay noplayer';
     ov.setAttribute('role', 'dialog');
     ov.setAttribute('aria-modal', 'true');
     var box = document.createElement('div');
     box.className = 'lang-box';
-    var h = document.createElement('h2');
-    h.textContent = 'Startet nichts?';
-    var p = document.createElement('p');
-    p.textContent = 'Zum Abspielen braucht dieses Gerät die kostenlose App „Outplayer“. Einmal installieren, dann zurück hierher und den Sender noch einmal antippen.';
-    var store = document.createElement('a');
-    store.className = 'lang-btn';
-    store.href = OUTPLAYER_STORE;
-    store.textContent = 'Outplayer im App Store laden';
-    var have = document.createElement('button');
-    have.type = 'button';
-    have.className = 'lang-cancel';
-    have.textContent = 'Outplayer ist schon installiert';
-    var close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'lang-cancel';
-    close.textContent = 'Schließen';
-    box.appendChild(h);
-    box.appendChild(p);
-    box.appendChild(store);
-    box.appendChild(have);
-    box.appendChild(close);
+    function el(tag, cls, text) {
+      var x = document.createElement(tag);
+      if (cls) x.className = cls;
+      if (tag === 'button') x.type = 'button';
+      x.textContent = text;
+      box.appendChild(x);
+      return x;
+    }
+    el('h2', '', missing ? 'Startet nichts?' : 'Abspielen mit ' + app.name);
+    el('p', '', (missing ? 'Zum Abspielen braucht dieses Gerät die kostenlose App „' + app.name + '“. Einmal installieren, '
+      + 'dann zurück hierher und den Sender noch einmal antippen.' : 'Sender, Filme und Serien öffnen in der App „'
+      + app.name + '“.') + (app === IOS_APPS.vlc ? ' Nach dem Schließen springt VLC von selbst hierher zurück.'
+      : ' Zurück geht es oben links mit „◀“.'));
+    var store = el('a', 'lang-btn', app.name + ' im App Store laden');
+    store.href = app.store;
+    store.target = '_blank';
+    store.rel = 'noopener';
+    var have = appOk(app) ? null : el('button', 'lang-cancel', app.name + ' ist schon installiert');
+    var swap = el('button', 'lang-cancel', 'Stattdessen ' + other.name + ' verwenden');
+    var close = el('button', 'lang-cancel', 'Schließen');
     ov.appendChild(box);
     function shut() { ov.remove(); }
     close.addEventListener('click', shut);
-    have.addEventListener('click', function () {
-      try { localStorage.setItem('iptv-outplayer-ok', '1'); } catch (err) { /* egal */ }
-      updateAppLink();
-      shut();
+    if (have) have.addEventListener('click', function () { setAppOk(app); updateAppLink(); shut(); });
+    swap.addEventListener('click', function () {
+      try { localStorage.setItem('iptv-iosplayer', other === IOS_APPS.vlc ? 'vlc' : 'outplayer'); } catch (err) { /* egal */ }
+      render();   // Links zeigen jetzt auf die andere App
+      playerDialog(false);
     });
     ov.addEventListener('click', function (ev) { if (ev.target === ov) shut(); });
     document.body.appendChild(ov);
@@ -411,7 +426,8 @@
   function updateAppLink() {
     var a = document.getElementById('getapp');
     if (!a) return;
-    var app = IPTV.platform === 'ios' ? ['Outplayer', OUTPLAYER_STORE, 'iptv-outplayer-ok', 'im App Store']
+    var ios = IPTV.platform === 'ios' ? iosApp() : null;
+    var app = ios ? [ios.name, ios.store, ios.ok, 'im App Store']
       : IPTV.platform === 'mac' ? ['IINA', IINA_SITE, 'iptv-iina-ok', 'auf iina.io'] : null;
     var done = true;
     try { done = !app || !!localStorage.getItem(app[2]); } catch (err) { /* privat-Modus: nicht zeigen */ }
@@ -461,10 +477,20 @@
     x.textContent = '✕';
     x.title = 'Leiste ausblenden';
     x.addEventListener('click', function () { localStorage.removeItem(LAST_KEY); render(); });
+    if (IPTV.platform === 'ios') {
+      // gewählte Abspiel-App, antippen = wechseln
+      var pl = document.createElement('button');
+      pl.type = 'button';
+      pl.className = 'qbtn qplayer';
+      pl.textContent = 'mit ' + iosApp().name;
+      pl.title = 'Abspiel-App wechseln';
+      pl.addEventListener('click', function () { playerDialog(false); });
+      bar.appendChild(pl);
+    }
     bar.appendChild(x);
-    // die ersten Male: wie man aus Outplayer zurückkommt
+    // die ersten Male: wie man aus Outplayer zurückkommt (VLC kommt von selbst zurück)
     var hints = +(localStorage.getItem('iptv-backhint') || 0);
-    if (IPTV.platform === 'ios' && hints < 5) {
+    if (IPTV.platform === 'ios' && IPTV.iosPlayer() === 'outplayer' && hints < 5) {
       var h = document.createElement('div');
       h.className = 'qhint';
       h.textContent = 'Zurück aus Outplayer: oben links auf „◀“ tippen – die Liste bleibt, wo sie war.';

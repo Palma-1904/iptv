@@ -38,7 +38,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 31  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 32  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html', '/stick.html': 'stick.html'}
 

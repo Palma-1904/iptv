@@ -158,6 +158,17 @@
   .list button.more { justify-content: center; color: var(--accent); }
   input[type=search] { width: 100%; font: inherit; padding: 12px 14px; border-radius: 12px; border: 0;
     background: var(--panel); color: var(--text); margin-bottom: 10px; }
+  /* Jeder Bereich auf-/zuklappbar (Hülle .sec um die eigentlichen Inhalte, Zustand gemerkt) */
+  .fold > button.head { font-weight: 600; font-size: 17px; align-items: center; padding: 10px 14px; }
+  .sec > button.head .sum { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 15px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
+  .sec.shut > .body { display: none; }
+  .sec:not(.shut) > button.head .sum { display: none; }   /* Kurzinfo nur im zugeklappten Zustand */
+  .sec > .body > .card { padding: 0; margin: 0; background: none; }
+  .sec .list button { background: var(--panel2); }
+  .sec > .body > section > h2, .sec > .body > h2 { display: none; }
+  .foldall { display: flex; gap: 8px; margin: -4px 0 12px; }
+  .foldall button { flex: 1; min-height: 40px; padding: 6px 10px; font-size: 14px; background: var(--panel); }
 </style>
 </head>
 <body>
@@ -165,6 +176,7 @@
 <div id="warn" hidden></div>
 <div class="card" id="conn" hidden></div>
 <select id="devsel" hidden aria-label="Fernseher wählen"></select>
+<div class="foldall" id="foldall" hidden><button data-f="0">▸ Alle zuklappen</button><button data-f="1">▾ Alle aufklappen</button></div>
 <div class="card" id="state"><span class="muted">Verbinde …</span></div>
 <div class="card remote" id="remote" hidden>
   <div class="rrow">
@@ -240,6 +252,77 @@
     else cfg = JSON.parse(localStorage.getItem(KEY) || '{}');
   } catch (e) { /* privater Modus */ }
   var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- Jeder Bereich auf-/zuklappbar (gemerkt je Handy) ----------
+  // Die Inhalte bleiben, wie sie sind; um sie kommt eine Hülle mit Kopfzeile. Ist der Inhalt versteckt oder leer,
+  // verschwindet auch die Hülle. Die übrigen Karten (⚙️, 🔔, 📋, 🖥, 🔗) klappen schon selbst.
+  var SECS = [   // id, Titel, anfangs offen?
+    ['conn', '📡 Wer schaut gerade', false],
+    ['state', '▶ Was läuft', true],
+    ['remote', '🎮 Fernbedienung', true],
+    ['rems', '🔔 Erinnerungen', false],
+    ['list', '📺 Sender', true],
+    ['all', '📺 Alles auf diesem Fernseher', false]
+  ];
+  var secOpen = {};
+  try { secOpen = JSON.parse(localStorage.getItem(KEY + '-open') || '{}') || {}; } catch (e) { /* privat */ }
+  var secs = {};
+  function secSave() { try { localStorage.setItem(KEY + '-open', JSON.stringify(secOpen)); } catch (e) { /* privat */ } }
+  function secSet(id, open) {
+    var x = secs[id];
+    if (!x) return;
+    secOpen[id] = open;
+    x.wrap.classList.toggle('shut', !open);
+    x.arrow.textContent = open ? '▾' : '▸';
+    x.head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  function secTitle(id, t) { if (secs[id]) secs[id].title.textContent = t; }
+  function secSum(id, t) { if (secs[id]) secs[id].sum.textContent = t || ''; }
+  function secSync(id) {
+    var x = secs[id];
+    x.wrap.hidden = x.parts.every(function (el) { return el.hidden || !el.childNodes.length || el.id === 'lhead'; });
+    var any = Object.keys(secs).some(function (k) { return !secs[k].wrap.hidden; });
+    $('foldall').hidden = !any;
+  }
+  SECS.forEach(function (d) {
+    var el = $(d[0]);
+    if (!el) return;
+    var parts = d[0] === 'list' ? [$('lhead'), el] : [el];
+    var wrap = document.createElement('div');
+    wrap.className = 'card fold sec';
+    wrap.hidden = true;
+    var head = document.createElement('button');
+    head.className = 'head';
+    head.type = 'button';
+    var arrow = document.createElement('span'), title = document.createElement('span'), sum = document.createElement('span');
+    title.textContent = d[1];
+    sum.className = 'sum';
+    head.appendChild(arrow); head.appendChild(title); head.appendChild(sum);
+    var body = document.createElement('div');
+    body.className = 'body';
+    parts[0].parentNode.insertBefore(wrap, parts[0]);
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    parts.forEach(function (p) { body.appendChild(p); });
+    secs[d[0]] = { wrap: wrap, head: head, arrow: arrow, title: title, sum: sum, parts: parts };
+    head.onclick = function () { secSet(d[0], wrap.classList.contains('shut')); secSave(); };
+    secSet(d[0], d[0] in secOpen ? !!secOpen[d[0]] : d[2]);
+    var mo = new MutationObserver(function () { secSync(d[0]); });
+    parts.forEach(function (p) { mo.observe(p, { attributes: true, attributeFilter: ['hidden'], childList: true }); });
+    secSync(d[0]);
+  });
+  // „Alle zu/auf“ gilt auch für die Karten, die selbst klappen (über ihre Kopfzeile)
+  Array.prototype.forEach.call($('foldall').querySelectorAll('button'), function (b) {
+    b.onclick = function () {
+      var open = b.getAttribute('data-f') === '1';
+      Object.keys(secs).forEach(function (k) { secSet(k, open); });
+      secSave();
+      ['cfg', 'ntf', 'myl', 'edi', 'adm'].forEach(function (id) {
+        var c = $(id), h = c && !c.hidden && c.querySelector(':scope > button.head');
+        if (h && (h.textContent.charAt(0) === '▾') !== open) h.click();
+      });
+    };
+  });
   if (!/^[A-Za-z0-9_-]{24,64}$/.test(cfg.k || '') ||
       !/^[a-z0-9-]+(\.[a-z0-9-]+)?\.(firebasedatabase\.app|firebaseio\.com)$/.test(cfg.db || '')) {
     $('state').innerHTML = '<span class="err">Kein gültiger Link. Bitte den QR-Code am Fernseher scannen ' +
@@ -467,6 +550,7 @@
       if (old) h += '<button class="state-upd hot" id="stupd">⬆️ Jetzt auf Version ' + latest + ' aktualisieren</button>';
     }
     $('state').innerHTML = h;
+    secSum('state', d.title || STATE[d.state] || '');
     if ($('stupd')) $('stupd').onclick = function () {
       if (confirm('Neue App-Version laden und installieren?')) send('update', {});
     };
@@ -1033,6 +1117,8 @@
           (who.length > 1 ? ' – ⚠️ gleichzeitig, einer bekommt kein Bild' : '') : '<span class="muted">frei</span>') + '</span></div>';
     });
     box.innerHTML = h;
+    var nb = Object.keys(by).reduce(function (n, k) { return n + by[k].length; }, 0);
+    secSum('conn', nb ? nb + ' schaut' + (nb > 1 ? 'en' : '') : 'niemand');
   }
 
   // ---------- 🔔 Benachrichtigungen (nur Haupt-Link): Web-Push vom Mac, Banner + rote Zahl am Symbol ----------
@@ -1585,10 +1671,8 @@
     var box = $('rems');
     box.innerHTML = '';
     var r = remOf(d).slice().sort(function (a, b) { return a.t - b.t; });
+    secSum('rems', r.length ? r.length + '' : '');
     if (!r.length) return;
-    var h = document.createElement('h2');
-    h.textContent = '🔔 Erinnerungen';
-    box.appendChild(h);
     r.forEach(function (x) {
       var b = document.createElement('button');
       b.innerHTML = '<span><span class="t">' + esc(when(x.t)) + '  ' + esc(x.title) + '</span><span class="s">' + esc(x.ch) + '</span></span><span class="x">✕ löschen</span>';
@@ -1605,6 +1689,8 @@
     $('list').innerHTML = '';
     if (!c) return;
     $('lhead').textContent = c.group || 'Sender';
+    secTitle('list', '📺 ' + (c.group || 'Sender'));
+    secSum('list', c.items.length + '');
     c.items.forEach(function (it) {
       $('list').appendChild(channelRow({ norm: it.k, name: it.n, sub: it.now, logo: it.l, progs: it.p, redraw: renderList }));
     });

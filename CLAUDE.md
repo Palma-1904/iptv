@@ -178,6 +178,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   aus `<liste>.s<k>.json`, `loadEps`), Sprachleiste. Quelle: Admin `<kanal>/lists`, Geräte-Link: Stick meldet im
   Handy-Status `m3u` (Adresse der Liste, ab App 80) – vorher nur die eine Gruppe vom Stick (`sender/<gerät>`).
   Der alte Aufklapp-Baum (drawTree/dirButton) ist entfernt.
+  **Jeder Bereich auf-/zuklappbar (ab 15.10. abends, Admin + Geräte-Link)**: Hülle `.sec` (JS `SECS`, `secSet/secSum/
+  secTitle`, MutationObserver: Hülle verschwindet, wenn der Inhalt versteckt/leer ist) um Wer schaut · Was läuft ·
+  Fernbedienung · Erinnerungen · Senderliste · Alles auf diesem Fernseher; zugeklappt zeigt der Kopf eine Kurzinfo
+  (laufender Sender, Anzahl …). Anfangs offen: Was läuft, Fernbedienung, Senderliste; gemerkt je Handy
+  (`iptv-fernbedienung-open`). Oben „Alle zuklappen / Alle aufklappen“ (auch für ⚙️/🔔/📋/🖥/🔗).
   „📋 Link kopieren“ kopiert nur den Link (Anleitungstext nur über „Teilen“). Die Karte heißt „🔗 Links senden“ und
   enthält auch die Handy-Fernbedienung je Fernseher (Geräte-Link `cfg.phone`, ab App 72; Admin-Link nie).
   **🖥 Editor aus der Ferne** (`#edi`, Editor ab VERSION 28): Editor-Thread `remote_editor_loop` holt alle 10 s

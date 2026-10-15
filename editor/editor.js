@@ -740,7 +740,8 @@ function addToPlaylist(items, fallbackGroup) {
 // ---------- Größen-Ampel: wie flüssig die Liste am Fire-TV-Stick läuft ----------
 // Gezählt wie auf dem Gerät: Live-Sender, Film-Fassungen (jede Sprache eine Zeile), Serien (Folgen kommen beim Öffnen).
 // Erfahrung: ein paar hundert Sender + wenige Film-Kategorien laufen flüssig; TKH mit 24 500 Einträgen war zäh.
-const SIZE_GREEN = 3000, SIZE_YELLOW = 8000;
+// Live-Sender wiegen schwerer (Programm, Logo, Ersatz-Fassungen je Sender) als Filme/Serien.
+const SIZE_GREEN = 3000, SIZE_YELLOW = 8000, LIVE_GREEN = 1000, LIVE_YELLOW = 3000;
 function playlistSize(pl) {
   const c = { live: 0, movie: 0, series: 0 };
   const groups = [];
@@ -767,16 +768,18 @@ function playlistSize(pl) {
 }
 function sizeChip(pl) {
   const c = playlistSize(pl);
-  const level = c.total <= SIZE_GREEN ? 'g' : c.total <= SIZE_YELLOW ? 'y' : 'r';
+  const level = c.total <= SIZE_GREEN && c.live <= LIVE_GREEN ? 'g'
+    : c.total <= SIZE_YELLOW && c.live <= LIVE_YELLOW ? 'y' : 'r';
   const label = { g: '🟢 läuft flüssig', y: '🟡 geht noch', r: '🔴 am Stick langsam' }[level];
   const fmt = (n) => n.toLocaleString('de-DE');
   const b = el('button', 'sizechip ' + level, `${label} · ${fmt(c.live)} Sender · ${fmt(c.movie)} Filme · ${fmt(c.series)} Serien`);
   b.type = 'button';
   b.title = 'Größte Gruppen:\n' + c.top.map(([n, k]) => `${fmt(k)}  ${n}`).join('\n');
   b.onclick = () => alert(`Größe der Playlist „${pl.name}“: ${fmt(c.total)} Einträge\n`
-    + `(flüssig bis ${fmt(SIZE_GREEN)}, langsam ab ${fmt(SIZE_YELLOW)})\n\nGrößte Gruppen:\n`
+    + `(flüssig bis ${fmt(LIVE_GREEN)} Live-Sender bzw. ${fmt(SIZE_GREEN)} Einträge, langsam ab ${fmt(LIVE_YELLOW)} bzw. ${fmt(SIZE_YELLOW)})\n\nGrößte Gruppen:\n`
     + c.top.map(([n, k]) => `• ${n}: ${fmt(k)}`).join('\n')
-    + '\n\nTipp: große Sammel-Gruppen (z. B. „Filme 1990–2023“) entfernen oder verkleinern – das macht die Sticks am schnellsten.');
+    + '\n\nTipp: Doppelte entfernen (Werkzeuge → Doppelte Sender) und große Sammel-Gruppen verkleinern – '
+    + 'das macht die Sticks am schnellsten.');
   return b;
 }
 

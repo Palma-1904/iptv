@@ -85,6 +85,9 @@ function countryOf(group) {
   let m = /^[[(|]?\s*([A-Za-z]{2,6})\s*[\])|:\-–]/.exec(g);
   if (m) return COUNTRY_NAMES[m[1].toUpperCase()] || m[1].toUpperCase();
   if (/^24\/7\b/.test(g)) return '24/7';
+  // Streaming-Gruppen ohne Kürzel (TRX: „NETFLIX MOVIES“, „DISNEY+ KIDS“, „APPLE+ MOVIES“) sind mehrsprachig –
+  // bei Serien heißen dieselben Gruppen „|MULTI| NETFLIX …“
+  if (/^(4K\s+)?(NETFLIX|DISNEY\s*\+|APPLE\s*\+)/i.test(g)) return 'MULTI';
   m = /^([A-Za-zÄÖÜäöü]+)/.exec(g);
   return (m && COUNTRY_NAMES[m[1].toUpperCase()]) || '—';
 }
@@ -225,6 +228,7 @@ async function loadCatalog(id, force, keys) {
       const t = parseTitle(it.name);
       it.title = t.title;
       it.lang = t.lang || (it.cc !== '—' && it.cc) || t.suffix || '?';
+      if (it.cc === 'MULTI' && /^(NF|DP|AP)$/.test(it.lang)) it.lang = 'MULTI';   // „NF - Titel“ = Netflix, keine Sprache
       it.q = qualityOf(it);
       it._t = t;
       vod.push(it);

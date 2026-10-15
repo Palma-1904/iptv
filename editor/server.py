@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import ssl
 import sys
 import threading
@@ -36,7 +37,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 27  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 28  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -2134,10 +2135,100 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({'error': f'Interner Fehler: {type(e).__name__}: {e}'}, 500)
 
 
+# ---------- Editor aus der Ferne (Admin-Fernbedienung): Aufträge über Firebase ----------
+# Die Admin-Seite schreibt nach <kanal>/editor/inbox/<id> = {action, arg, t}; der Editor holt alle 10 s ab,
+# führt aus und löscht. Stand nach <kanal>/editor/status (bei Änderung, sonst jede Minute): Mac, Aufgabe,
+# nicht gepushte Commits, Push-Stand. Nur solange der Editor auf einem Mac läuft.
+REMOTE_ACTIONS = ('publish', 'check', 'push', 'ping')
+REMOTE_LOG = {}
+
+
+def remote_editor_status():
+    st = load_settings()
+    ahead = None
+    try:
+        r = git('rev-list', '--count', '@{u}..HEAD', timeout=10)
+        ahead = int(r.stdout.strip()) if r.returncode == 0 else None
+    except Exception:
+        pass
+    job = {k: JOB.get(k) for k in ('running', 'label', 'step', 'done', 'total', 'error', 'finished', 'pl') if JOB.get(k) is not None}
+    app = APP_STATUS.get('data') or {}
+    return {
+        'host': socket.gethostname().replace('.local', ''), 'ver': VERSION, 'ahead': ahead,
+        'job': job, 'push': dict(APP_PUSH), 'online': app.get('online'), 'run': app.get('run'),
+        'lists': [{'id': p['id'], 'name': p.get('name') or p['id']} for p in load_state().get('playlists', [])],
+        'auto': st.get('autoResult') or '', 'log': dict(REMOTE_LOG),
+    }
+
+
+def remote_editor_run(cmd):
+    """Einen Auftrag von der Admin-Seite ausführen (Jobs laufen wie aus der Oberfläche im Hintergrund)."""
+    action, arg = cmd.get('action'), cmd.get('arg') or {}
+    if action == 'ping':
+        return 'Editor antwortet ✓'
+    if action == 'publish':
+        ids = [i for i in (arg.get('ids') or []) if isinstance(i, str)]
+        names = [p.get('name') for p in load_state()['playlists'] if p['id'] in ids]
+        start_job('publish', 'Veröffentlichen' + (f' „{", ".join(names)}“' if names else ' (alle)') + ' – vom Handy',
+                  lambda: publish(ids))
+        return 'Veröffentlichen gestartet'
+    if action == 'check':
+        pid = arg.get('id')
+        name = find(load_state()['playlists'], pid, 'Playlist').get('name')
+        start_job('check', f'Sender prüfen „{name}“ – vom Handy', lambda: check_playlist(pid, None, False))
+        return f'Sender prüfen „{name}“ gestartet'
+    if action == 'push':
+        git_push(bool(arg.get('updateDevices')))
+        return 'Gepusht – GitHub baut die App' + (' (danach Update an alle Geräte)' if arg.get('updateDevices') else '')
+    raise UserError('Unbekannter Auftrag')
+
+
+def remote_editor_loop():
+    last, last_t = None, 0
+    while True:
+        time.sleep(10)
+        try:
+            st, base = load_settings(), fb_base()
+            topic = st.get('remoteTopic')
+            if not base or not topic:
+                continue
+            url = f'{base}{topic}/editor'
+            inbox = json.loads(fetch(f'{url}/inbox.json', timeout=20) or b'null') or {}
+            for cid, cmd in sorted(inbox.items(), key=lambda kv: (kv[1] or {}).get('t', 0) if isinstance(kv[1], dict) else 0):
+                with http(f'{url}/inbox/{cid}.json', method='DELETE', timeout=20):
+                    pass
+                if not isinstance(cmd, dict) or cmd.get('action') not in REMOTE_ACTIONS:
+                    continue
+                if time.time() - (cmd.get('t') or 0) > 600:      # älter als 10 min (Editor lief nicht): verwerfen
+                    continue
+                try:
+                    msg, ok = remote_editor_run(cmd), True
+                except UserError as e:
+                    msg, ok = str(e), False
+                except Exception as e:
+                    msg, ok = f'Interner Fehler: {type(e).__name__}: {e}', False
+                REMOTE_LOG.clear()
+                REMOTE_LOG.update(t=int(time.time()), action=cmd.get('action'), ok=ok, msg=msg[:400])
+            if time.time() - APP_STATUS.get('t', 0) > 300:    # Online-Version/Bau höchstens alle 5 min (GitHub-Limit)
+                try:
+                    app_status()
+                except Exception:
+                    pass
+            status = remote_editor_status()
+            if status != last or time.time() - last_t > 60:
+                body = dict(status, t=int(time.time()))
+                with http(f'{url}/status.json', data=json.dumps(body).encode(), method='PUT', timeout=20):
+                    pass
+                last, last_t = status, time.time()
+        except Exception:
+            pass                                             # Netz weg o. Ä.: beim nächsten Mal wieder
+
+
 def main():
     remove_separators()
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     threading.Thread(target=auto_publish_loop, daemon=True).start()
+    threading.Thread(target=remote_editor_loop, daemon=True).start()
     url = f'http://localhost:{PORT}/'
     print(f'Playlist-Editor läuft: {url}  (Beenden mit Ctrl+C)')
     if '--no-browser' not in sys.argv:

@@ -168,6 +168,12 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   pausiert, nicht Standby, Meldung < 15 min; Webapp-Geräte melden sich nicht) + Warnung bei Doppelbelegung einer
   Liste; aufklappbar „🔗 Webapp-Links senden“ (`#adm`, `renderAdm`): je Liste Teilen (navigator.share, Text mit
   Kurzanleitung), Kopieren, QR (qrcode-generator 1.4.4 von cdnjs, erst bei Bedarf). Aufklappkarten: Klasse `.fold`.
+  **🖥 Editor aus der Ferne** (`#edi`, Editor ab VERSION 28): Editor-Thread `remote_editor_loop` holt alle 10 s
+  `<kanal>/editor/inbox` ab (publish {ids}, check {id}, push {updateDevices}, ping; älter als 10 min = verworfen),
+  löscht sie, schreibt `<kanal>/editor/status` (Mac-Name, Version, laufende Aufgabe, `ahead` = nicht gepushte
+  Commits, Push-Stand, Online-Version/Bau höchstens alle 5 min wegen GitHub-Limit, Listen, Nacht-Ergebnis, letzte
+  Rückmeldung `log`). Admin-Seite zeigt „🟢 läuft auf …/⚪ aus“, Knöpfe nur wenn online (Status < 90 s alt) und keine
+  Aufgabe läuft. Getestet 15.10. mit Test-Editor (Veröffentlichen vom Handy ✓, Push gestubbt).
 - **Selbst-ADB geht nicht** (getestet 9.10.2026, Wohnzimmer Fire OS 6): App verband sich mit dem eigenen adbd
   (127.0.0.1 und eigene WLAN-IP, Port 5555) → adbd schließt sofort (EOF), vom Mac aus klappt dasselbe Protokoll.
   Fire OS sperrt ADB-Verbindungen vom Gerät selbst. Wieder entfernt (Revert). Außerdem: Fire OS erlaubt nur EINE
@@ -258,7 +264,7 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   geheimen Schlüssel je Playlist, sofort auf allen Geräten der Playlist (oben in der Übersicht); Stick mit Freigabe:
   OK lang → „Zu Liste hinzufügen / ＋ Neue Liste“. Webapp zeigt sie als Kategorien, Bearbeiten nur wenn für die
   Playlist freigegeben. Admin-Webapp bearbeitet alle Listen.
-- **Admin-Webapp** (Thomas 15.10., alle vier gewünscht; (1) und (2) erledigt): (1) Links senden – Webapp-Link je Playlist per
+- **Admin-Webapp** (Thomas 15.10., alle vier gewünscht; (1)–(3) erledigt): (1) Links senden – Webapp-Link je Playlist per
   Teilen (WhatsApp/iMessage), QR, Kurzanleitung; (2) Wer schaut womit – Belegung je Zugang, Warnung bei
   Doppelbelegung; (3) Editor aus der Ferne – Veröffentlichen, Sender prüfen **und Pushen** vom Handy (Editor holt
   Aufträge über Firebase ab, nur solange er auf einem Mac läuft); (4) Zeitpläne je Stick (aus/an, Schlaf-Timer).

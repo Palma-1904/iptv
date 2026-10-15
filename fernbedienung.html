@@ -113,6 +113,11 @@
   #conn .z { display: flex; gap: 8px; margin: 3px 0; }
   #conn .z b { flex: none; width: 46px; }
   #conn .z.busy2 { color: var(--bad); font-weight: 600; }
+  .fold .eb { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+  .fold .eb button { flex: 1 1 45%; min-height: 48px; font-size: 15px; }
+  .fold .eb button.hot { flex-basis: 100%; }
+  .fold .elog { font-size: 14px; margin: 4px 0 8px; }
+  .fold .elog.bad { color: var(--bad); }
   .fold .lk { background: var(--panel2); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
   .fold .lk .row2 { display: flex; gap: 8px; margin-top: 8px; }
   .fold .lk .row2 button { flex: 1; min-height: 46px; background: var(--panel); }
@@ -168,6 +173,7 @@
   <input type="search" id="q" placeholder="Sender, Film oder Serie suchen …" hidden>
   <div class="list" id="tree"></div>
 </section>
+<div class="card fold" id="edi" hidden></div>
 <div class="card fold" id="adm" hidden></div>
 <p class="muted" id="foot"></p>
 <div class="toast" id="toast"></div>
@@ -396,6 +402,7 @@
     updLive();
     renderCfg(d);
     renderConn(ids);
+    renderEdi();
     renderAdm();
     renderRems(d);
     renderList();
@@ -742,6 +749,105 @@
           (who.length > 1 ? ' – ⚠️ gleichzeitig, einer bekommt kein Bild' : '') : '<span class="muted">frei</span>') + '</span></div>';
     });
     box.innerHTML = h;
+  }
+
+  // ---------- Editor aus der Ferne (nur Haupt-Link): Veröffentlichen, Sender prüfen, Pushen ----------
+  // Der Editor (auf einem Mac) meldet <kanal>/editor/status und holt <kanal>/editor/inbox alle 10 s ab.
+  var edi = null, ediOpen = false, ediSrc = null;
+  function ediOnline() { return edi && Date.now() / 1000 - (edi.t || 0) < 90; }
+  function ediSend(action, arg, what) {
+    return fetch(BASE + 'editor/inbox.json', {
+      method: 'POST', body: JSON.stringify({ action: action, arg: arg || {}, t: Math.floor(Date.now() / 1000) })
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      toast((what || 'Auftrag') + ' geschickt – der Editor übernimmt in ≤ 10 s');
+    }).catch(function (e) { toast('Nicht gesendet: ' + e.message); });
+  }
+  function renderEdi() {
+    var box = $('edi');
+    box.hidden = !lists;
+    if (!lists) return;
+    if (!ediSrc) ediSrc = live(BASE + 'editor/status.json', function (path, data, merge) {
+      edi = apply(edi || {}, path, data, merge);
+      renderEdi();
+    });
+    var on = ediOnline(), job = (edi && edi.job) || {};
+    box.innerHTML = '';
+    var head = document.createElement('button');
+    head.className = 'head';
+    head.innerHTML = '<span>' + (ediOpen ? '▾' : '▸') + '</span><span>🖥 Editor: ' +
+      (on ? (job.running ? '⏳ ' + esc(job.label || 'arbeitet') : '🟢 läuft auf ' + esc(edi.host || 'Mac')) : '⚪ aus') +
+      (on && edi.ahead ? ' · ' + edi.ahead + ' nicht gepusht' : '') + '</span>';
+    head.onclick = function () { ediOpen = !ediOpen; renderEdi(); };
+    box.appendChild(head);
+    if (!ediOpen) return;
+    var body = document.createElement('div');
+    body.className = 'body';
+    function line(html, cls) {
+      var p = document.createElement('div');
+      p.className = cls || 'muted';
+      p.innerHTML = html;
+      body.appendChild(p);
+    }
+    function btns(list) {
+      var row = document.createElement('div');
+      row.className = 'eb';
+      list.forEach(function (b) {
+        var el = document.createElement('button');
+        el.textContent = b[0];
+        if (b[2]) el.className = b[2];
+        el.disabled = !on || !!job.running;
+        el.onclick = b[1];
+        row.appendChild(el);
+      });
+      body.appendChild(row);
+    }
+    if (!on) {
+      line('Der Editor läuft gerade auf keinem Mac' + (edi && edi.t ? ' (zuletzt ' + new Date(edi.t * 1000).toLocaleString('de-DE') + ')' : '') +
+        '. Aufträge gehen nur, solange er läuft: am Mac „Start-Editor.command“.');
+      box.appendChild(body);
+      return;
+    }
+    line('Läuft auf <b>' + esc(edi.host) + '</b> · Editor-Version ' + esc(edi.ver));
+    if (job.running) {
+      line('⏳ ' + esc(job.label) + (job.pl ? ' · ' + esc(job.pl) : '') + ' – ' + esc(job.step || '') +
+        (job.total ? ' (' + (job.done || 0) + '/' + job.total + ')' : ''), 'elog');
+    } else if (job.error && job.finished && Date.now() / 1000 - job.finished < 1800) {
+      line('✕ ' + esc(job.label) + ': ' + esc(job.error), 'elog bad');
+    } else if (job.label && job.finished && Date.now() / 1000 - job.finished < 1800) {
+      line('✓ ' + esc(job.label) + ' fertig (' + hhmm(job.finished) + ')', 'elog');
+    }
+    var lg = edi.log || {};
+    if (lg.msg && Date.now() / 1000 - lg.t < 1800) line((lg.ok ? '↩ ' : '✕ ') + esc(lg.msg), 'elog' + (lg.ok ? '' : ' bad'));
+    // App: online-Version, nicht gepushte Änderungen, Pushen
+    var push = edi.push || {};
+    line('📦 App online: <b>' + esc(edi.online || '?') + '</b>' +
+      (edi.run && edi.run.status !== 'completed' ? ' · GitHub baut gerade App ' + esc(edi.run.number) : '') +
+      ' · ' + (edi.ahead ? '<b>' + edi.ahead + '</b> Änderung' + (edi.ahead > 1 ? 'en' : '') + ' nicht gepusht' : 'alles gepusht ✓') +
+      (push.msg ? '<br>' + esc(push.msg) : ''));
+    if (edi.ahead) btns([
+      ['⇪ Jetzt pushen (' + edi.ahead + ')', function () {
+        if (confirm('Änderungen pushen? GitHub baut daraus eine neue App-Version (die Sticks holen sie sich selbst).')) ediSend('push', {}, 'Pushen');
+      }],
+      ['⇪ Pushen + alle Geräte aktualisieren', function () {
+        if (confirm('Pushen, auf den Bau warten und dann allen Geräten „Update“ schicken?')) ediSend('push', { updateDevices: true }, 'Pushen');
+      }]
+    ]);
+    // Listen: veröffentlichen und Sender prüfen
+    btns([['📤 Alle Listen veröffentlichen', function () {
+      if (confirm('Alle Listen veröffentlichen (Senderlisten + Programm neu hochladen)?')) ediSend('publish', { ids: [] }, 'Veröffentlichen');
+    }, 'hot']]);
+    (edi.lists || []).forEach(function (l) {
+      btns([
+        ['📤 ' + l.name + ' veröffentlichen', function () { ediSend('publish', { ids: [l.id] }, 'Veröffentlichen ' + l.name); }],
+        ['🔍 ' + l.name + ' Sender prüfen', function () {
+          if (confirm('Sender der Liste ' + l.name + ' prüfen? Belegt einige Minuten die Verbindung – Fernseher dieser Liste sind solange gestört.'))
+            ediSend('check', { id: l.id }, 'Sender prüfen ' + l.name);
+        }]
+      ]);
+    });
+    if (edi.auto) line('🌙 Nachts: ' + esc(edi.auto));
+    box.appendChild(body);
   }
 
   // ---------- Verwaltung (nur Haupt-Link): Webapp-Links für iPhone/iPad/Mac verschicken ----------

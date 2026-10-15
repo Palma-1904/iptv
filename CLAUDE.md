@@ -340,6 +340,11 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 - Jeder Push = neue App-Version (auch bei reinen Editor-/Notiz-Änderungen) → Änderungen gesammelt pushen.
 
 ## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
+- **15.10. abends – Kategorien nachladen versucht, verworfen**: Filme/Serien je Kategorie in `<liste>.g<k>.m3u`
+  (Startdatei TKH 6,8 → 0,74 MB, Baum 5 → 1 MB) – im Browser gut, am Wohnzimmer-Stick (Fire OS 6) aber gefühlt nicht
+  schneller und die Suche viel langsamer (lud alle 61 Kategorien einzeln). Code liegt im git stash. **Thomas'
+  Entscheidung: Listen von Anfang an kleiner machen – es muss flüssig laufen.** Ursache der Langsamkeit am Stick
+  nicht gemessen (WebView-Konsole landet nicht im Logcat) → bei Bedarf Debug-Bau mit Zeitmessung in Java.
 - **Zurückgestellt (Thomas 15.10.: „brauchen wir gerade nicht“)**: „intelligente Listen“ im Editor – Regel-Gruppen
   (Anbieter-Gruppe/Suchwort, füllt sich beim Veröffentlichen; bestehende Gruppen nur auf Wunsch umstellen, eigene
   Namen/Reihenfolge/„nie aufnehmen“ bleiben), „⚽ Heute live“ aus dem EPG, „🆕 Neu dazugekommen“, „📈 Am meisten

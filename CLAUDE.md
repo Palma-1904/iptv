@@ -195,6 +195,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Remote.java `recentJson/favJson`, auch im Handy-Status; **ab App 83**). Admin: **„📺 Alle Fernseher“** (`#ov`,
   `renderOv`: eine Zeile je Stick mit Zustand, Sender, ⬆️/⚠️; antippen = wählen; Auswahlliste nur, wenn zugeklappt)
   und **„🛠 Verwaltung“** fasst 🔔/📋/🖥/🔗 zusammen (Hülle mit mehreren Teilen, Klasse `.sec.group`).
+  **Leiste unten verdeckt nichts** (Thomas): Platz ist fest reserviert, solange es eine Fernbedienung gibt (`hasq` an
+  body/html, Höhe `--qbh` gemessen, `scroll-padding-bottom`), Hinweise darüber, beim Tippen in Felder Leiste weg
+  (`typing`). 🔔-Programm klappt nur in seiner Zeile auf (`progBox`, kein Neuzeichnen) und `reveal()` schiebt
+  Aufgeklapptes (auch Serien) über die Leiste, Kopf bleibt sichtbar. `overflow-anchor: none` auf #tree/#list/#rems
+  (Neuzeichnen ließ die Seite sonst springen).
   „📋 Link kopieren“ kopiert nur den Link (Anleitungstext nur über „Teilen“). Die Karte heißt „🔗 Links senden“ und
   enthält auch die Handy-Fernbedienung je Fernseher (Geräte-Link `cfg.phone`, ab App 72; Admin-Link nie).
   **🖥 Editor aus der Ferne** (`#edi`, Editor ab VERSION 28): Editor-Thread `remote_editor_loop` holt alle 10 s

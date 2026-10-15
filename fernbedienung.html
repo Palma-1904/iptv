@@ -175,8 +175,14 @@
     box-shadow: 0 -2px 12px rgba(0, 0, 0, .18); }
   .qbar button { flex: 1; max-width: 110px; min-height: 50px; font-size: 22px; padding: 6px; }
   .qbar button.ok { background: var(--accent); color: #fff; font-size: 17px; font-weight: 700; }
-  body.hasq { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
-  body.hasq .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  /* Platz für die Leiste ist fest reserviert, solange es eine Fernbedienung gibt (auch wenn die Leiste gerade nicht
+     zu sehen ist): die Seite endet an der Oberkante der Leiste, nichts verschwindet dauerhaft dahinter, nichts springt */
+  body.hasq { padding-bottom: calc(var(--qbh, 74px) + 16px); }
+  html.hasq { scroll-padding-bottom: calc(var(--qbh, 74px) + 12px); }   /* Aufgeklapptes/Eingaben über der Leiste */
+  body.hasq .toast { bottom: calc(var(--qbh, 74px) + 10px); }
+  body.typing .qbar { display: none; }
+  /* Listen werden beim Aktualisieren neu gezeichnet: die Scroll-Verankerung des Browsers würde dabei springen */
+  #tree, #list, #rems { overflow-anchor: none; }   /* Tastatur offen: Leiste weg, damit sie nicht über dem Eingabefeld hängt */
   .foldall { display: flex; gap: 8px; margin: -4px 0 12px; }
   .foldall button { flex: 1; min-height: 40px; padding: 6px 10px; font-size: 14px; background: var(--panel); }
 </style>
@@ -822,7 +828,7 @@
     var head = document.createElement('button');
     head.className = 'dir' + (open ? ' open' : '');
     head.innerHTML = '<span class="arrow">' + (open ? '▾' : '▸') + '</span><span><span class="t">' + esc(name) + '</span></span><span class="c">' + n + '</span>';
-    head.onclick = function () { bOpen = open ? null : name; drawBrowse(); };
+    head.onclick = function () { bOpen = open ? null : name; revealKey = bOpen; drawBrowse(); };
     wrap.appendChild(head);
     if (!open) return wrap;
     var eb = document.createElement('div');
@@ -831,6 +837,7 @@
     wrap.appendChild(eb);
     loadEps(data, items).then(function (eps) {
       eb.innerHTML = '';
+      if (revealKey === name) { revealKey = null; reveal(wrap); }
       var langs = [];
       eps.forEach(function (e) { if (langs.indexOf(e.lang) < 0) langs.push(e.lang); });
       var cur = bLang[name] && langs.indexOf(bLang[name]) >= 0 ? bLang[name] : langs[0];
@@ -1703,6 +1710,19 @@
     send('remind', { norm: norm, ch: ch, t: p[0], title: p[2], on: on }, true);
     toast(on ? '🔔 Erinnerung: ' + when(p[0]) + ' „' + p[2] + '“' : 'Erinnerung gelöscht');
   }
+  // Gerade Aufgeklapptes ganz zeigen: ragt es unter die Leiste unten, so weit hochschieben, dass es darüber steht
+  // (oben bleibt der Kopf sichtbar). Nur direkt nach dem Antippen, nicht bei jedem Neuzeichnen.
+  var revealKey = null;
+  function reveal(el) {
+    setTimeout(function () {   // nach dem Zeichnen messen
+      if (!el || !el.isConnected) return;
+      var r = el.getBoundingClientRect();
+      var bar = document.body.classList.contains('hasq') ? (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--qbh'), 10) || 74) + 12 : 12;
+      var over = r.bottom - (innerHeight - bar);
+      if (r.top < 60) window.scrollBy({ top: r.top - 70, behavior: 'smooth' });   // Kopf oben verschwunden: zurückholen
+      else if (over > 1) window.scrollBy({ top: Math.min(over, r.top - 70), behavior: 'smooth' });
+    }, 30);
+  }
   // Zeile eines Senders: antippen = umschalten, 🔔 = Programm zum Erinnern auf-/zuklappen
   function channelRow(o) {
     var d = devices[sel] || {};
@@ -1723,11 +1743,23 @@
       bell.className = 'bell' + (bellOpen === o.norm ? ' open' : '') + (has ? ' set' : '');
       bell.textContent = '🔔';
       bell.title = 'An eine Sendung erinnern';
-      bell.onclick = function () { bellOpen = bellOpen === o.norm ? null : o.norm; o.redraw(); };
+      bell.onclick = function () {   // nur diese Zeile auf-/zuklappen (nicht die ganze Liste neu zeichnen)
+        var open = bellOpen !== o.norm;
+        bellOpen = open ? o.norm : null;
+        document.querySelectorAll('.bell.open').forEach(function (x) {
+          x.classList.remove('open');
+          var pb = x.closest('.row') && x.closest('.row').nextElementSibling;
+          if (pb && pb.className === 'prog') pb.remove();
+        });
+        if (!open) return;
+        bell.classList.add('open');
+        wrap.appendChild(progBox());
+        reveal(wrap);
+      };
       row.appendChild(bell);
     }
     wrap.appendChild(row);
-    if (bellOpen === o.norm && progs.length) {
+    function progBox() {
       var box = document.createElement('div');
       box.className = 'prog';
       var hint = document.createElement('p');
@@ -1744,8 +1776,9 @@
         else pb.onclick = function () { remind(o.norm, o.name, p, !on); };
         box.appendChild(pb);
       });
-      wrap.appendChild(box);
+      return box;
     }
+    if (bellOpen === o.norm && progs.length) wrap.appendChild(progBox());   // offen geblieben beim Neuzeichnen
     return wrap;
   }
   function renderRems(d) {
@@ -1882,8 +1915,21 @@
     var r = $('remote'), shut = secs.remote && secs.remote.wrap.classList.contains('shut');
     var show = !r.hidden && (shut || !padSeen);
     $('qbar').hidden = !show;
-    document.body.classList.toggle('hasq', show);
+    document.body.classList.toggle('hasq', !r.hidden);
+    document.documentElement.classList.toggle('hasq', !r.hidden);
+    var h = $('qbar').offsetHeight;   // echte Höhe (mit Rand unten am iPhone)
+    if (h) document.documentElement.style.setProperty('--qbh', h + 'px');
   }
+  window.addEventListener('resize', updQbar);
+  // Beim Tippen in ein Feld (Suche, Nachricht, Zeitplan) die Leiste ausblenden und das Feld über ihr halten
+  var isField = function (el) { return el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && el.type !== 'checkbox'; };
+  document.addEventListener('focusin', function (ev) {
+    if (!isField(ev.target)) return;
+    document.body.classList.add('typing');
+  });
+  document.addEventListener('focusout', function () {
+    setTimeout(function () { if (!isField(document.activeElement)) document.body.classList.remove('typing'); }, 50);
+  });
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(function (es) { padSeen = es[0].isIntersecting; updQbar(); })
       .observe(document.querySelector('#remote .dpad'));

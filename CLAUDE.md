@@ -342,5 +342,15 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   (`…/raw/<rev>/datei`, sofort, ohne 5-min-Cache; `IPTV.refreshTo`, 20 min gültig) im Hintergrund ohne Unterbrechung.
 - Vor dem Abziehen der SSD: Terminal-Fenster von Editor/Webapp und die Claude-Sitzung schließen.
 
+## IPTV-Automatik (macOS-Hintergrunddienst, ab 15.10.)
+- `Automatik-einrichten.command` (einmal je Mac, an/aus/testen): legt `~/Library/LaunchAgents/de.iptv.automatik.plist`
+  (StartInterval 3600, RunAtLoad, niedrige Priorität) und `~/Library/Application Support/IPTV/automatik.sh` an (prüft,
+  ob die SSD da ist; Pfad beim Einrichten eingetragen). Protokoll `~/Library/Logs/iptv-automatik.log`.
+- `editor/auto_publish.py [--force] [--dry-run]`: Programm (ältestes `generated` der `<liste>.epg.json`) älter als
+  6 h → alle Listen veröffentlichen. Läuft der Editor (8790): Auftrag per `/api/publish` (beschäftigt → nächstes Mal),
+  sonst selbst `server.publish([])` mit Sperre `editor/data/auto_publish.lock`; schreibt `autoResult`.
+  Kurzlebig → blockiert das Auswerfen der SSD nicht. macOS fragt evtl. einmal nach Zugriff auf Wechseldatenträger.
+  Getestet 15.10.: Probelauf echte Daten, Veröffentlichen in Test-Kopie, Übergabe an (Schein-)Editor frei/beschäftigt.
+
 ## Testen lokal
 `Start-Webapp.command` (Port 8765, auch im WLAN), `Start-Editor.command` (Port 8790, beendet alten Editor vorher).

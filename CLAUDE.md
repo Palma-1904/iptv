@@ -350,8 +350,12 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
 
 ## IPTV-Automatik (macOS-Hintergrunddienst, ab 15.10.)
 - `Automatik-einrichten.command` (einmal je Mac, an/aus/testen): legt `~/Library/LaunchAgents/de.iptv.automatik.plist`
-  (StartInterval 3600, RunAtLoad, niedrige Priorität) und `~/Library/Application Support/IPTV/automatik.sh` an (prüft,
+  (StartInterval 3600, RunAtLoad, niedrige Priorität) und `~/Library/Application Support/IPTV/automatik.py` an (prüft,
   ob die SSD da ist; Pfad beim Einrichten eingetragen). Protokoll `~/Library/Logs/iptv-automatik.log`.
+  **macOS-Rechte**: Hintergrunddienste dürfen ohne Erlaubnis nicht auf externe Laufwerke („Operation not permitted“,
+  ein Fenster erscheint nicht). Darum startet der Dienst direkt `…/Python3.framework/Versions/3.9/Resources/Python.app`
+  (`sys.base_prefix`), und Thomas schaltet für „Python“ einmal **Festplattenvollzugriff** ein (Skript öffnet die
+  Einstellung + Finder). Erste Fassung über /bin/bash (15.10.) scheiterte daran; das Skript erkennt und erneuert sie.
 - `editor/auto_publish.py [--force] [--dry-run]`: Programm (ältestes `generated` der `<liste>.epg.json`) älter als
   6 h → alle Listen veröffentlichen. Läuft der Editor (8790): Auftrag per `/api/publish` (beschäftigt → nächstes Mal),
   sonst selbst `server.publish([])` mit Sperre `editor/data/auto_publish.lock`; schreibt `autoResult`.

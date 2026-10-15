@@ -7,14 +7,20 @@ cd "$(dirname "$0")" || exit 1
 ROOT="$PWD"
 LABEL=de.iptv.automatik
 SUPPORT="$HOME/Library/Application Support/IPTV"
-LAUNCHER="$SUPPORT/automatik.sh"
+LAUNCHER="$SUPPORT/automatik.py"
+# Das eigentliche Programm hinter python3 (macOS fragt Rechte für diese App ab, nicht für „python3“)
+PYAPP="$(/usr/bin/python3 -c 'import sys; print(sys.base_prefix)')/Resources/Python.app"
+PYBIN="$PYAPP/Contents/MacOS/Python"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/iptv-automatik.log"
 
 echo
 echo "IPTV-Automatik (Programm und Listen automatisch aktuell halten)"
 echo "==============================================================="
-if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
+# Alte Fassung (Start über bash, ohne SSD-Zugriff) oder Neu-Einrichten gewünscht: neu anlegen
+OLDVER=""
+grep -q "/bin/bash" "$PLIST" 2>/dev/null && OLDVER=1
+if [ -z "$OLDVER" ] && launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
   echo "Status: EINGESCHALTET auf diesem Mac."
   echo
   read -r -p "a = ausschalten, t = jetzt testen, Enter = so lassen: " A
@@ -25,8 +31,9 @@ if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
       echo "✅ Ausgeschaltet."
       ;;
     t|T)
-      echo "Teste (veröffentlicht nur, wenn das Programm älter als 6 Stunden ist) …"
-      /bin/bash "$LAUNCHER"
+      echo "Teste über den Hintergrunddienst (veröffentlicht nur, wenn das Programm älter als 6 Stunden ist) …"
+      launchctl kickstart -k "gui/$(id -u)/$LABEL"
+      sleep 8
       tail -n 8 "$LOG"
       ;;
   esac
@@ -35,7 +42,7 @@ if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "Status: aus."
+[ -n "$OLDVER" ] && echo "Status: ältere Fassung eingerichtet (ohne Zugriff auf die SSD) – wird jetzt erneuert." || echo "Status: aus."
 echo
 echo "Eingeschaltet schaut der Mac stündlich nach und veröffentlicht alle Listen neu, sobald das Programm"
 echo "älter als 6 Stunden ist – nur wenn diese SSD angesteckt ist. Sie müssen dafür nichts öffnen."
@@ -44,15 +51,31 @@ read -r -p "Einschalten? j = ja (Enter), n = nein: " J
 case "$J" in n|N) echo "Nichts geändert."; read -r -p "Enter drücken zum Schließen …" _; exit 0 ;; esac
 
 mkdir -p "$SUPPORT" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-# Startskript auf dem Mac selbst (nicht auf der SSD): prüft, ob die SSD da ist
+# Startprogramm auf dem Mac selbst (nicht auf der SSD): prüft, ob die SSD da ist, dann auto_publish.py
+[ -x "$PYBIN" ] || { echo "❌ Python nicht gefunden ($PYBIN) – zuerst Einrichten-neuer-Mac.command."; read -r -p "Enter …" _; exit 1; }
 cat > "$LAUNCHER" <<EOF
-#!/bin/bash
 # IPTV-Automatik – angelegt von Automatik-einrichten.command
-P="$ROOT"
-[ -f "\$P/editor/auto_publish.py" ] || exit 0          # SSD nicht angesteckt: nichts tun
-cd "\$P/editor" && exec /usr/bin/python3 auto_publish.py >> "$LOG" 2>&1
+import os, runpy, sys, time
+P = """$ROOT/editor"""
+LOG = """$LOG"""
+out = open(LOG, 'a')
+sys.stdout = sys.stderr = out
+if not os.path.isdir(os.path.dirname(os.path.dirname(P))):
+    sys.exit(0)                                   # SSD nicht angesteckt: nichts tun
+try:
+    os.listdir(P)
+except PermissionError:
+    print(time.strftime('%d.%m. %H:%M:%S'), 'Kein Zugriff auf die SSD – Systemeinstellungen → Datenschutz & Sicherheit → '
+          'Festplattenvollzugriff → „Python“ einschalten (Automatik-einrichten.command zeigt, wie).', flush=True)
+    sys.exit(0)
+except OSError:
+    sys.exit(0)
+os.chdir(P)
+sys.path.insert(0, P)
+sys.argv = ['auto_publish.py']
+runpy.run_path('auto_publish.py', run_name='__main__')
 EOF
-chmod +x "$LAUNCHER"
+rm -f "$SUPPORT/automatik.sh"   # alte Fassung (über bash) – macOS ließ sie nicht auf die SSD
 
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -61,7 +84,7 @@ cat > "$PLIST" <<EOF
 <dict>
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key>
-  <array><string>/bin/bash</string><string>$LAUNCHER</string></array>
+  <array><string>$PYBIN</string><string>$LAUNCHER</string></array>
   <key>StartInterval</key><integer>3600</integer>
   <key>RunAtLoad</key><true/>
   <key>LowPriorityIO</key><true/>
@@ -73,11 +96,27 @@ EOF
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null
 if launchctl bootstrap "gui/$(id -u)" "$PLIST"; then
   echo
-  echo "✅ Eingeschaltet. Erster Lauf jetzt – Protokoll:"
-  sleep 4
-  tail -n 6 "$LOG" 2>/dev/null
+  echo "✅ Eingeschaltet."
   echo
-  echo "Hinweis: Fragt macOS, ob „python3“ auf einen Wechseldatenträger zugreifen darf → Erlauben."
+  echo "Jetzt EINMALIG den Zugriff auf die SSD erlauben (macOS fragt Hintergrunddienste nicht selbst):"
+  echo "  1. Es öffnen sich die Systemeinstellungen (Festplattenvollzugriff) und ein Finder-Fenster mit „Python“."
+  echo "  2. „Python“ aus dem Finder-Fenster in die Liste ziehen (oder unten „+“ und Python wählen)."
+  echo "  3. Den Schalter bei „Python“ einschalten (Passwort/Touch ID bestätigen)."
+  echo "  Hinweis: Das gilt für das Python der Entwicklerwerkzeuge – damit darf die Automatik die SSD lesen."
+  open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles" 2>/dev/null \
+    || open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+  open -R "$PYAPP"
+  echo
+  read -r -p "Wenn erledigt: Enter drücken – dann teste ich gleich …" _
+  launchctl kickstart -k "gui/$(id -u)/$LABEL"
+  sleep 10
+  echo
+  tail -n 6 "$LOG" 2>/dev/null
+  if tail -n 3 "$LOG" 2>/dev/null | grep -qE "Kein Zugriff|not permitted"; then
+    echo; echo "⚠️  Noch kein Zugriff – Schalter bei „Python“ prüfen, dann dieses Skript erneut starten und „t“ wählen."
+  else
+    echo; echo "✅ Läuft. Ab jetzt stündlich von selbst."
+  fi
 else
   echo "❌ Konnte den Dienst nicht starten."
 fi

@@ -56,10 +56,10 @@
     margin-bottom: 12px; font-size: 15px; }
   #warn div { margin: 3px 0; }
   .memo { font-size: 15px; color: var(--muted); margin: -6px 0 10px; }
-  #cfg .seg { display: flex; gap: 8px; margin-bottom: 8px; }
-  #cfg .seg button { flex: 1; min-height: 46px; }
-  #cfg .seg button.sel { background: var(--accent); color: #fff; }
-  #cfg select { width: 100%; font: inherit; padding: 12px; border-radius: 12px; border: 0; background: var(--panel2);
+  .fold .seg { display: flex; gap: 8px; margin-bottom: 8px; }
+  .fold .seg button { flex: 1; min-height: 46px; }
+  .fold .seg button.sel { background: var(--accent); color: #fff; }
+  .fold select { width: 100%; font: inherit; padding: 12px; border-radius: 12px; border: 0; background: var(--panel2);
     color: var(--text); margin-bottom: 8px; }
   .list .row { display: flex; gap: 8px; margin-bottom: 8px; }
   .list .row > button { margin-bottom: 0; }
@@ -89,16 +89,16 @@
   #live { margin-bottom: 10px; }
   .remote > p { margin: 0; font-size: 14px; }
   .state-upd { margin-top: 10px; width: 100%; }
-  #cfg { padding: 0; }
-  #cfg > button.head { width: 100%; background: none; text-align: left; display: flex; gap: 8px; min-height: 52px; }
-  #cfg .body { padding: 0 14px 14px; }
-  #cfg .sw { display: flex; width: 100%; justify-content: space-between; margin-bottom: 8px; min-height: 50px;
+  .fold { padding: 0; }
+  .fold > button.head { width: 100%; background: none; text-align: left; display: flex; gap: 8px; min-height: 52px; }
+  .fold .body { padding: 0 14px 14px; }
+  .fold .sw { display: flex; width: 100%; justify-content: space-between; margin-bottom: 8px; min-height: 50px;
     padding: 10px 14px; text-align: left; }
-  #cfg .sw b { color: var(--muted); font-weight: 600; }
-  #cfg .sw.on b { color: var(--ok); }
-  #cfg .chk { margin: 4px 0; font-size: 15px; }
-  #cfg .chk.no { color: var(--bad); }
-  #cfg .chk.yes { color: var(--ok); }
+  .fold .sw b { color: var(--muted); font-weight: 600; }
+  .fold .sw.on b { color: var(--ok); }
+  .fold .chk { margin: 4px 0; font-size: 15px; }
+  .fold .chk.no { color: var(--bad); }
+  .fold .chk.yes { color: var(--ok); }
   .ver { margin-top: 8px; font-size: 15px; color: var(--muted); }
   .ver b { color: var(--text); }
   .ver.old { color: var(--warn); }
@@ -109,6 +109,15 @@
   .list button.dir.open .c { color: #e6ecff; }
   .list .arrow { width: 16px; flex: none; }
   .list .c { margin-left: auto; color: var(--muted); font-size: 14px; flex: none; }
+  #conn { padding: 10px 14px; font-size: 15px; }
+  #conn .z { display: flex; gap: 8px; margin: 3px 0; }
+  #conn .z b { flex: none; width: 46px; }
+  #conn .z.busy2 { color: var(--bad); font-weight: 600; }
+  .fold .lk { background: var(--panel2); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .fold .lk .row2 { display: flex; gap: 8px; margin-top: 8px; }
+  .fold .lk .row2 button { flex: 1; min-height: 46px; background: var(--panel); }
+  .fold .lk .qr { background: #fff; border-radius: 10px; padding: 10px; margin-top: 8px; text-align: center; }
+  .fold .lk .qr svg { width: 220px; height: 220px; }
   input[type=search] { width: 100%; font: inherit; padding: 12px 14px; border-radius: 12px; border: 0;
     background: var(--panel); color: var(--text); margin-bottom: 10px; }
 </style>
@@ -116,6 +125,7 @@
 <body>
 <h1><span class="dot" id="dot"></span><span id="devname">Fernbedienung</span></h1>
 <div id="warn" hidden></div>
+<div class="card" id="conn" hidden></div>
 <div class="tabs" id="tabs" hidden></div>
 <div class="card" id="state"><span class="muted">Verbinde …</span></div>
 <div class="card remote" id="remote" hidden>
@@ -149,7 +159,7 @@
   <p class="muted">▲▼ schaltet beim Fernsehen die Sender um, ☰ öffnet die Senderliste. Wirkt nur in „Fernsehen“,
     jeder Druck braucht etwa eine Sekunde.</p>
 </div>
-<div class="card" id="cfg" hidden></div>
+<div class="card fold" id="cfg" hidden></div>
 <div class="list" id="rems"></div>
 <h2 id="lhead" hidden></h2>
 <div class="list" id="list"></div>
@@ -158,6 +168,7 @@
   <input type="search" id="q" placeholder="Sender, Film oder Serie suchen …" hidden>
   <div class="list" id="tree"></div>
 </section>
+<div class="card fold" id="adm" hidden></div>
 <p class="muted" id="foot"></p>
 <div class="toast" id="toast"></div>
 <script>
@@ -242,6 +253,11 @@
       if (age <= 30 * 60 && r !== undefined && r < -72) w.push('📶 ' + esc(label(id)) + ': WLAN schwach (' + r + ' dBm)');
       if (d.cfg && latest && d.ver && d.ver < latest) w.push('⬆️ ' + esc(label(id)) + ': App ' + d.ver + ', neu ist ' + latest);
       if (d.cfg && !d.cfg.install) w.push('⚠️ ' + esc(label(id)) + ': Updates nicht erlaubt');
+    });
+    var busy = busyByList(ids);
+    Object.keys(busy).forEach(function (slug) {
+      if (busy[slug].length > 1) w.push('📡 Liste ' + esc((lists && lists[slug] && lists[slug].name) || slug) + ': ' +
+        busy[slug].map(function (id) { return esc(label(id)); }).join(' und ') + ' schauen gleichzeitig – nur eine Verbindung');
     });
     // Programm einer Liste lange nicht veröffentlicht (Editor lief nicht): Sticks zeigen kein „jetzt/danach“ mehr
     Object.keys(lists || {}).forEach(function (k) {
@@ -379,6 +395,8 @@
     $('livebtn').classList.toggle('sel', liveWanted);
     updLive();
     renderCfg(d);
+    renderConn(ids);
+    renderAdm();
     renderRems(d);
     renderList();
     adminFor(d);
@@ -695,6 +713,114 @@
       }).join(' · ');
       body.appendChild(ap);
     }
+    box.appendChild(body);
+  }
+
+  // ---------- Wer schaut gerade womit (nur Haupt-Link): je Zugang/Liste nur EINE Verbindung ----------
+  // Ein Stick belegt die Verbindung, solange er spielt oder angehalten ist (nicht im Standby, Meldung < 15 Min.).
+  // iPhone/iPad/Mac (Webapp) melden sich nicht – die sieht man hier nicht.
+  function busyByList(ids) {
+    var now = Date.now() / 1000, by = {};
+    ids.forEach(function (id) {
+      var d = devices[id];
+      if (!d.list || d.screen === false || now - (d.t || 0) > 15 * 60) return;
+      if (d.state !== 'playing' && d.state !== 'paused') return;
+      (by[d.list] = by[d.list] || []).push(id);
+    });
+    return by;
+  }
+  function renderConn(ids) {
+    var box = $('conn');
+    box.hidden = !lists;
+    if (!lists) return;
+    var by = busyByList(ids);
+    var h = '<div class="muted" style="margin-bottom:4px">📡 Wer schaut gerade (je Zugang 1 Verbindung)</div>';
+    Object.keys(lists).forEach(function (slug) {
+      var who = by[slug] || [];
+      h += '<div class="z' + (who.length > 1 ? ' busy2' : '') + '"><b>' + esc((lists[slug].name || slug).toUpperCase()) + '</b><span>' +
+        (who.length ? who.map(function (id) { return esc(label(id)) + (devices[id].title ? ' ▶ ' + esc(devices[id].title) : ''); }).join(' · ') +
+          (who.length > 1 ? ' – ⚠️ gleichzeitig, einer bekommt kein Bild' : '') : '<span class="muted">frei</span>') + '</span></div>';
+    });
+    box.innerHTML = h;
+  }
+
+  // ---------- Verwaltung (nur Haupt-Link): Webapp-Links für iPhone/iPad/Mac verschicken ----------
+  var admOpen = false, qrOpen = null;
+  var WEBAPP = new URL('index.html', location.href).href;
+  function webLink(slug) {
+    return WEBAPP + '#liste=' + lists[slug].link + '&ansicht=komplett';
+  }
+  function shareText(slug) {
+    return 'Fernsehen auf iPhone, iPad oder Mac:\n' +
+      '1. Diesen Link in Safari öffnen (er wird gemerkt).\n' +
+      '2. iPhone/iPad: die kostenlose App „Outplayer“ oder „VLC“ aus dem App Store laden – oben neben der Uhr steht der Link. Mac: „IINA“ (iina.io).\n' +
+      '3. Tipp: Teilen → „Zum Home-Bildschirm“, dann ist es wie eine App.\n\n' + webLink(slug);
+  }
+  function loadQr() {
+    if (window.qrcode) return Promise.resolve();
+    if (loadQr.p) return loadQr.p;
+    loadQr.p = new Promise(function (ok, fail) {
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+      s.onload = ok;
+      s.onerror = function () { loadQr.p = null; fail(); };
+      document.head.appendChild(s);
+    });
+    return loadQr.p;
+  }
+  function renderAdm() {
+    var box = $('adm');
+    box.hidden = !lists;
+    if (!lists) return;
+    box.innerHTML = '';
+    var head = document.createElement('button');
+    head.className = 'head';
+    head.innerHTML = '<span>' + (admOpen ? '▾' : '▸') + '</span><span>🔗 Webapp-Links senden (iPhone, iPad, Mac)</span>';
+    head.onclick = function () { admOpen = !admOpen; renderAdm(); };
+    box.appendChild(head);
+    if (!admOpen) return;
+    var body = document.createElement('div');
+    body.className = 'body';
+    var hint = document.createElement('p');
+    hint.className = 'muted';
+    hint.style.marginTop = '0';
+    hint.textContent = 'Der Link richtet die Webapp mit der Liste ein. Jede Liste hat nur eine Verbindung – wer die Liste mitbenutzt, teilt sie mit den Fernsehern dieser Liste.';
+    body.appendChild(hint);
+    Object.keys(lists).forEach(function (slug) {
+      var lk = document.createElement('div');
+      lk.className = 'lk';
+      lk.innerHTML = '<b>Liste ' + esc(lists[slug].name || slug) + '</b>';
+      var row = document.createElement('div');
+      row.className = 'row2';
+      function btn(text, fn) {
+        var b = document.createElement('button');
+        b.textContent = text;
+        b.onclick = fn;
+        row.appendChild(b);
+      }
+      if (navigator.share) btn('📤 Teilen', function () {
+        navigator.share({ title: 'Fernsehen – Liste ' + (lists[slug].name || slug), text: shareText(slug) }).catch(function () { /* abgebrochen */ });
+      });
+      btn('📋 Kopieren', function () {
+        (navigator.clipboard ? navigator.clipboard.writeText(shareText(slug)) : Promise.reject())
+          .then(function () { toast('Link mit Anleitung kopiert ✓'); }, function () { prompt('Link kopieren:', webLink(slug)); });
+      });
+      btn(qrOpen === slug ? '✕ QR' : '▦ QR-Code', function () { qrOpen = qrOpen === slug ? null : slug; renderAdm(); });
+      lk.appendChild(row);
+      if (qrOpen === slug) {
+        var qr = document.createElement('div');
+        qr.className = 'qr';
+        qr.textContent = 'QR wird erstellt …';
+        lk.appendChild(qr);
+        loadQr().then(function () {
+          var q = window.qrcode(0, 'M');
+          q.addData(webLink(slug));
+          q.make();
+          qr.innerHTML = q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+        }, function () { qr.textContent = 'QR-Code konnte nicht geladen werden.'; });
+      }
+      body.appendChild(lk);
+    });
     box.appendChild(body);
   }
 

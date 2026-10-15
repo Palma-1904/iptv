@@ -164,6 +164,10 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   `IPTV.nativeLeaf` mit `norm`) und schickt `play {norm}`; laufender Sender markiert, Live mit laufender Sendung.
   Darstellung zum Auf-/Zuklappen (je Ebene ein Bereich offen, `nav` = Pfad, offene Köpfe bleiben oben stehen);
   im Admin-Modus keine extra „Meine Sender“-Liste (Thomas: nur „Alles auf diesem Fernseher“).
+  **Ab 15.10.** (nur Haupt-Link, braucht `lists`): Karte „📡 Wer schaut gerade“ (`#conn`, `busyByList`: Stick spielt/
+  pausiert, nicht Standby, Meldung < 15 min; Webapp-Geräte melden sich nicht) + Warnung bei Doppelbelegung einer
+  Liste; aufklappbar „🔗 Webapp-Links senden“ (`#adm`, `renderAdm`): je Liste Teilen (navigator.share, Text mit
+  Kurzanleitung), Kopieren, QR (qrcode-generator 1.4.4 von cdnjs, erst bei Bedarf). Aufklappkarten: Klasse `.fold`.
 - **Selbst-ADB geht nicht** (getestet 9.10.2026, Wohnzimmer Fire OS 6): App verband sich mit dem eigenen adbd
   (127.0.0.1 und eigene WLAN-IP, Port 5555) → adbd schließt sofort (EOF), vom Mac aus klappt dasselbe Protokoll.
   Fire OS sperrt ADB-Verbindungen vom Gerät selbst. Wieder entfernt (Revert). Außerdem: Fire OS erlaubt nur EINE
@@ -254,7 +258,7 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   geheimen Schlüssel je Playlist, sofort auf allen Geräten der Playlist (oben in der Übersicht); Stick mit Freigabe:
   OK lang → „Zu Liste hinzufügen / ＋ Neue Liste“. Webapp zeigt sie als Kategorien, Bearbeiten nur wenn für die
   Playlist freigegeben. Admin-Webapp bearbeitet alle Listen.
-- **Admin-Webapp** (Thomas 15.10., alle vier gewünscht): (1) Links senden – Webapp-Link je Playlist per
+- **Admin-Webapp** (Thomas 15.10., alle vier gewünscht; (1) und (2) erledigt): (1) Links senden – Webapp-Link je Playlist per
   Teilen (WhatsApp/iMessage), QR, Kurzanleitung; (2) Wer schaut womit – Belegung je Zugang, Warnung bei
   Doppelbelegung; (3) Editor aus der Ferne – Veröffentlichen, Sender prüfen **und Pushen** vom Handy (Editor holt
   Aufträge über Firebase ab, nur solange er auf einem Mac läuft); (4) Zeitpläne je Stick (aus/an, Schlaf-Timer).

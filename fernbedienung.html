@@ -145,6 +145,17 @@
   .fold .lk select { margin: 8px 0; }
   .fold .lk .qr { background: #fff; border-radius: 10px; padding: 10px; margin-top: 8px; text-align: center; }
   .fold .lk .qr svg { width: 220px; height: 220px; }
+  .btabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+  .btabs button { min-height: 48px; font-size: 16px; }
+  .btabs button.sel { background: var(--accent); color: #fff; }
+  #bgrp { width: 100%; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 12px; border: 0;
+    background: var(--panel2); color: var(--text); margin-bottom: 10px; }
+  .list .vrow { display: none; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px 16px; }
+  .list .openv .vrow, .list .vrow.langs { display: flex; }
+  .list .vrow button { width: auto; min-height: 40px; padding: 6px 12px; margin: 0; font-size: 15px; }
+  .list .vrow button.sel { background: var(--accent); color: #fff; }
+  .list .eps { margin-left: 16px; }
+  .list button.more { justify-content: center; color: var(--accent); }
   input[type=search] { width: 100%; font: inherit; padding: 12px 14px; border-radius: 12px; border: 0;
     background: var(--panel); color: var(--text); margin-bottom: 10px; }
 </style>
@@ -192,7 +203,9 @@
 <div class="list" id="list"></div>
 <section id="all" hidden>
   <h2>Alles auf diesem Fernseher</h2>
-  <input type="search" id="q" placeholder="Sender, Film oder Serie suchen …" hidden>
+  <div class="btabs" id="btabs"></div>
+  <input type="search" id="q" placeholder="🔍 Sender, Film oder Serie suchen …">
+  <select id="bgrp" aria-label="Gruppe wählen"></select>
   <div class="list" id="tree"></div>
 </section>
 <div class="card fold" id="ntf" hidden></div>
@@ -481,7 +494,7 @@
 
   // ---------- Admin (nur Haupt-Link): ganze Liste des Sticks – Live TV, Filme, Serien, Suche ----------
   // Der Editor legt unter <kanal>/lists die Einrichtungs-Links ab; die Handy-Codes einzelner Sticks haben keine.
-  var lists = null, trees = {}, nav = [], shownList = null, query = '';
+  var lists = null, trees = {};
   fetch(BASE + 'lists.json').then(function (r) { return r.ok ? r.json() : null; })
     .then(function (l) { lists = l; render(); if (sel && devices[sel]) { renderList(); adminFor(devices[sel]); } })
     .catch(function () { /* keine Admin-Ansicht */ });
@@ -501,7 +514,7 @@
         while ((m = re.exec(head))) a[m[1].toLowerCase()] = m[2].trim();
         cur = { name: (c >= 0 ? line.slice(c + 1).trim() : '') || a['tvg-name'] || 'Unbenannt',
           group: a['group-title'] || 'Sonstige', logo: a['tvg-logo'] || '', tvgId: a['tvg-id'] || '',
-          work: a['x-work'] || '', lang: (a['x-lang'] || '').toUpperCase(),
+          work: a['x-work'] || '', lang: (a['x-lang'] || '').toUpperCase(), cat: a['x-cat'] || '',
           sid: a['x-series'] || '', eps: +a['x-eps'] || 0, lazy: !!a['x-series'],
           type: /^(live|movie|series)$/.test(a['tvg-type']) ? a['tvg-type'] : 'live' };
       } else if (line && line[0] !== '#' && /^https?:\/\//i.test(line)) {
@@ -515,34 +528,6 @@
     var sc = /\bx-series-chunks="(\d+)"/.exec(lines[0] || '');
     out.chunks = sc ? +sc[1] : 0;
     return out;
-  }
-  // Große Liste: Folgen einer Serie aus <liste>.s<k>.json (wie die Webapp), Aufbau mit IPTV.seriesChildren
-  function loadSeries(data, x) {
-    if (x._loading) return x._loading;
-    x._loading = Promise.all(x.ls.map(function (id, i) {
-      var k = /^\d+$/.test(id) && data.chunks ? (+id) % data.chunks : 0;
-      data.chunkP = data.chunkP || {};
-      if (!data.chunkP[k]) {
-        data.chunkP[k] = fetch(data.base + '.s' + k + '.json' + data.fresh).then(function (r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        });
-        data.chunkP[k].catch(function () { delete data.chunkP[k]; });
-      }
-      return data.chunkP[k].then(function (c) {
-        return ((c.s || {})[id] || []).map(function (r) {
-          var name = x.n + ' S' + ('0' + r[0]).slice(-2) + 'E' + ('0' + r[1]).slice(-2);
-          if (r[2] && name.indexOf(r[2]) < 0) name += ' – ' + r[2];
-          return { name: name, group: x.n, type: 'series', lang: (x.ll || [])[i] || '', sids: x.ls.join(','),
-            norm: norm(c.b + r[3] + (r[4] ? '.' + r[4] : '')) };
-        });
-      });
-    })).then(function (a) {
-      x.c = IPTV.seriesChildren([].concat.apply([], a), x.n);
-      return x;
-    });
-    x._loading.catch(function () { x._loading = null; });
-    return x._loading;
   }
   function loadList(slug) {
     if (trees[slug]) return trees[slug];
@@ -561,19 +546,49 @@
     return trees[slug];
   }
 
+  // ---------- „Alles auf diesem Fernseher“: Reiter Live/Filme/Serien, Gruppe wählen, Suche ----------
+  // Admin: Liste aus <kanal>/lists; Geräte-Link (Familie): Adresse der Liste meldet der Stick (Status „m3u“, ab App 80).
+  function listSource(d) {
+    if (lists && d.list && lists[d.list]) return { key: d.list, admin: true };
+    if (d.m3u && /^https:\/\/gist\.githubusercontent\.com\/[^?#]+\.m3u8?$/.test(d.m3u)) return { key: 'url:' + d.m3u, url: d.m3u };
+    return null;
+  }
+  function loadFrom(key, base, fresh) {
+    if (trees[key]) return trees[key];
+    trees[key] = Promise.all([
+      fetch(base + '.m3u' + fresh).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }),
+      fetch(base + '.epg.json' + fresh).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+    ]).then(function (res) {
+      var parsed = parseM3u(res[0]);
+      return { entries: parsed, root: IPTV.buildTree(parsed).root, epg: res[1] && res[1].channels ? res[1].channels : {},
+        chunks: parsed.chunks, base: base, fresh: fresh };
+    });
+    trees[key].catch(function () { delete trees[key]; });
+    return trees[key];
+  }
+  function loadList(slug) {
+    var info = lists[slug], p = info.link.split('/');
+    return loadFrom(slug, 'https://gist.githubusercontent.com/' + p[0] + '/' + p[1] + '/raw/' + (info.rev ? info.rev + '/' : '') + p[2],
+      info.rev ? '' : '?t=' + Date.now());
+  }
+  function loadSrc(src) {
+    return src.admin ? loadList(src.key) : loadFrom(src.key, src.url.replace(/\.m3u8?$/, ''), '?t=' + Date.now());
+  }
+  var bTab = 'live', bGrp = {}, bOpen = null, bLang = {}, bLimit = {}, shownKey = null;
+  try { bTab = localStorage.getItem(KEY + '-tab') || 'live'; bGrp = JSON.parse(localStorage.getItem(KEY + '-grp') || '{}') || {}; } catch (e) { /* egal */ }
   function adminFor(d) {
-    if (!lists || !d.list || !lists[d.list]) { $('all').hidden = true; return; }
+    var src = listSource(d);
+    if (!src) { $('all').hidden = true; return; }
     $('all').hidden = false;
-    if (shownList !== d.list) {
-      shownList = d.list;
-      nav = [];
-      query = '';
-      $('tree').innerHTML = '<p class="muted">Lade Liste „' + esc(lists[d.list].name) + '“ …</p>';
-      loadList(d.list).then(function () { drawTree(); }, function (e) {
+    if (shownKey !== src.key) {
+      shownKey = src.key;
+      bOpen = null;
+      $('tree').innerHTML = '<p class="muted">Lade die Liste …</p>';
+      loadSrc(src).then(function () { drawBrowse(); }, function (e) {
         $('tree').innerHTML = '<p class="err">Liste nicht ladbar: ' + esc(e.message) + '</p>';
       });
     } else if (d.norm !== adminFor.norm || JSON.stringify(d.rem || null) !== adminFor.rem) {
-      drawTree();   // anderer Sender läuft / Erinnerungen geändert: neu zeichnen
+      drawBrowse();   // anderer Sender läuft / Erinnerungen geändert: neu zeichnen
     }
     adminFor.norm = d.norm;
     adminFor.rem = JSON.stringify(d.rem || null);
@@ -585,134 +600,194 @@
     for (var i = 0; i < p.length; i++) if (p[i][0] <= t && p[i][1] > t) return p[i][2];
     return '';
   }
-  function countLeaves(n) {
-    if (n.ls && (!n.c || !n.c.length)) return n.ne || 0;   // große Liste: Folgen noch nicht geladen
-    if (!n.c) return n.s ? 0 : 1;
-    var k = 0;
-    n.c.forEach(function (x) { k += countLeaves(x); });
-    return k;
+  function fold(s) { return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  function groupMap(list, keyFn) {
+    var m = new Map();
+    list.forEach(function (e) { var k = keyFn(e); if (!m.has(k)) m.set(k, []); m.get(k).push(e); });
+    return m;
   }
-  function fold(s) { return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
-
-  // Aufklappen wie die Übersicht am Fernseher: je Ebene ist ein Bereich offen, nochmal antippen klappt ihn zu.
-  // nav = Pfad der offenen Bereiche (Knoten des Baums).
-  var LIMIT = 300, limits = new WeakMap();
-  function leafButton(x, data, depth, name) {
-    if (x.t === 'live') {
-      var progs = x.id && data.epg[x.id] ? data.epg[x.id].filter(function (p) { return p[1] > Date.now() / 1000; }) : [];
-      return channelRow({ norm: x.k, name: name || x.n, sub: nowTitle(data.epg, x.id), logo: x.l, progs: progs,
-        depth: depth, redraw: function () { drawTree(); } });
-    }
+  function saveB() {
+    try { localStorage.setItem(KEY + '-tab', bTab); localStorage.setItem(KEY + '-grp', JSON.stringify(bGrp)); } catch (e) { /* egal */ }
+  }
+  function playBtn(e, label, sub) {
     var b = document.createElement('button');
-    if (x.k === (devices[sel] || {}).norm) b.className = 'cur';
-    var sub = x.t === 'live' ? nowTitle(data.epg, x.id) : '';
-    name = name || x.n;
-    b.style.marginLeft = depth * 14 + 'px';
-    b.style.width = 'calc(100% - ' + depth * 14 + 'px)';
-    b.innerHTML = (x.l ? '<img alt="" loading="lazy" src="' + esc(x.l.replace(/^http:/, 'https:')) + '" onerror="this.style.display=\'none\'">' : '') +
-      '<span><span class="t">' + esc(name) + '</span>' + (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</span>';
+    if (e.norm === (devices[sel] || {}).norm) b.className = 'cur';
+    b.innerHTML = (e.logo ? '<img alt="" loading="lazy" src="' + esc(e.logo.replace(/^http:/, 'https:')) + '" onerror="this.style.display=\'none\'">' : '') +
+      '<span><span class="t">' + esc(label || e.name) + '</span>' + (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</span>';
     b.onclick = function () {
-      send('play', x.s ? { norm: x.k, s: x.s } : { norm: x.k });
-      toast('Startet auf dem Fernseher: ' + name);
+      send('play', e.sids ? { norm: e.norm, s: e.sids } : { norm: e.norm });
+      toast('Startet auf dem Fernseher: ' + (label || e.name));
     };
     return b;
   }
-  function dirButton(x, depth, path) {
-    var open = nav[depth] === x;
-    var b = document.createElement('button');
-    b.className = 'dir' + (open ? ' open' : '');
-    if (open) b.style.top = depth * 56 + 'px';   // offene Bereiche bleiben beim Blättern oben stehen
-    b.style.marginLeft = depth * 14 + 'px';
-    b.style.width = 'calc(100% - ' + depth * 14 + 'px)';
-    var n = x.s ? '' : countLeaves(x);
-    b.innerHTML = '<span class="arrow">' + (open ? '▾' : '▸') + '</span><span><span class="t">' + esc(x.n) + '</span></span>' +
-      (n ? '<span class="c">' + n + '</span>' : '');
-    b.onclick = function () {
-      nav = open ? nav.slice(0, depth) : (path || nav.slice(0, depth)).concat(x);
-      drawTree();
-      if (!open) {
-        var all = $('tree').querySelectorAll('button.open');
-        var row = all[all.length - 1];
-        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        if (x.s) setTimeout(function () { $('q').focus(); }, 300);
-      }
-    };
-    return b;
+  function liveRow(e, data) {
+    var progs = e.tvgId && data.epg[e.tvgId] ? data.epg[e.tvgId].filter(function (p) { return p[1] > Date.now() / 1000; }) : [];
+    return channelRow({ norm: e.norm, name: e.name, sub: nowTitle(data.epg, e.tvgId), logo: e.logo, progs: progs, redraw: drawBrowse });
   }
-  function drawTree() {
-    var slug = shownList;
-    if (!slug || !trees[slug]) return;
-    trees[slug].then(function (data) {
-      if (slug !== shownList) return;
-      var box = $('tree');
-      box.innerHTML = '';
-      (function level(children, depth) {
-        var lim = limits.get(children) || LIMIT;
-        children.slice(0, lim).forEach(function (x) {
-          if (x.k) { box.appendChild(leafButton(x, data, depth)); return; }
-          box.appendChild(dirButton(x, depth));
-          if (nav[depth] !== x) return;
-          if (x.s) {
-            var q = $('q');
-            q.hidden = false;
-            q.style.marginLeft = (depth + 1) * 14 + 'px';
-            q.style.width = 'calc(100% - ' + (depth + 1) * 14 + 'px)';
-            box.appendChild(q);
-            var res = document.createElement('div');
-            res.id = 'qres';
-            box.appendChild(res);
-            drawResults(data, depth + 1);
-          } else if (x.ls && (!x.c || !x.c.length)) {
-            // große Liste: Folgen erst jetzt laden
-            var wait = document.createElement('p');
-            wait.className = 'muted';
-            wait.style.marginLeft = (depth + 1) * 14 + 'px';
-            wait.textContent = 'Folgen werden geladen …';
-            box.appendChild(wait);
-            loadSeries(data, x).then(function () { drawTree(); }, function (e) { wait.textContent = 'Folgen konnten nicht geladen werden: ' + e.message; });
-          } else {
-            level(x.c || [], depth + 1);
-          }
-        });
-        if (children.length > lim) {
-          var more = document.createElement('button');
-          more.textContent = 'Weitere ' + (children.length - lim) + ' anzeigen';
-          more.style.marginLeft = depth * 14 + 'px';
-          more.onclick = function () { limits.set(children, lim + LIMIT); drawTree(); };
-          box.appendChild(more);
+  // Filme: Sprachfassungen (gleiches x-work) zusammen; mehrere Fassungen → Sprache wählen
+  function movieUnits(list) {
+    var out = [], by = {};
+    list.forEach(function (e) {
+      if (!e.work) { out.push([e]); return; }
+      if (!by[e.work]) { by[e.work] = []; out.push(by[e.work]); }
+      by[e.work].push(e);
+    });
+    return out;
+  }
+  function movieRow(u) {
+    if (u.length === 1) return playBtn(u[0], u[0].name, u[0].lang || '');
+    var wrap = document.createElement('div');
+    var head = playBtn(u[0], u[0].name, u.map(function (e) { return e.lang || '?'; }).join(' · '));
+    head.onclick = function () { wrap.classList.toggle('openv'); };
+    wrap.appendChild(head);
+    var row = document.createElement('div');
+    row.className = 'vrow';
+    u.forEach(function (e) {
+      var b = document.createElement('button');
+      b.textContent = '▶ ' + (e.lang || '?');
+      b.onclick = function () { send('play', { norm: e.norm }); toast('Startet: ' + e.name + ' (' + (e.lang || '') + ')'); };
+      row.appendChild(b);
+    });
+    wrap.appendChild(row);
+    return wrap;
+  }
+  // Serien: Folgen (große Liste: erst laden), Sprache wählen, Folge antippen
+  function loadEps(data, items) {
+    if (!items.some(function (e) { return e.lazy; })) return Promise.resolve(items);
+    var x = { n: items[0].group, ls: items.map(function (e) { return e.sid; }), ll: items.map(function (e) { return e.lang || ''; }) };
+    if (!data.epsP) data.epsP = {};
+    var k = x.ls.join(',');
+    if (!data.epsP[k]) {
+      data.epsP[k] = Promise.all(x.ls.map(function (id, i) {
+        var c = /^\d+$/.test(id) && data.chunks ? (+id) % data.chunks : 0;
+        data.chunkP = data.chunkP || {};
+        if (!data.chunkP[c]) {
+          data.chunkP[c] = fetch(data.base + '.s' + c + '.json' + data.fresh).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+          data.chunkP[c].catch(function () { delete data.chunkP[c]; });
         }
-      })(data.root, 0);
-    });
+        return data.chunkP[c].then(function (ch) {
+          return ((ch.s || {})[id] || []).map(function (r) {
+            var name = 'S' + ('0' + r[0]).slice(-2) + 'E' + ('0' + r[1]).slice(-2) + (r[2] ? ' – ' + r[2] : '');
+            return { name: name, group: x.n, type: 'series', lang: x.ll[i], sids: k, norm: norm(ch.b + r[3] + (r[4] ? '.' + r[4] : '')) };
+          });
+        });
+      })).then(function (a) { return [].concat.apply([], a); });
+      data.epsP[k].catch(function () { delete data.epsP[k]; });
+    }
+    return data.epsP[k];
   }
-  // Suche: Sender/Filme/Folgen und ganze Serien bzw. Gruppen (die öffnen sich dann an ihrem Platz)
-  function drawResults(data, depth) {
-    var res = $('qres');
-    if (!res) return;
-    res.innerHTML = '';
-    var q = fold(query.trim());
-    if (q.length < 2) { res.innerHTML = '<p class="muted">Mindestens 2 Buchstaben eingeben.</p>'; return; }
-    var hits = [];
-    (function walk(n, path) {
-      (n.c || []).forEach(function (x) {
-        if (x.s) return;
-        if (path.length && fold(x.ti || x.n).indexOf(q) >= 0) hits.push({ x: x, path: path });
-        else if (x.c) walk(x, path.concat(x));
+  function seriesBlock(name, items, data, box) {
+    var wrap = document.createElement('div');
+    var n = items.reduce(function (s, e) { return s + (e.lazy ? e.eps || 0 : 1); }, 0);
+    var open = bOpen === name;
+    var head = document.createElement('button');
+    head.className = 'dir' + (open ? ' open' : '');
+    head.innerHTML = '<span class="arrow">' + (open ? '▾' : '▸') + '</span><span><span class="t">' + esc(name) + '</span></span><span class="c">' + n + '</span>';
+    head.onclick = function () { bOpen = open ? null : name; drawBrowse(); };
+    wrap.appendChild(head);
+    if (!open) return wrap;
+    var eb = document.createElement('div');
+    eb.className = 'eps';
+    eb.innerHTML = '<p class="muted">Folgen werden geladen …</p>';
+    wrap.appendChild(eb);
+    loadEps(data, items).then(function (eps) {
+      eb.innerHTML = '';
+      var langs = [];
+      eps.forEach(function (e) { if (langs.indexOf(e.lang) < 0) langs.push(e.lang); });
+      var cur = bLang[name] && langs.indexOf(bLang[name]) >= 0 ? bLang[name] : langs[0];
+      if (langs.length > 1) {
+        var lr = document.createElement('div');
+        lr.className = 'vrow langs';
+        langs.forEach(function (l) {
+          var b = document.createElement('button');
+          b.textContent = l || '?';
+          if (l === cur) b.className = 'sel';
+          b.onclick = function () { bLang[name] = l; drawBrowse(); };
+          lr.appendChild(b);
+        });
+        eb.appendChild(lr);
+      }
+      eps.filter(function (e) { return e.lang === cur; }).forEach(function (e) {
+        var label = e.name.indexOf(name) === 0 ? e.name.slice(name.length).replace(/^[\s–:-]+/, '') : e.name;
+        eb.appendChild(playBtn(e, label));
       });
-    })({ c: data.root }, []);
-    if (!hits.length) { res.innerHTML = '<p class="muted">Nichts gefunden.</p>'; return; }
-    hits.slice(0, LIMIT).forEach(function (h) {
-      res.appendChild(h.x.k ? leafButton(h.x, data, depth, h.x.ti || h.x.n) : dirButton(h.x, depth, h.path));
+    }, function (err) { eb.innerHTML = '<p class="err">Folgen nicht ladbar: ' + esc(err.message) + '</p>'; });
+    return wrap;
+  }
+  function paged(box, key, list, make) {
+    var lim = bLimit[key] || 150;
+    list.slice(0, lim).forEach(function (x) { box.appendChild(make(x)); });
+    if (list.length > lim) {
+      var more = document.createElement('button');
+      more.className = 'more';
+      more.textContent = 'Weitere ' + Math.min(150, list.length - lim) + ' von ' + (list.length - lim) + ' anzeigen';
+      more.onclick = function () { bLimit[key] = lim + 150; drawBrowse(); };
+      box.appendChild(more);
+    }
+  }
+  function drawBrowse() {
+    var d = devices[sel] || {}, src = listSource(d);
+    if (!src || !trees[src.key]) return;
+    trees[src.key].then(function (data) {
+      if (src.key !== shownKey) return;
+      var by = { live: [], movie: [], series: [] };
+      data.entries.forEach(function (e) { (by[e.type] || by.live).push(e); });
+      // Reiter
+      var tabs = $('btabs');
+      tabs.innerHTML = '';
+      [['live', '📺 Live TV'], ['movie', '🎬 Filme'], ['series', '📚 Serien']].forEach(function (x) {
+        if (!by[x[0]].length) return;
+        var b = document.createElement('button');
+        b.textContent = x[1];
+        if (bTab === x[0]) b.className = 'sel';
+        b.onclick = function () { bTab = x[0]; bOpen = null; $('q').value = ''; saveB(); drawBrowse(); };
+        tabs.appendChild(b);
+      });
+      if (!by[bTab].length) bTab = by.live.length ? 'live' : by.movie.length ? 'movie' : 'series';
+      var box = $('tree'), sel_ = $('bgrp'), q = fold($('q').value.trim());
+      box.innerHTML = '';
+      // Suche über alles (ab 2 Buchstaben)
+      if (q.length >= 2) {
+        sel_.hidden = true;
+        var hits = 0, hit = function (e) { return fold(e.name + ' ' + e.group).indexOf(q) >= 0; };
+        var lh = by.live.filter(hit).slice(0, 40);
+        if (lh.length) { box.appendChild(Object.assign(document.createElement('h2'), { textContent: '📺 Live' })); lh.forEach(function (e) { box.appendChild(liveRow(e, data)); }); hits += lh.length; }
+        var mh = movieUnits(by.movie.filter(hit)).slice(0, 40);
+        if (mh.length) { box.appendChild(Object.assign(document.createElement('h2'), { textContent: '🎬 Filme' })); mh.forEach(function (u) { box.appendChild(movieRow(u)); }); hits += mh.length; }
+        var sm = groupMap(by.series.filter(function (e) { return fold(e.group).indexOf(q) >= 0; }), function (e) { return e.group; });
+        if (sm.size) {
+          box.appendChild(Object.assign(document.createElement('h2'), { textContent: '📚 Serien' }));
+          Array.from(sm.keys()).slice(0, 40).forEach(function (n) { box.appendChild(seriesBlock(n, sm.get(n), data)); });
+          hits += sm.size;
+        }
+        if (!hits) box.innerHTML = '<p class="muted">Nichts gefunden.</p>';
+        return;
+      }
+      // Gruppe wählen (Serien: Kategorie), gemerkt je Reiter
+      var groups = bTab === 'series' ? groupMap(by.series, function (e) { return e.cat || 'Serien'; })
+        : groupMap(by[bTab], function (e) { return e.group; });
+      var names = Array.from(groups.keys());
+      var g = names.indexOf(bGrp[bTab]) >= 0 ? bGrp[bTab] : names[0];
+      sel_.hidden = names.length < 2;
+      sel_.innerHTML = names.map(function (n) {
+        var list = groups.get(n);
+        var cnt = bTab === 'series' ? groupMap(list, function (e) { return e.group; }).size : bTab === 'movie' ? movieUnits(list).length : list.length;
+        return '<option value="' + esc(n) + '"' + (n === g ? ' selected' : '') + '>' + esc(n) + ' (' + cnt + ')</option>';
+      }).join('');
+      sel_.onchange = function () { bGrp[bTab] = sel_.value; bOpen = null; saveB(); drawBrowse(); window.scrollTo(0, $('all').offsetTop); };
+      var items = groups.get(g) || [];
+      var lk = bTab + ':' + g;
+      if (bTab === 'live') paged(box, lk, items, function (e) { return liveRow(e, data); });
+      else if (bTab === 'movie') paged(box, lk, movieUnits(items), movieRow);
+      else {
+        var sm2 = groupMap(items, function (e) { return e.group; });
+        paged(box, lk, Array.from(sm2.keys()), function (n) { return seriesBlock(n, sm2.get(n), data); });
+      }
     });
-    if (hits.length > LIMIT) res.appendChild(Object.assign(document.createElement('p'),
-      { className: 'muted', textContent: 'Und ' + (hits.length - LIMIT) + ' weitere – bitte genauer suchen.' }));
   }
   $('q').addEventListener('input', function () {
-    query = this.value;
-    clearTimeout(drawTree.h);
-    drawTree.h = setTimeout(function () {
-      var slug = shownList;
-      if (slug && trees[slug]) trees[slug].then(function (data) { drawResults(data, (parseInt($('q').style.marginLeft, 10) || 14) / 14); });
-    }, 250);
+    clearTimeout(drawBrowse.h);
+    drawBrowse.h = setTimeout(drawBrowse, 300);
   });
 
   // ---------- Einstellungen des Sticks (nur Haupt-Link: der Status enthält dann „cfg“) ----------
@@ -1525,7 +1600,7 @@
   function renderList() {
     var d = devices[sel] || {};
     var c = channels && channels.items ? channels : null;
-    if (lists && d.list && lists[d.list]) c = null;   // Admin: „Alles auf diesem Fernseher“ reicht
+    if (listSource(d)) c = null;   // „Alles auf diesem Fernseher“ (Reiter, Gruppen, Suche) reicht
     $('lhead').hidden = !c;
     $('list').innerHTML = '';
     if (!c) return;

@@ -168,6 +168,12 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   pausiert, nicht Standby, Meldung < 15 min; Webapp-Geräte melden sich nicht) + Warnung bei Doppelbelegung einer
   Liste; aufklappbar „🔗 Webapp-Links senden“ (`#adm`, `renderAdm`): je Liste Teilen (navigator.share, Text mit
   Kurzanleitung), Kopieren, QR (qrcode-generator 1.4.4 von cdnjs, erst bei Bedarf). Aufklappkarten: Klasse `.fold`.
+  **„Alles auf diesem Fernseher“ neu (15.10.)** – Admin UND Geräte-Link (Familie): Reiter 📺 Live / 🎬 Filme /
+  📚 Serien, Auswahlliste der Gruppe (Serien: Kategorie x-cat; gemerkt `iptv-fernbedienung-tab/-grp`), Suche über
+  alles, je 150 Einträge + „Weitere“; Filme mit Sprachfassungen → Sprache wählen; Serien aufklappen (große Liste: Folgen
+  aus `<liste>.s<k>.json`, `loadEps`), Sprachleiste. Quelle: Admin `<kanal>/lists`, Geräte-Link: Stick meldet im
+  Handy-Status `m3u` (Adresse der Liste, ab App 80) – vorher nur die eine Gruppe vom Stick (`sender/<gerät>`).
+  Der alte Aufklapp-Baum (drawTree/dirButton) ist entfernt.
   „📋 Link kopieren“ kopiert nur den Link (Anleitungstext nur über „Teilen“). Die Karte heißt „🔗 Links senden“ und
   enthält auch die Handy-Fernbedienung je Fernseher (Geräte-Link `cfg.phone`, ab App 72; Admin-Link nie).
   **🖥 Editor aus der Ferne** (`#edi`, Editor ab VERSION 28): Editor-Thread `remote_editor_loop` holt alle 10 s

@@ -447,6 +447,7 @@ final class Remote {
                         .put("state", state).put("title", title).put("type", type).put("t", o.get("t"))
                         .put("note", note).put("noteT", noteT).put("norm", nowNorm).put("epg", nowEpg)
                         .put("rem", Reminders.upcoming(app))
+                        .put("m3u", playlistUrl)   // Handy-Seite lädt damit die ganze Liste (Reiter, Gruppen, Suche)
                         .put("ver", BuildConfig.VERSION_CODE);
                 put(fb + k + "/status/" + deviceId + ".json", h.toString());
             }

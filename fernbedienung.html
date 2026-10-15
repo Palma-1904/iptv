@@ -59,6 +59,8 @@
   #warn { background: var(--panel); border-left: 4px solid var(--warn); border-radius: 12px; padding: 10px 14px;
     margin-bottom: 12px; font-size: 15px; }
   #warn div { margin: 3px 0; }
+  #warn .whead { width: 100%; display: flex; gap: 8px; background: none; padding: 2px 0; min-height: 36px;
+    text-align: left; font-weight: 600; }
   .memo { font-size: 15px; color: var(--muted); margin: -6px 0 10px; }
   .fold .seg { display: flex; gap: 8px; margin-bottom: 8px; }
   .fold .seg button { flex: 1; min-height: 46px; }
@@ -272,6 +274,7 @@
   }
 
   // Warnungen über alle Sticks: offline, schwaches WLAN, Update verfügbar, Abo läuft ab
+  var warnOpen = false;   // Hinweise oben: immer zugeklappt starten
   function renderWarn(ids) {
     var w = [], now = Date.now() / 1000;
     ids.forEach(function (id) {
@@ -300,8 +303,19 @@
       if (days < 0) w.push('❌ Zugang ' + esc(a.name) + ' ist seit ' + date + ' abgelaufen');
       else if (days <= 30) w.push('⏳ Zugang ' + esc(a.name) + ' läuft am ' + date + ' ab (in ' + days + ' Tagen)');
     });
-    $('warn').hidden = !w.length;
-    $('warn').innerHTML = w.map(function (x) { return '<div>' + x + '</div>'; }).join('');
+    // Zugeklappt starten (bei jedem Öffnen der Seite), Antippen klappt auf
+    var box = $('warn');
+    box.hidden = !w.length;
+    box.innerHTML = '';
+    var hd = document.createElement('button');
+    hd.className = 'whead';
+    hd.innerHTML = '<span>' + (warnOpen ? '▾' : '▸') + '</span><span>⚠️ ' + w.length + ' Hinweis' + (w.length === 1 ? '' : 'e') + '</span>';
+    hd.onclick = function () { warnOpen = !warnOpen; renderWarn(ids); };
+    box.appendChild(hd);
+    var list = document.createElement('div');
+    list.hidden = !warnOpen;
+    list.innerHTML = w.map(function (x) { return '<div>' + x + '</div>'; }).join('');
+    box.appendChild(list);
     // ⬆️ Alle Sticks mit alter App aktualisieren (Befehl bleibt in Firebase liegen, bis ein Stick online kommt)
     var old = ids.filter(function (id) { return devices[id].cfg && latest && devices[id].ver < latest; });
     if (old.length) {
@@ -309,8 +323,8 @@
       ub.className = 'state-upd hot';
       ub.textContent = '⬆️ Alle aktualisieren (' + old.length + ' Stick' + (old.length > 1 ? 's' : '') + ' auf Version ' + latest + ')';
       ub.onclick = function () { updateAll(old); };
-      $('warn').appendChild(ub);
-      $('warn').hidden = false;
+      list.appendChild(ub);
+      if (!w.length) { hd.innerHTML = '<span>' + (warnOpen ? '▾' : '▸') + '</span><span>⬆️ Update verfügbar</span>'; box.hidden = false; }
     }
   }
   function updateAll(old) {

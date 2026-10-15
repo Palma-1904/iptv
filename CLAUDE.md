@@ -374,6 +374,7 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   (wöchentlich), App > 48 h alt; je Ereignis einmal, Erledigtes mit „✓“; Merker `editor/data/alerts.json`.
   `night_updates`: 3–5 Uhr Update an wache Sticks mit alter App, auf denen nicht geschaut wird (je Nacht einmal).
   ntfy wird dafür NICHT benutzt (Thomas: nur Firebase/Admin-App). Hilfe-Knopf für Senioren: nicht gewünscht.
+- Admin-Hinweise oben (`#warn`): immer **zugeklappt** starten („⚠️ n Hinweise ▸“, `warnOpen`, nicht gemerkt).
 - Admin „⬆️ Alle aktualisieren“ (bei Warnungen): fragt bei laufender Sendung „alle“ oder „nur nicht schauende“.
 - App 75: „Fernseher aus“ (tvoff) gilt mit Wächter als ruhiger Moment für ein Update (nach 60 s).
 

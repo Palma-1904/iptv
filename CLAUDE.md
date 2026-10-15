@@ -200,39 +200,26 @@ TRX (Xtream, Server heute `line.smrtrx.cfd`): **nur 1 gleichzeitige Verbindung j
 TKH bis 26.10.2027, ASW bis 04.10.2027, KMH bis 04.10.2027 (player_api für KMH/ASW zeitweise HTTP 404, Streams laufen).
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
-## Stand / nächste Schritte (5.10.2026)
-- **9.10.2026**: Online App 57 (ohne Firebase). Lokal committet, noch nicht gepusht: Firebase-Fernwartung, Hänger-Wächter,
-  x-alt, Lautstärke, Erinnerungen, Zustandsbericht, nächtliches Auffrischen, Schnellstart, Handy-Fernbedienung
-  (Editor VERSION 24, Admin-Ansicht mit ganzer Liste). Küche/Schlafzimmer/Wohnzimmer haben einen lokalen Bau mit versionCode 57 (melden über Firebase);
-  der nächste Push wird App 58 und installiert sich darüber. Max (KMH) noch auf altem Stand über ntfy.
-  → Thomas: pushen, Editor neu starten, Max per Fernwartung „Update“.
-- Online: App **39** (alles bis „Fehlermeldung eines Auftrags“). Lokal committet, **noch nicht gepusht**:
-  Editor-Anzeige App-Stand (`/api/app-status`, Knopf `#appver`: grün online, gelb wird gebaut/veröffentlicht, rot
-  fehlgeschlagen, „n nicht gepusht“ per `git rev-list @{u}..HEAD`; GitHub-API ohne Token), Server VERSION 15.
-  → Thomas: Editor neu starten (Start-Editor.command), dann pushen (wird App 40).
-- Editor-Fix: `followJob` liest `/api/job` ohne `api()` (Feld „error“ eines fehlgeschlagenen Auftrags ist kein
-  Abruffehler) – vorher hing das Fenster bei „Start …“, z. B. wenn der Zugang belegt war.
-- Senderprüfung TKH (4.10. abends): 225 geprüft, 1 ohne Bild: „DE| DAZN 1 ᴴᴰ“ → Ersatz „DE| DAZN 1 SD“ läuft
-  (in „Sender prüfen“ → Ersetzen, noch nicht übernommen). ProSieben in TKH wurde gegen „DE| PROSIEBEN“ getauscht.
-- **Stand 8.10. abends – Sticks zu Hause alle Liste TKH, Ansicht Komplett, Wächter/Autostart/Home-Rückkehr AUS**
-  (Thomas bedient selbst): Wohnzimmer 192.168.6.112 (AFTMM, Fire OS 6), Küche .110, Schlafzimmer .47 (AFTSSS,
-  „Thomas' 2. FireTVStick“, App neu installiert). „Max' Fire TV Stick“ .111 (Fire OS 8, Liste kmh, Senioren, Wächter an).
-  SetupReceiver kann zusätzlich `autostart`/`home`/`waechter` = 0/1; Stick-einrichten fragt „Wächter und Autostart?“.
-- Ältere Notiz – Sticks zu Hause (ADB-Debugging an, Mac freigegeben; Schlüssel in editor/data/adb):
-  Wohnzimmer 192.168.6.56 = Fire TV Stick 4K 2018 (AFTMM, **Fire OS 6** → kein Wächter, Liste tkh, Senioren);
-  Küche 192.168.6.110 = „Thomas' FireTVStick“, Stick 3. Gen. 2020 (AFTSSS, Fire OS 7.7, Liste asw, Senioren,
-  **Wächter getestet: läuft**, Home → nach ~1 s Abdeckung, nach ~5 s App zurück); Schlafzimmer .47 = AFTSSS
-  Fire OS 7 (AirReceiver, ohne unsere App, nicht freigegeben). Kein Gerät mit Fire OS 8 zu Hause.
-- **Generalprobe Auto-Update bestanden** (Küche 36 → 37 ohne Klick, ~45 s bis der Sender wieder läuft).
-  Wohnzimmer (Fire OS 6) fragt wie bisher. Noch zu bestätigen: „Fernseher aus“ am echten TV; kein
-  „Bild – schwarz – Bild“ mehr beim Umschalten (Bildrate gemerkt/abgedeckt, ab App 38).
-- Hardware: Thomas bestellt **Fire TV Stick 4K Max** (Senioren) und **4K Plus** (zu Hause, Ersatz für Wohnzimmer),
-  beide Fire OS 8. Bei Ankunft: Fire TV einrichten, ADB-Debugging an, IP nennen → `Stick-einrichten.command`,
-  Wächter auf Fire OS 8 testen, dann 4K Max vor Ort bei den Senioren (ASW, 130 km) mit dem Mac einrichten.
-- ntfy.sh: 250 Nachrichten/Tag je Anschluss (anonym) – am 4.10. zu Hause erschöpft, ab App 37 sparsam.
-- Zugänge: TKH, ASW, KMH (je 1 Verbindung). Playlist ASW nutzt evtl. noch Zugang TKH → im Editor „Zugang“ prüfen.
-- Offen: Samsung: Smarters zeigt aus M3U keine Serien/Filme → Fire-TV-Stick oder Smarters per Xtream-Login.
-  iPad mit Outplayer noch ungetestet.
+## Stand / nächste Schritte (15.10.2026)
+- **Online App 69**, alles gepusht (letzter Commit 10.10.). Zugänge je Playlist geprüft: ASW→ASW, KMH→KMH, TKH→TKH.
+- **Geräte** (Schnappschuss 15.10. aus Firebase `<kanal>/status` – aktueller Stand immer dort bzw. Editor → Fernwartung;
+  ein Stick im Standby meldet nichts, ein paar Stunden Stille sind normal):
+  | Stick | Modell / Fire OS | IP | Liste | App | Wächter | Bemerkung |
+  |---|---|---|---|---|---|---|
+  | Wohnzimmer fire TV | AFTMM 4K 2018, Fire OS 6 | .112 | tkh | 69 | geht nicht | Updates fragen nach |
+  | Thomas' FireTVStick (Küche) | AFTSSS 2020, Fire OS 7.7 | .110 | tkh | 69 | an | Autostart/Home aus |
+  | Thomas' 2. FireTVStick (Schlafzimmer) | AFTSSS, Fire OS 7 | .47 | tkh | **62** | aus | „Über anderen Apps“ fehlt |
+  | Max' Fire TV Stick (KMH, „Garten“) | Fire OS 8 | .111 | kmh | 69 | an | Autostart an |
+  | Anitas Fire TV Stick (ASW, 130 km) | AFTMA08C15 4K Max, Fire OS 8 | .116 | asw | **65** | an | Autostart/Home an |
+  IPs 192.168.6.x (Anita in ihrem eigenen WLAN). Status meldet bei allen `view` = senioren – die Notiz vom 8.10. sagte für
+  die Sticks zu Hause „Komplett“ → prüfen. SetupReceiver kann `autostart`/`home`/`waechter` = 0/1.
+- **Offen**:
+  - Anita meldet sich seit 10.10. 15:27 nicht mehr (zuletzt beim Abspielen, WLAN -66 dBm) → vor Ort Strom/WLAN prüfen lassen.
+  - Schlafzimmer: per Fernwartung „Update“ auf 69; Erlaubnis „Über anderen Apps einblenden“ (Knopf in ☰ 3 s).
+  - Noch zu bestätigen: „Fernseher aus“ am echten TV; kein „Bild – schwarz – Bild“ beim Umschalten.
+  - Samsung: Smarters zeigt aus M3U keine Serien/Filme → Fire-TV-Stick oder Smarters per Xtream-Login.
+  - iPad mit Outplayer noch ungetestet.
+- Auto-Update ohne Klick bestätigt (Küche, mit Wächter); Fire OS 6 fragt immer nach.
 - Jeder Push = neue App-Version (auch bei reinen Editor-/Notiz-Änderungen) → Änderungen gesammelt pushen.
 
 ## Arbeitsweise über mehrere Macs (MacBook Neo, Büro-Mac, …)

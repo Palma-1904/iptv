@@ -1463,7 +1463,7 @@ async function renderRemote() {
       try { await api('/api/remote/note', { id: d.id, label, note }); renderRemote(); } catch (e) { toast(e.message, true); }
     };
     head.appendChild(ed);
-    head.appendChild(el('span', 'chip', `Liste „${d.list || '?'}“ · ${d.view === 'senioren' ? 'Senioren' : 'Komplett'} · App ${d.ver || '?'}`));
+    head.appendChild(el('span', 'chip', `Liste „${d.list || '?'}“ · App ${d.ver || '?'}`));
     head.appendChild(el('span', 'hint', (online ? 'online, ' : 'offline? ') + 'zuletzt gemeldet ' + ago(d.age)));
     box.appendChild(head);
     if (d.memo) box.appendChild(el('p', 'dev-memo', '📝 ' + d.memo));
@@ -1498,6 +1498,8 @@ async function renderRemote() {
       toggle('autostart', 'Autostart beim Einschalten', d.cfg.autostart);
       toggle('home', 'Home-Taste: App kommt zurück', d.cfg.home);
       if (d.cfg.normvol !== undefined) toggle('normvol', 'Gleichmäßige Lautstärke', d.cfg.normvol);
+      // Eigene Listen (z. B. „Fussball“) am Stick bearbeiten: OK lang auf einem Sender (ab App 71)
+      if (d.cfg.ownlists !== undefined) toggle('ownlists', 'Eigene Listen bearbeiten', d.cfg.ownlists);
       cfg.appendChild(el('span', d.cfg.overlay ? 'ok' : 'warn', d.cfg.overlay ? '✓ Autostart erlaubt' : '✕ Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)'));
       cfg.appendChild(el('span', d.cfg.install ? 'ok' : 'warn', d.cfg.install ? '✓ Updates erlaubt' : '✕ Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)'));
       box.appendChild(cfg);
@@ -1555,17 +1557,7 @@ async function renderRemote() {
       ls.onchange = () => { if (ls.value) remoteCmd(d.id, 'list', { link: ls.value }, 'Liste wechseln'); };
       acts.appendChild(ls);
     }
-    // Ansicht: beide Knöpfe immer da, die aktuelle ist hervorgehoben (erneut drücken = neu einstellen)
-    const seg = el('span', 'seg');
-    seg.appendChild(el('span', 'hint', 'Ansicht:'));
-    [['komplett', 'Komplett'], ['senioren', 'Senioren']].forEach(([v, label]) => {
-      const x = el('button', d.view === v ? 'on' : '', label);
-      x.type = 'button';
-      x.title = d.view === v ? 'Ist eingestellt – erneut drücken stellt sie noch einmal ein' : `Auf „${label}“ umstellen`;
-      x.onclick = () => remoteCmd(d.id, 'view', { view: v }, `Ansicht ${label}`);
-      seg.appendChild(x);
-    });
-    acts.appendChild(seg);
+    // Ansicht: in der App gibt es nur noch die Seniorenansicht (Player mit ☰-Liste) – keine Wahl mehr
     box.appendChild(acts);
     // Nachricht: eigenes Feld, unabhängig von den anderen Befehlen
     const msg = el('div', 'dev-acts dev-msg');

@@ -128,6 +128,37 @@ final class Memory {
         prefs.edit().putString("resume", "{}").apply();
     }
 
+    // ---------- Große Listen: zu welcher Serie gehört eine Folge (für „Zuletzt gesehen“ ohne geladene Folgen) ----------
+
+    private JSONObject seriesOf;
+
+    String seriesOf(String url) {
+        if (seriesOf == null) {
+            try {
+                seriesOf = new JSONObject(prefs.getString("seriesOf", "{}"));
+            } catch (Exception e) {
+                seriesOf = new JSONObject();
+            }
+        }
+        String s = seriesOf.optString(norm(url), "");
+        return s.isEmpty() ? null : s;
+    }
+
+    void setSeriesOf(String url, String ids) {
+        seriesOf(url);
+        try {
+            seriesOf.put(norm(url), ids);
+            if (seriesOf.length() > 200) {   // klein halten: nur Folgen, die noch in „Zuletzt gesehen“/Weiterschauen sind
+                JSONObject keep = new JSONObject();
+                for (String r : recent) if (seriesOf.has(r)) keep.put(r, seriesOf.get(r));
+                seriesOf = keep;
+            }
+            prefs.edit().putString("seriesOf", seriesOf.toString()).apply();
+        } catch (Exception ignored) {
+            // egal
+        }
+    }
+
     // ---------- Zuletzt gesehen ----------
 
     List<String> recent() {

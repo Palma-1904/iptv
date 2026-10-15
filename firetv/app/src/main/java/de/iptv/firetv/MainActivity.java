@@ -220,6 +220,12 @@ public class MainActivity extends Activity implements Remote.Target {
             MyLists.url = url != null && url.matches("https://[\\w.-]+/[A-Za-z0-9_-]{24,64}") ? url : null;
         }
 
+        /** Große Listen: Folgen einer Serie (Antwort auf IPTV.nativeSeries). */
+        @JavascriptInterface
+        public void setSeriesChildren(String token, String json) {
+            PlayerActivity.seriesLoaded(token, json);
+        }
+
         /** Fernwartung: welche Playlist und Ansicht dieses Gerät nutzt. */
         @JavascriptInterface
         public void hello(String json) {
@@ -597,7 +603,7 @@ public class MainActivity extends Activity implements Remote.Target {
         Remote.Target player = Remote.player_target;
         switch (action) {
             case "play":
-                remotePlay(arg.optString("norm"), 0);
+                remotePlay(arg.optString("norm"), arg.optString("s"), 0);
                 break;
             case "message":
                 Remote.showMessage(this, arg.optString("text"));
@@ -690,8 +696,25 @@ public class MainActivity extends Activity implements Remote.Target {
     }
 
     /** Sender/Film aus der Ferne starten; braucht den Baum der Webapp (notfalls anfordern). */
+    /** JavaScript in der Webapp ausführen (z. B. Folgen einer Serie anfordern). */
+    static void runJs(String js) {
+        MainActivity m = instance;
+        if (m == null) return;
+        m.runOnUiThread(() -> m.web.evaluateJavascript(js, null));
+    }
+
     private void remotePlay(String norm, int attempt) {
+        remotePlay(norm, null, attempt);
+    }
+
+    /** s = Serien-Nummern (große Liste): Folgen erst laden, dann suchen. */
+    private void remotePlay(String norm, String s, int attempt) {
         org.json.JSONArray path = Remote.pathTo(PlayerActivity.treeRoot, norm);
+        if (path == null && s != null && !s.isEmpty() && attempt < 3) {
+            PlayerActivity.requestSeries(PlayerActivity.findLazy(PlayerActivity.treeRoot, s));
+            handler.postDelayed(() -> remotePlay(norm, s, attempt + 1), 3000);
+            return;
+        }
         if (path == null) {
             if (attempt < 2) {
                 web.evaluateJavascript("window.IPTV&&IPTV.nativeRefresh&&IPTV.nativeRefresh()", null);

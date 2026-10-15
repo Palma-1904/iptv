@@ -134,6 +134,8 @@ public class PlayerActivity extends Activity implements Remote.Target {
         boolean variants;   // Film mit mehreren Sprachfassungen
         String favKey, favType;  // Favoriten-Kennung (Film = Werk, Serie = Titel)
         boolean fav;
+        String[] lazyIds;   // große Liste: Serie, deren Folgen erst beim Öffnen von der Webapp kommen
+        int lazyEps;        // Anzahl Folgen (für „8 Folgen“, solange nicht geladen)
 
         Node(String name) {
             this.name = name;
@@ -148,6 +150,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         /** Anzahl der abspielbaren Einträge darunter (für „97 Sender“). */
         int count() {
             if (item != null) return 1;
+            if (lazyIds != null && children.isEmpty()) return lazyEps;
             int n = 0;
             for (Node c : children) n += c.count();
             return n;
@@ -196,9 +199,72 @@ public class PlayerActivity extends Activity implements Remote.Target {
         n.search = j.optInt("s") == 1;
         n.variants = j.optInt("v") == 1;
         readFav(n, j);
+        JSONArray ls = j.optJSONArray("ls");
+        if (ls != null) {
+            n.lazyIds = new String[ls.length()];
+            for (int i = 0; i < ls.length(); i++) n.lazyIds[i] = ls.optString(i);
+            n.lazyEps = j.optInt("ne");
+        }
         JSONArray c = j.optJSONArray("c");
         if (c != null) for (int i = 0; i < c.length(); i++) n.add(parseTree(c.getJSONObject(i)));
         return n;
+    }
+
+    // ---------- Große Listen: Folgen einer Serie erst beim Öffnen (von der Webapp, IPTV.nativeSeries) ----------
+    private static final java.util.Map<String, Node> lazyPending = new java.util.HashMap<>();
+    private static final Handler mainHandler = new Handler(Looper.getMainLooper());
+    static PlayerActivity current;
+
+    /** Folgen anfordern (einmal je Serie); die Webapp antwortet über IPTVNative.setSeriesChildren. */
+    static void requestSeries(Node n) {
+        if (n == null || n.lazyIds == null || !n.children.isEmpty() || lazyPending.containsValue(n)) return;
+        String token = "s" + System.identityHashCode(n) + "_" + System.currentTimeMillis();
+        lazyPending.put(token, n);
+        try {
+            JSONObject q = new JSONObject().put("t", token).put("ids", new JSONArray(Arrays.asList(n.lazyIds))).put("n", n.name);
+            MainActivity.runJs("window.IPTV&&IPTV.nativeSeries&&IPTV.nativeSeries(" + JSONObject.quote(q.toString()) + ")");
+        } catch (Exception e) {
+            lazyPending.remove(token);
+        }
+        mainHandler.postDelayed(() -> lazyPending.remove(token), 60000);   // keine Antwort: später erneut versuchen
+    }
+
+    /** Antwort der Webapp (Bridge-Thread): Folgen einhängen, Liste auffrischen. */
+    static void seriesLoaded(String token, String json) {
+        List<Node> kids = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(json);
+            for (int i = 0; i < a.length(); i++) kids.add(parseTree(a.getJSONObject(i)));
+        } catch (Exception ignored) {
+            // leer lassen
+        }
+        mainHandler.post(() -> {
+            Node n = lazyPending.remove(token);
+            if (n == null || !n.children.isEmpty()) return;
+            for (Node k : kids) n.add(k);
+            PlayerActivity p = current;
+            if (p != null) p.onSeriesLoaded(n);
+        });
+    }
+
+    /** Serie mit diesen Nummern im Baum (für „Zuletzt gesehen“ und „play“ vom Handy). */
+    static Node findLazy(Node n, String ids) {
+        if (n == null) return null;
+        if (n.lazyIds != null && TextUtils.join(",", n.lazyIds).equals(ids)) return n;
+        for (Node c : n.children) {
+            Node f = findLazy(c, ids);
+            if (f != null) return f;
+        }
+        return null;
+    }
+
+    private void onSeriesLoaded(Node n) {
+        if (n.children.isEmpty()) {
+            Toast.makeText(this, "Keine Folgen gefunden", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (browse == n && listOpen()) showNode(n, null);
+        else if (browse == displayRoot && listOpen()) showNode(rootNode, null);   // „Zuletzt gesehen“ vollständig
     }
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -380,7 +446,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
             treeSeen = v;
             Item playing = current();
             Node leaf = playing == null ? null : findLeaf(fresh, playing.url);
-            if (playing != null && leaf == null) return;   // laufender Eintrag nicht mehr in der Liste: alten Baum behalten
+            // laufender Eintrag nicht mehr in der Liste: alten Baum behalten – außer bei Folgen großer Listen
+            // (die stehen im neuen Baum erst nach dem Öffnen; die Wiedergabe behält ihre Folgenliste)
+            if (playing != null && leaf == null && !("series".equals(playing.type) && mem.seriesOf(playing.url) != null)) return;
             rootNode = fresh;
             if (leaf != null && pendingIndex < 0) {
                 ctx = leaf.parent;
@@ -419,6 +487,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        current = this;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         boolean ok = pendingPath != null ? readPath(pendingPath) : readData(pending);
         pending = null;
@@ -636,6 +705,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
         pendingSeek = -1;
         sleeping = false;
         mem.addRecent(it.url);
+        for (Node a = ctx; a != null; a = a.parent) {
+            if (a.lazyIds != null) { mem.setSeriesOf(it.url, TextUtils.join(",", a.lazyIds)); break; }
+        }
         long[] r = it.live() ? null : mem.resume(it.url);
         if (r != null && r[0] > 60000 && !Memory.finished(r)) askResume(it, r[0]);
         else start(it);
@@ -1312,6 +1384,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     @Override
     protected void onDestroy() {
+        if (current == this) current = null;
         if (Remote.player_target == this) Remote.player_target = null;
         if (hdmi != null) {
             try {
@@ -1683,7 +1756,13 @@ public class PlayerActivity extends Activity implements Remote.Target {
         if (n.search) askSearch();
         else if (n.clear) askClear();
         else if (n.restart) askRestart();
-        else showNode(n, null);
+        else {
+            if (n.lazyIds != null && n.children.isEmpty()) {
+                requestSeries(n);
+                Toast.makeText(this, "Folgen werden geladen …", Toast.LENGTH_SHORT).show();
+            }
+            showNode(n, null);
+        }
     }
 
     /** Liste zeigt die Einträge von n; Auswahl auf select (oder dem ersten). */
@@ -1699,6 +1778,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         for (String url : mem.recent()) {
             Node leaf = findLeaf(rootNode, url);
             if (leaf != null) recent.add(copyLeaf(leaf));
+            else if (mem.seriesOf(url) != null) requestSeries(findLazy(rootNode, mem.seriesOf(url)));
         }
         if (!fav.children.isEmpty()) d.add(fav);
         if (!recent.children.isEmpty()) d.add(recent);
@@ -1948,7 +2028,8 @@ public class PlayerActivity extends Activity implements Remote.Target {
         int c = n.count();
         Node first = n;
         while (first.item == null && !first.children.isEmpty()) first = first.children.get(0);
-        String type = first.item == null ? "" : first.item.type;
+        if (n.lazyIds != null && n.children.isEmpty()) return n.lazyEps + (n.lazyEps == 1 ? " Folge" : " Folgen");
+        String type = first.item != null ? first.item.type : first.lazyIds != null ? "series" : "";
         return c + ("live".equals(type) ? " Sender" : "movie".equals(type) ? (c == 1 ? " Film" : " Filme")
                 : "series".equals(type) ? (c == 1 ? " Folge" : " Folgen") : " Einträge");
     }

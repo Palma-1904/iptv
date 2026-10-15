@@ -24,6 +24,7 @@ import urllib.parse
 import urllib.request
 import webbrowser
 import xml.etree.ElementTree as ET
+import zlib
 from datetime import datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -1297,6 +1298,25 @@ def prefetch_episodes(pl, state, lookup):
 
 
 GERMAN_LANGS = ('DE', 'AT', 'CH', 'MULTI')
+# Große Listen: Serienfolgen nicht einzeln in die M3U (TKH mit allen Serien: 52 MB), sondern je Serie eine Zeile
+# (x-series = Serien-Nummer, x-eps = Anzahl) und die Folgen kompakt in <liste>.s<k>.json – Geräte laden sie erst
+# beim Öffnen einer Serie. Kleine Listen bleiben wie bisher (ältere App-Versionen kennen das neue Format nicht).
+SERIES_LAZY_MIN = 3000      # ab so vielen Folgen in der Playlist
+SERIES_CHUNK_BYTES = 1500 * 1024
+
+
+def series_chunks(data):
+    """{serien_id: (basis, [[staffel, folge, titel, id, ext], …])} -> {k: json-text}; k = id % n."""
+    if not data:
+        return {}, 0
+    total = sum(len(json.dumps(v[1], ensure_ascii=False)) for v in data.values())
+    n = max(1, -(-total // SERIES_CHUNK_BYTES))
+    out = {}
+    for sid, (base, eps) in data.items():
+        k = int(sid) % n if str(sid).isdigit() else 0   # wie in m3u.js (Xtream-Nummern sind Ziffern)
+        c = out.setdefault(k, {'b': base, 's': {}})
+        c['s'][str(sid)] = eps
+    return {k: json.dumps(v, ensure_ascii=False, separators=(',', ':')) for k, v in out.items()}, n
 
 
 def build_playlist(pl, state, warnings):
@@ -1312,6 +1332,41 @@ def build_playlist(pl, state, warnings):
         return index.get(key)
 
     prefetch_episodes(pl, state, lookup)
+    sources = {s['id']: s for s in state['sources']}
+
+    def eps_of(key):
+        src = sources.get(key.split(':', 1)[0])
+        return xtream_episodes(src, key.rsplit(':', 1)[1]) if src else []
+
+    # Viele Folgen? Dann Serien als eine Zeile je Serie, Folgen in eigene Dateien (siehe SERIES_LAZY_MIN)
+    n_eps = 0
+    for g in pl.get('groups', []):
+        for it in g.get('items', []):
+            for k in [v['key'] for v in it.get('variants') or []] or [it['key']]:
+                if ':series:' in k:
+                    c = lookup(k)
+                    if c and c['type'] == 'series' and not c.get('episode'):
+                        n_eps += len(eps_of(k))
+    lazy = n_eps >= SERIES_LAZY_MIN
+    series_data = {}   # serien_id -> (basis, [[staffel, folge, titel, id, ext], …])
+
+    def series_line(key, logo, extra, cat, title):
+        """Eine Zeile je Serie (große Listen); Folgen kommen in series_data."""
+        eps = eps_of(key)
+        if not eps:
+            return 0
+        sid_ = key.rsplit(':', 1)[1]
+        m = re.match(r'^(.*/series/[^/]+/[^/]+/)', eps[0]['url'])
+        base = m.group(1) if m else ''
+        rows = []
+        for e in eps:
+            mm = re.search(r'/(\d+)\.(\w+)$', e['url'])
+            rows.append([e['season'], e['episode'], e['title'] or '', mm.group(1) if mm else e['url'], mm.group(2) if mm else ''])
+        series_data[sid_] = (base, rows)
+        lines.append(f'#EXTINF:-1 tvg-type="series" tvg-logo="{logo}"{extra} x-series="{sid_}" x-eps="{len(eps)}" '
+                     f'x-cat="{attr(cat)}" group-title="{attr(title)}",{title}')
+        lines.append(f'http://series.invalid/{sid_}')   # Platzhalter (wird nie abgespielt)
+        return 1
     # Ersatz-Fassungen für Live-Sender (x-alt, nur derselbe Zugang): die App wechselt bei einem Fehler darauf.
     # Bei der letzten Prüfung als defekt erkannte Fassungen nicht nehmen, gefundenen Ersatz zuerst.
     checked = read_json(os.path.join(DATA, f'check_{pl.get("id")}.json'), {}).get('results', {})
@@ -1362,7 +1417,9 @@ def build_playlist(pl, state, warnings):
                         continue
                     lang = attr(v.get('lang') or '')
                     logo = attr(vch.get('logo') or ch.get('logo'))
-                    if vch['type'] == 'series' and not vch.get('episode'):
+                    if vch['type'] == 'series' and not vch.get('episode') and lazy:
+                        count += series_line(v['key'], logo, f' x-work="{work}" x-lang="{lang}"', gname, title)
+                    elif vch['type'] == 'series' and not vch.get('episode'):
                         src = next((s for s in state['sources'] if s['id'] == sid), None)
                         for e in (xtream_episodes(src, v['key'].rsplit(':', 1)[1]) if src else []):
                             t = f'{title} S{e["season"]:02d} E{e["episode"]:02d}'
@@ -1377,6 +1434,9 @@ def build_playlist(pl, state, warnings):
                                      f'x-lang="{lang}" group-title="{attr(gname)}",{title}')
                         lines.append(vch['url'])
                         count += 1
+                continue
+            if ch['type'] == 'series' and not ch.get('episode') and lazy:
+                count += series_line(item['key'], attr(ch['logo']), '', gname, name)
                 continue
             if ch['type'] == 'series' and not ch.get('episode'):
                 src = next((s for s in state['sources'] if s['id'] == sid), None)
@@ -1411,7 +1471,7 @@ def build_playlist(pl, state, warnings):
             lines.append(' '.join(parts) + ',' + name.replace('\n', ' '))
             lines.append(ch['url'])
             count += 1
-    return lines, epg_ids, catalogs, count, live
+    return lines, epg_ids, catalogs, count, live, series_data
 
 
 def parse_xmltv_time(s):
@@ -1737,7 +1797,8 @@ def publish(ids):
         slug = slugify(pl.get('slug') or pl.get('name') or pl['id'])
         JOB['pl'] = pl.get('name')
         job_progress('Einträge zusammenstellen …')
-        lines, epg_ids, catalogs, count, live = build_playlist(pl, state, warnings)
+        lines, epg_ids, catalogs, count, live, series_data = build_playlist(pl, state, warnings)
+        chunks, n_chunks = series_chunks(series_data)
         job_progress('Programm (EPG) des Anbieters …')
         epg = {}
         for sid, wanted in epg_ids.items():
@@ -1752,6 +1813,9 @@ def publish(ids):
         # Eigene Listen (Firebase): Adresse für alle Geräte; Bearbeiten in der Webapp nur, wenn freigegeben
         if mylists_url(pl):
             lines[0] += f' x-mylists="{mylists_url(pl)}"' + (' x-mylists-edit="1"' if pl.get('myListsWeb') else '')
+        # Große Listen: Serienfolgen liegen in <slug>.s<k>.json (Geräte laden sie beim Öffnen einer Serie)
+        if n_chunks:
+            lines[0] += f' x-series-chunks="{n_chunks}"'
         m3u = '\n'.join(lines) + '\n'
         # Eigene Reihenfolge für den Reiter „Programm“ (sonst wie in der Playlist)
         order = [i for i in pl.get('epgOrder') or [] if i in epg]
@@ -1768,6 +1832,26 @@ def publish(ids):
         files[slug + '.m3u'] = m3u
         files[slug + '.epg.json'] = epg_json
         files[slug + '.xml'] = xmltv
+        # Folgen-Dateien schreiben; nicht mehr gebrauchte (weniger Teile / kleine Liste) im Gist und lokal löschen
+        import glob
+        old = {os.path.basename(f) for f in glob.glob(os.path.join(OUT, slug + '.s*.json'))}
+        for k, text in chunks.items():
+            name = f'{slug}.s{k}.json'
+            for folder in (OUT, LOCAL_OUT):
+                with open(os.path.join(folder, name), 'w', encoding='utf-8') as f:
+                    f.write(text)
+            files[name] = text
+            old.discard(name)
+        for name in old:
+            files[name] = None
+            for folder in (OUT, LOCAL_OUT):
+                try:
+                    os.remove(os.path.join(folder, name))
+                except OSError:
+                    pass
+        if n_chunks:
+            warnings.append(f'Große Liste: Serien als eine Zeile je Serie, Folgen in {n_chunks} Zusatzdateien '
+                            f'({round(sum(len(c.encode()) for c in chunks.values()) / 1048576, 1)} MB, werden beim Öffnen geladen).')
         results.append({'id': pl['id'], 'name': pl.get('name'), 'slug': slug, 'entries': count,
                         'epgChannels': len(epg), 'sizeKb': round(len(m3u.encode()) / 1024),
                         'warnings': warnings})

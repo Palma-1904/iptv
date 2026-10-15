@@ -42,6 +42,8 @@
       lang: (attrs['x-lang'] || '').toUpperCase(),
       alt: attrs['x-alt'] ? attrs['x-alt'].split(/\s+/) : [],   // Ersatz-Fassungen (App wechselt bei Fehler)
       cat: attrs['x-cat'] || '',                 // Serien: Gruppe der Playlist (Kategorie), group-title = Serie
+      sid: attrs['x-series'] || '',              // große Liste: eine Zeile je Serie, Folgen in <liste>.s<k>.json
+      eps: +attrs['x-eps'] || 0,
       typeHint: normalize(attrs['tvg-type'] || attrs['type'] || '')
     };
   }
@@ -66,6 +68,8 @@
 
   function parse(text) {
     readMyHeader(text);
+    var sc = /\bx-series-chunks="(\d+)"/.exec(text.slice(0, 2000).split(/\r?\n/)[0] || '');
+    seriesChunks = sc ? +sc[1] : 0;
     var lines = text.split(/\r?\n/);
     var out = [];
     var cur = null;
@@ -84,12 +88,14 @@
         e.type = classify(e);
         // Playlist schreibt „S01 E01“ (erkennen andere IPTV-Apps besser), angezeigt wird „S01E01“
         if (e.type === 'series') e.name = e.name.replace(/\b(S\d{1,3}) (E\d{1,4})\b/, '$1$2');
+        if (e.type === 'series' && e.sid) e.lazy = true;   // Folgen erst beim Öffnen (seriesEpisodes)
         e.search = normalize(e.name + ' ' + e.group);
         out.push(e);
         cur = null;
       }
     }
     buildAlternatives(out);
+    parsedAll = out;
     return out;
   }
 
@@ -174,6 +180,60 @@
     var id = 'l' + Date.now().toString(36);
     var n = Object.keys(myData.l || {}).length;
     return myPut(id, { n: name, o: n + 1, i: entry ? [norm(entry.url)] : [] });
+  }
+
+  // ---------- Große Listen: Serienfolgen erst beim Öffnen laden ----------
+  // Datei <liste>.s<k>.json (k = Serien-Nummer % Anzahl): { b: Adresse bis zur Folgen-Nummer, s: { id: [[Staffel,
+  // Folge, Titel, Folgen-Nummer, Endung], …] } }. Folgen werden zu normalen Einträgen wie früher in der M3U.
+  var seriesChunks = 0, chunkCache = {}, epCache = {};
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function loadChunk(k) {
+    if (!chunkCache[k]) {
+      var u = playlistUrl().replace(/\.m3u8?(?=\?|$)/i, '.s' + k + '.json');
+      chunkCache[k] = fetch(fresh(u), { cache: 'no-cache' }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' beim Laden der Folgen');
+        return r.json();
+      });
+      chunkCache[k].catch(function () { delete chunkCache[k]; });
+    }
+    return chunkCache[k];
+  }
+  // Folgen einer Serie (Eintrag aus der Liste); kleine Listen: der Eintrag ist schon eine Folge
+  function seriesEpisodes(e) {
+    if (!e.lazy) return Promise.resolve([e]);
+    if (epCache[e.sid]) return Promise.resolve(epCache[e.sid]);
+    var k = /^\d+$/.test(e.sid) && seriesChunks ? (+e.sid) % seriesChunks : 0;
+    return loadChunk(k).then(function (c) {
+      var rows = (c && c.s && c.s[e.sid]) || [];
+      var list = rows.map(function (r) {
+        var name = e.name + ' S' + pad2(r[0]) + 'E' + pad2(r[1]);
+        if (r[2] && name.indexOf(r[2]) < 0) name += ' – ' + r[2];
+        var x = { name: name, group: e.group, logo: e.logo, tvgId: '', tvgName: '', work: e.work, lang: e.lang, alt: [],
+          cat: e.cat, typeHint: 'series', type: 'series', sid: e.sid, url: c.b + r[3] + (r[4] ? '.' + r[4] : '') };
+        x.search = normalize(name + ' ' + e.group);
+        return x;
+      });
+      epCache[e.sid] = list;
+      return list;
+    });
+  }
+  // Alle Folgen einer Serie (mehrere Einträge = Sprachfassungen)
+  function expandSeries(items) {
+    return Promise.all(items.map(seriesEpisodes)).then(function (a) { return [].concat.apply([], a); });
+  }
+  // Fire-TV-App: Folgen einer Serie nachliefern ({t: Kennung, ids: [Serien-Nummern], n: Serienname})
+  var parsedAll = [];
+  function nativeSeries(json) {
+    var q = typeof json === 'string' ? JSON.parse(json) : json;
+    var items = parsedAll.filter(function (e) { return e.lazy && q.ids.indexOf(e.sid) >= 0; });
+    expandSeries(items).then(function (eps) {
+      var kids = IPTV.seriesChildren ? IPTV.seriesChildren(eps, q.n) : [];
+      if (window.IPTVNative && typeof IPTVNative.setSeriesChildren === 'function') {
+        IPTVNative.setSeriesChildren(q.t, JSON.stringify(kids));
+      }
+    }, function () {
+      if (window.IPTVNative && typeof IPTVNative.setSeriesChildren === 'function') IPTVNative.setSeriesChildren(q.t, '[]');
+    });
   }
 
   // Browser (Mac, Fire TV/Silk) zeigen bei HEVC-Streams nur Ton. Gibt es denselben Sender in
@@ -730,6 +790,9 @@
     nativeTree: function () { return treeProvider ? treeProvider() : null; },   // zum Testen
     nativeLeaf: nativeLeaf,
     norm: norm,
+    seriesEpisodes: seriesEpisodes,
+    expandSeries: expandSeries,
+    nativeSeries: nativeSeries,
     myLists: myLists,
     myListNodes: myListNodes,
     myStamp: function () { return myStamp; },

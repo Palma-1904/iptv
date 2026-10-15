@@ -32,8 +32,22 @@
   function itemEl(e, showMeta, list) {
     var a = document.createElement('a');
     a.className = 'item';
-    a.href = IPTV.playerHref(e);
-    IPTV.bindPlay(a, e, list);
+    if (e.lazy) {
+      // Serie einer großen Liste (Folgen noch nicht geladen): öffnet die Serie
+      a.href = '#';
+      a.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        search.value = '';
+        activeType = 'series';
+        if (SPLIT) { catSel.series = e.cat || 'Serien'; saveCat(); openSeries = e.group; }
+        tabs.forEach(function (b) { b.setAttribute('aria-selected', String(b.dataset.type === 'series')); });
+        render();
+        window.scrollTo(0, 0);
+      });
+    } else {
+      a.href = IPTV.playerHref(e);
+      IPTV.bindPlay(a, e, list);
+    }
     a.appendChild(IPTV.logoEl(e.logo, 'logo'));
     var text = document.createElement('span');
     text.className = 'text';
@@ -153,9 +167,10 @@
       var langs = type === 'series' ? seriesLangs(items) : [];
       var count = document.createElement('span');
       count.className = 'gcount';
+      var nEps = function (l) { return l.reduce(function (s, e) { return s + (e.lazy ? e.eps || 0 : 1); }, 0); };
       count.textContent = langs.length > 1
-        ? items.filter(function (e) { return e.lang === langs[0]; }).length + ' · ' + langs.length + ' Sprachen'
-        : type === 'movie' ? units(items).length : items.length;
+        ? nEps(items.filter(function (e) { return e.lang === langs[0]; })) + ' · ' + langs.length + ' Sprachen'
+        : type === 'movie' ? units(items).length : nEps(items);
       s.appendChild(title);
       s.appendChild(count);
       d.appendChild(s);
@@ -165,6 +180,16 @@
       // Einträge erst beim ersten Öffnen erzeugen – hält große Playlists schnell.
       d.fill = function () {
         if (box.firstChild) return;
+        if (items.some(function (e) { return e.lazy; })) {
+          box.appendChild(Object.assign(document.createElement('p'), { className: 'status', textContent: 'Folgen werden geladen …' }));
+          IPTV.expandSeries(items).then(function (eps) {
+            addEpisodes(eps);
+            items = eps;
+            box.textContent = '';
+            d.fill();
+          }, function (err) { box.firstChild.textContent = 'Folgen konnten nicht geladen werden: ' + err.message; });
+          return;
+        }
         if (langs.length > 1) return fillSeries(d, box, items, langs);
         var f = document.createDocumentFragment();
         units(items).forEach(function (u) { f.appendChild(unitEl(u, false, type === 'live' ? items : null)); });
@@ -320,7 +345,7 @@
   }
   function remember(e, list) {
     var r = readJson(localStorage, RECENT_KEY, []).filter(function (x) { return x.u !== e.url; });
-    r.unshift({ u: e.url, t: e.type });
+    r.unshift(e.sid ? { u: e.url, t: e.type, s: e.sid } : { u: e.url, t: e.type });
     writeJson(localStorage, RECENT_KEY, r.slice(0, 36));
     writeJson(localStorage, LAST_KEY, {
       u: e.url, t: Date.now(),
@@ -845,7 +870,8 @@
       var langs = seriesLangs(eps);
       var m = document.createElement('span');
       m.className = 'meta';
-      m.textContent = (langs.length > 1 ? eps.filter(function (e) { return e.lang === langs[0]; }).length : eps.length)
+      var cnt = function (list) { return list.reduce(function (s, e) { return s + (e.lazy ? e.eps || 0 : 1); }, 0); };
+      m.textContent = (langs.length > 1 ? cnt(eps.filter(function (e) { return e.lang === langs[0]; })) : cnt(eps))
         + ' Folgen' + (langs.length > 1 ? ' · ' + langs.join(' ') : '');
       text.appendChild(m);
       b.appendChild(text);
@@ -860,7 +886,20 @@
     });
   }
 
+  // Große Liste: Folgen erst laden (dann wie früher); geladene Folgen merken (Zuletzt gesehen, Schnell-Leiste)
+  function addEpisodes(list) { list.forEach(function (e) { if (!byUrl.has(e.url)) byUrl.set(e.url, e); }); }
   function seriesDetail(name, eps) {
+    if (eps.some(function (e) { return e.lazy; })) {
+      var wait = document.createElement('p');
+      wait.className = 'status';
+      wait.textContent = '„' + name + '“: Folgen werden geladen …';
+      IPTV.expandSeries(eps).then(function (all) {
+        addEpisodes(all);
+        if (openSeries !== name || !wait.isConnected) return;
+        wait.replaceWith(seriesDetail(name, all));
+      }, function (err) { wait.textContent = 'Folgen konnten nicht geladen werden: ' + err.message; });
+      return wait;
+    }
     var box = document.createElement('div');
     box.className = 'seriesdetail';
     var back = document.createElement('button');
@@ -1219,6 +1258,12 @@
     byType = { live: [], movie: [], series: [] };
     byUrl = new Map();
     entries.forEach(function (e) { byType[e.type].push(e); byUrl.set(e.url, e); });
+    // Große Liste: Folgen aus „Zuletzt gesehen“/Schnell-Leiste sind noch nicht geladen – im Hintergrund holen
+    var lazyBy = {}, need = {};
+    byType.series.forEach(function (e) { if (e.lazy) lazyBy[e.sid] = e; });
+    readJson(localStorage, RECENT_KEY, []).forEach(function (x) { if (x.s && !byUrl.has(x.u) && lazyBy[x.s]) need[x.s] = lazyBy[x.s]; });
+    var todo = Object.keys(need).map(function (k) { return need[k]; });
+    if (todo.length) IPTV.expandSeries(todo).then(function (eps) { addEpisodes(eps); render(); }, function () { /* später */ });
     // Zählen wie man es erwartet: Filme (nicht Sprachfassungen), Serien (nicht Folgen).
     var counts = {
       live: byType.live.length,

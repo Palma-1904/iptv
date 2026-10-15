@@ -209,6 +209,7 @@
       if (title && title !== o.n) o.ti = title;
       if (e.tvgId) o.id = e.tvgId;
       if (e.logo) o.l = e.logo;
+      if (e.sids) o.s = e.sids;
       return o;
     }
   };
@@ -501,6 +502,7 @@
         cur = { name: (c >= 0 ? line.slice(c + 1).trim() : '') || a['tvg-name'] || 'Unbenannt',
           group: a['group-title'] || 'Sonstige', logo: a['tvg-logo'] || '', tvgId: a['tvg-id'] || '',
           work: a['x-work'] || '', lang: (a['x-lang'] || '').toUpperCase(),
+          sid: a['x-series'] || '', eps: +a['x-eps'] || 0, lazy: !!a['x-series'],
           type: /^(live|movie|series)$/.test(a['tvg-type']) ? a['tvg-type'] : 'live' };
       } else if (line && line[0] !== '#' && /^https?:\/\//i.test(line)) {
         var e = cur || { name: line, group: 'Sonstige', logo: '', tvgId: '', work: '', lang: '', type: 'live' };
@@ -510,7 +512,37 @@
         cur = null;
       }
     }
+    var sc = /\bx-series-chunks="(\d+)"/.exec(lines[0] || '');
+    out.chunks = sc ? +sc[1] : 0;
     return out;
+  }
+  // Große Liste: Folgen einer Serie aus <liste>.s<k>.json (wie die Webapp), Aufbau mit IPTV.seriesChildren
+  function loadSeries(data, x) {
+    if (x._loading) return x._loading;
+    x._loading = Promise.all(x.ls.map(function (id, i) {
+      var k = /^\d+$/.test(id) && data.chunks ? (+id) % data.chunks : 0;
+      data.chunkP = data.chunkP || {};
+      if (!data.chunkP[k]) {
+        data.chunkP[k] = fetch(data.base + '.s' + k + '.json' + data.fresh).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+        data.chunkP[k].catch(function () { delete data.chunkP[k]; });
+      }
+      return data.chunkP[k].then(function (c) {
+        return ((c.s || {})[id] || []).map(function (r) {
+          var name = x.n + ' S' + ('0' + r[0]).slice(-2) + 'E' + ('0' + r[1]).slice(-2);
+          if (r[2] && name.indexOf(r[2]) < 0) name += ' – ' + r[2];
+          return { name: name, group: x.n, type: 'series', lang: (x.ll || [])[i] || '', sids: x.ls.join(','),
+            norm: norm(c.b + r[3] + (r[4] ? '.' + r[4] : '')) };
+        });
+      });
+    })).then(function (a) {
+      x.c = IPTV.seriesChildren([].concat.apply([], a), x.n);
+      return x;
+    });
+    x._loading.catch(function () { x._loading = null; });
+    return x._loading;
   }
   function loadList(slug) {
     if (trees[slug]) return trees[slug];
@@ -521,7 +553,9 @@
       fetch(base + p[2] + '.m3u' + fresh).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }),
       fetch(base + p[2] + '.epg.json' + fresh).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
     ]).then(function (res) {
-      return { root: IPTV.buildTree(parseM3u(res[0])).root, epg: res[1] && res[1].channels ? res[1].channels : {} };
+      var parsed = parseM3u(res[0]);
+      return { root: IPTV.buildTree(parsed).root, epg: res[1] && res[1].channels ? res[1].channels : {},
+        chunks: parsed.chunks, base: base + p[2], fresh: fresh };
     });
     trees[slug].catch(function () { delete trees[slug]; });
     return trees[slug];
@@ -552,6 +586,7 @@
     return '';
   }
   function countLeaves(n) {
+    if (n.ls && (!n.c || !n.c.length)) return n.ne || 0;   // große Liste: Folgen noch nicht geladen
     if (!n.c) return n.s ? 0 : 1;
     var k = 0;
     n.c.forEach(function (x) { k += countLeaves(x); });
@@ -577,7 +612,7 @@
     b.innerHTML = (x.l ? '<img alt="" loading="lazy" src="' + esc(x.l.replace(/^http:/, 'https:')) + '" onerror="this.style.display=\'none\'">' : '') +
       '<span><span class="t">' + esc(name) + '</span>' + (sub ? '<span class="s">' + esc(sub) + '</span>' : '') + '</span>';
     b.onclick = function () {
-      send('play', { norm: x.k });
+      send('play', x.s ? { norm: x.k, s: x.s } : { norm: x.k });
       toast('Startet auf dem Fernseher: ' + name);
     };
     return b;
@@ -627,6 +662,14 @@
             res.id = 'qres';
             box.appendChild(res);
             drawResults(data, depth + 1);
+          } else if (x.ls && (!x.c || !x.c.length)) {
+            // große Liste: Folgen erst jetzt laden
+            var wait = document.createElement('p');
+            wait.className = 'muted';
+            wait.style.marginLeft = (depth + 1) * 14 + 'px';
+            wait.textContent = 'Folgen werden geladen …';
+            box.appendChild(wait);
+            loadSeries(data, x).then(function () { drawTree(); }, function (e) { wait.textContent = 'Folgen konnten nicht geladen werden: ' + e.message; });
           } else {
             level(x.c || [], depth + 1);
           }

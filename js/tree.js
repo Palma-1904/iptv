@@ -130,24 +130,19 @@
     if (byType.series.length) {
       var si = root.length;
       var series = [];
-      var episode = function (e, name) {
-        var label = e.name.indexOf(name) === 0 ? e.name.slice(name.length).replace(/^[\s–:-]+/, '') : e.name;
-        return leaf(e, label || e.name, e.name);
-      };
       var groups = groupsOf(byType.series);
       if (opts.favSeriesFirst) groups = opts.favSeriesFirst(groups);
       groups.forEach(function (items, name) {
         var gi = series.length;
-        var langs = seriesLangs(items);
         var fav = opts.favKey ? { fk: name, ft: 'series' } : {};
         if (opts.isFavSeries && opts.isFavSeries(name)) fav.fv = 1;
-        if (langs.length > 1) {
-          series.push(Object.assign({ n: name, c: langs.map(function (l, lj) {
-            var eps = items.filter(function (e) { return e.lang === l; });
-            return { n: langName(l), c: eps.map(function (e, ei) { setPath(e, [si, gi, lj, ei]); return episode(e, name); }) };
-          }) }, fav));
+        if (items.some(function (e) { return e.lazy; })) {
+          // Große Liste: Folgen kommen erst beim Öffnen (ls = Serien-Nummern je Sprache, ne = Anzahl Folgen)
+          series.push(Object.assign({ n: name, ls: items.map(function (e) { return e.sid; }),
+            ll: items.map(function (e) { return e.lang || ''; }),
+            ne: items.reduce(function (s, e) { return s + (e.eps || 0); }, 0), c: [] }, fav));
         } else {
-          series.push(Object.assign({ n: name, c: items.map(function (e, ei) { setPath(e, [si, gi, ei]); return episode(e, name); }) }, fav));
+          series.push(Object.assign({ n: name, c: seriesChildren(items, name, function (e, p) { setPath(e, [si, gi].concat(p)); }) }, fav));
         }
       });
       root.push({ n: 'Serien', c: series });
@@ -157,9 +152,27 @@
     return { root: root, paths: paths };
   }
 
+  // Ebene unter einer Serie: Folgen, bei mehreren Sprachen erst die Sprache (auch fürs Nachladen großer Listen)
+  function seriesChildren(items, name, onPath) {
+    var leaf = IPTV.nativeLeaf;
+    var episode = function (e) {
+      var label = e.name.indexOf(name) === 0 ? e.name.slice(name.length).replace(/^[\s–:-]+/, '') : e.name;
+      return leaf(e, label || e.name, e.name);
+    };
+    var langs = seriesLangs(items);
+    if (langs.length > 1) {
+      return langs.map(function (l, lj) {
+        var eps = items.filter(function (e) { return e.lang === l; });
+        return { n: langName(l), c: eps.map(function (e, ei) { if (onPath) onPath(e, [lj, ei]); return episode(e); }) };
+      });
+    }
+    return items.map(function (e, ei) { if (onPath) onPath(e, [ei]); return episode(e); });
+  }
+
   IPTV.lib = {
     LANG_NAMES: LANG_NAMES, langName: langName, langRank: langRank, byLang: byLang,
     units: units, seriesLangs: seriesLangs, groupsOf: groupsOf
   };
+  IPTV.seriesChildren = seriesChildren;
   IPTV.buildTree = buildTree;
 })();

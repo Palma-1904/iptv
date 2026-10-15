@@ -312,6 +312,10 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   aus 5 194 Serien; |DE| SERIEN allein 15,7 MB). Zu groß für Gist-Upload und Sticks. Entscheidung offen:
   Serien eingrenzen oder Folgen erst beim Öffnen einer Serie nachladen (Umbau). Fehler beim Veröffentlichen
   („'list' object has no attribute 'get'“, Folgen bei manchen Serien als Liste von Listen) ist behoben.
+  Thomas' Veröffentlichen um 16:00 schrieb lokal 50 MB, der Gist-Upload scheiterte (Gist blieb 0,2 MB) – Sticks ok.
+  **Umbau „Folgen nachladen“ gebaut (Thomas' Wahl, App 79)**: siehe Abschnitt „Große Listen“. **Reihenfolge**: pushen →
+  TKH-Sticks auf App ≥ 79 bringen (nachts/„Alle aktualisieren“) → erst dann TKH veröffentlichen (6,75 MB + 5 Folgen-
+  Dateien à ~1 MB). Idee danach: Filme genauso erst je Kategorie laden (Filme = 4,7 der 6,75 MB, Baum fürs Gerät 5,3 MB).
 Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt**, App 70) · 3 Admin-Webapp ·
 4 EPG (**gebaut**: mehr Sender + Inhaltstexte; automatischer GitHub-Auftrag alle 6 h vorerst NICHT gewünscht).
 - **Mini-Erklärung** in der Webapp (iPhone/iPad/Mac) – **umgesetzt**: „?“ neben der Uhr (`#help`, `showHelp`), beim
@@ -379,6 +383,22 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   sonst selbst `server.publish([])` mit Sperre `editor/data/auto_publish.lock`; schreibt `autoResult`.
   Kurzlebig → blockiert das Auswerfen der SSD nicht. macOS fragt evtl. einmal nach Zugriff auf Wechseldatenträger.
   Getestet 15.10.: Probelauf echte Daten, Veröffentlichen in Test-Kopie, Übergabe an (Schein-)Editor frei/beschäftigt.
+
+## Große Listen: Serienfolgen erst beim Öffnen (ab 15.10.; App 79)
+- Editor (`build_playlist`): ab `SERIES_LAZY_MIN` = 3000 Folgen je Playlist eine M3U-Zeile je Serie(-Fassung):
+  `tvg-type="series" … x-series="<id>" x-eps="<n>" x-cat … group-title="<Serie>"`, URL-Platzhalter
+  `http://series.invalid/<id>`; Kopf `x-series-chunks="N"`. Folgen in `<slug>.s<k>.json` (k = id % N, je ~1,5 MB):
+  `{b: ".../series/USER/PASS/", s: {id: [[staffel, folge, titel, folgen_id, endung], …]}}` – im Gist, OUT und lokal;
+  nicht mehr gebrauchte Teile werden gelöscht. Kleine Listen (ASW 242, KMH 0 Folgen) bleiben im alten Format.
+- Webapp (`m3u.js`): `e.lazy/e.sid/e.eps`, `seriesEpisodes`/`expandSeries` (Folgen-Einträge wie früher, Name
+  „Serie S01E02 – Titel“), `nativeSeries` für die App. `app.js`: Kacheln zählen `x-eps`, Detail/TV-Gruppe laden beim
+  Öffnen, Suchtreffer öffnen die Serie, „Zuletzt gesehen“ merkt `s` und lädt beim Start nach (`addEpisodes`).
+- `tree.js`: Serie mit `ls` (Nummern), `ll` (Sprachen), `ne` (Folgen), `c: []`; `IPTV.seriesChildren` baut die Ebene.
+- App: `Node.lazyIds/lazyEps`, Öffnen → `PlayerActivity.requestSeries` → `MainActivity.runJs(IPTV.nativeSeries)` →
+  Bridge `setSeriesChildren` → einhängen, Liste neu. `Memory.seriesOf` (Folge → Serien-Nummern) für „Zuletzt
+  gesehen“; `adopt` übernimmt neue Bäume auch während einer Folge; Handy-„play“ mit `s` lädt die Serie vorher.
+  Admin-Seite lädt Folgen beim Aufklappen (`loadSeries`) und schickt `play {norm, s}`. Fire OS 6: kein String.join.
+- Getestet 15.10.: TKH 52 → 6,75 MB, Kacheln/Detail/`nativeSeries` im Browser; App übersetzt; am Stick ungetestet.
 
 ## Warnungen aufs iPhone (Web-Push, ab 15.10.; Editor 31) – **getestet 15.10.: Banner + rote 1 kommen an**
 - Thomas' iPhone (iOS 18.7) ist angemeldet. Automatik läuft auf dem MacBook mit Festplattenvollzugriff für Python

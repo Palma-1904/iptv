@@ -468,6 +468,18 @@ function renderCountries() {
       };
       box.appendChild(b);
     };
+    // „nur Deutsch“: DE, AT, CH und MULTI (mehrsprachig, meist mit deutscher Tonspur) – alles andere aus
+    const b = el('button', 'chip bulk de', '🇩🇪 nur Deutsch (+ MULTI)');
+    b.type = 'button';
+    b.onclick = () => {
+      [...counts.keys()].forEach((k) => {
+        const want = PREFERRED.includes(k);
+        if (ccHidden(src, k, ui.type) === want) toggleCc(src, k, ui.type);
+      });
+      save();
+      renderAll();
+    };
+    box.appendChild(b);
     bulk('alle ausblenden', (hidden) => !hidden);
     bulk('alle einblenden', (hidden) => hidden);
     bulk('alle umkehren', () => true);

@@ -93,6 +93,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .pane-title { padding: 10px 12px 4px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .pane-title.with-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #countries .chip.bulk { font-style: italic; }
+#countries .chip.bulk.de { font-style: normal; font-weight: 600; }
 .pane-title.with-btn button { text-transform: none; letter-spacing: 0; font-size: 12px; padding: 3px 8px; }
 
 .types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 10px 12px; }

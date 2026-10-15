@@ -216,7 +216,8 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
 - **Länderfilter Filme/Serien**: Deutsch (DE/AT/CH) + MULTI vorausgewählt, andere Kürzel nur nach Antippen (`src.vodShown`),
   `hiddenCountries` gilt weiter für alle Reiter (`ccHidden`/`toggleCc`, nur Anzeige links; `variantsOf` unverändert).
   Neue Gruppen in der Playlist kommen zugeklappt an; zugeklappte Gruppen im localStorage `editor-collapsed`.
-  Länder-Kürzel: zusätzlich „alle ausblenden“ / „alle einblenden“ (neben „alle umkehren“). Über den Gruppen
+  Länder-Kürzel: zusätzlich „🇩🇪 nur Deutsch (+ MULTI)“ (= PREFERRED: DE/AT/CH/MULTI), „alle ausblenden“ /
+  „alle einblenden“ (neben „alle umkehren“). MULTI gibt es bei TRX nur bei Serien (Netflix/Apple+/Disney+, 2125). Über den Gruppen
   „＋ Alle sichtbaren übernehmen“ (`addAllVisible`): alle links sichtbaren Gruppen des Reiters auf einmal, jede als
   eigene Gruppe (nicht in die Ziel-Gruppe), nur Zugang der Playlist, Vorhandenes übersprungen (Test: 178 Gruppen/
   13 294 Sender DE+UK+US in Sekunden).

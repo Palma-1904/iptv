@@ -243,9 +243,17 @@ public class PlayerActivity extends Activity implements Remote.Target {
             Node n = lazyPending.remove(token);
             if (n == null || !n.children.isEmpty()) return;
             for (Node k : kids) n.add(k);
+            forgetLeafIndex();
             PlayerActivity p = current;
             if (p != null) p.onSeriesLoaded(n);
         });
+    }
+
+    /** Spielt der Player gerade diesen Eintrag (Adresse ohne Zugangsdaten)? */
+    boolean playingNorm(String norm) {
+        if (idle()) return false;
+        Item it = current();
+        return it != null && Memory.norm(it.url).equals(norm);
     }
 
     /** Serie mit diesen Nummern im Baum (für „Zuletzt gesehen“ und „play“ vom Handy). */
@@ -301,6 +309,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 spinner.setVisibility(event.getBuffering() < 100f ? View.VISIBLE : View.GONE);
                 break;
             case MediaPlayer.Event.Playing:
+                if (zapStart > 0) { Zeit.log("Bild/Ton läuft nach " + (Zeit.now() - zapStart) + "ms"); zapStart = 0; }
                 lastProgress = System.currentTimeMillis();
                 retries = 0;
                 failed = false;
@@ -471,13 +480,42 @@ public class PlayerActivity extends Activity implements Remote.Target {
     };
 
     /** Eintrag zu einer Adresse (Zugangsdaten werden ignoriert, siehe Memory.norm). */
+    /**
+     * Eintrag mit dieser Adresse (ohne Zugangsdaten) unter n. Verzeichnis je Baum einmal anlegen – vorher wurde für jeden
+     * Lieblingssender / „Zuletzt gesehen“ die ganze Liste durchsucht (Übersicht am Fire OS 6 brauchte so 5 s).
+     */
+    private static final java.util.Map<Node, java.util.HashMap<String, Node>> leafIndex = new java.util.WeakHashMap<>();
+
     private static Node findLeaf(Node n, String url) {
-        if (n.item != null) return Memory.norm(url).equals(Memory.norm(n.item.url)) ? n : null;
-        for (Node c : n.children) {
-            Node f = findLeaf(c, url);
-            if (f != null) return f;
+        if (n == null) return null;
+        java.util.HashMap<String, Node> idx;
+        synchronized (leafIndex) {
+            idx = leafIndex.get(n);
+            if (idx == null) {
+                long t0 = Zeit.now();
+                idx = new java.util.HashMap<>();
+                indexLeaves(n, idx);
+                leafIndex.put(n, idx);
+                Zeit.slow("Verzeichnis der Liste angelegt (" + idx.size() + ")", t0, 50);
+            }
         }
-        return null;
+        return idx.get(Memory.norm(url));
+    }
+
+    private static void indexLeaves(Node n, java.util.HashMap<String, Node> idx) {
+        if (n.item != null) {
+            String k = Memory.norm(n.item.url);
+            if (!idx.containsKey(k)) idx.put(k, n);
+            return;
+        }
+        for (Node c : n.children) indexLeaves(c, idx);
+    }
+
+    /** Nachgeladene Folgen: Verzeichnisse neu anlegen. */
+    static void forgetLeafIndex() {
+        synchronized (leafIndex) {
+            leafIndex.clear();
+        }
     }
 
     private final Runnable tick = new Runnable() {
@@ -492,6 +530,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Zeit.log("PlayerActivity.onCreate");
         super.onCreate(savedInstanceState);
         current = this;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -962,7 +1001,11 @@ public class PlayerActivity extends Activity implements Remote.Target {
         if (!it.live() && length > 0) mem.putResume(it.url, position, length);
     }
 
+    private long zapStart;
+
     private void start(Item it) {
+        zapStart = Zeit.now();
+        Zeit.log("Start: " + it.name);
         prepareRate(it);
         expectPlaying = true;
         lastProgress = System.currentTimeMillis() + 10000;   // Anlaufzeit
@@ -1154,6 +1197,15 @@ public class PlayerActivity extends Activity implements Remote.Target {
     /** Manche Fernbedienungen (z. B. Fire-TV-App auf dem Handy) senden Escape statt Zurück. */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        long tk = Zeit.now();
+        try {
+            return dispatchKeyEvent0(event);
+        } finally {
+            Zeit.slow("Taste " + KeyEvent.keyCodeToString(event.getKeyCode()) + (event.getAction() == KeyEvent.ACTION_DOWN ? " ↓" : " ↑"), tk, 30);
+        }
+    }
+
+    private boolean dispatchKeyEvent0(KeyEvent event) {
         lastInput = System.currentTimeMillis();
         if (sleepWarned && !sleeping) {            // Vorwarnung: jede Taste = „ich schaue noch“
             sleepWarned = false;
@@ -1746,6 +1798,15 @@ public class PlayerActivity extends Activity implements Remote.Target {
     }
 
     private void openList() {
+        long tOpen = Zeit.now();
+        try {
+            openList0();
+        } finally {
+            Zeit.log("Liste öffnen " + (Zeit.now() - tOpen) + "ms");
+        }
+    }
+
+    private void openList0() {
         info.setVisibility(View.GONE);
         int w = root.getWidth();
         int pw = Math.max(dp(380 * Math.min(textScale, 1.15f)), Math.round(w * 0.42f));
@@ -1854,6 +1915,12 @@ public class PlayerActivity extends Activity implements Remote.Target {
     }
 
     private void showNode(Node n, Node select) {
+        long tShow = Zeit.now();
+        showNode0(n, select);
+        Zeit.log("Ebene „" + (browse != null ? browse.name : "?") + "“ zeigen " + (Zeit.now() - tShow) + "ms");
+    }
+
+    private void showNode0(Node n, Node select) {
         if (n == rootNode || n == displayRoot) n = buildDisplayRoot();
         if (select == null) select = suggestEpisode(n);
         browse = n;
@@ -2080,6 +2147,15 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
+            long tv = Zeit.now();
+            try {
+                return getView0(position, convertView, parent);
+            } finally {
+                Zeit.slow("Zeile " + position + " zeichnen", tv, 15);
+            }
+        }
+
+        private View getView0(int position, View convertView, ViewGroup parent) {
             Row row = convertView != null && convertView.getTag() instanceof Row
                     ? (Row) convertView.getTag() : new Row();
             Node n = browse.children.get(position);

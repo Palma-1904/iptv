@@ -82,28 +82,36 @@
   var seniorFound = [];
   var dataVersion = 0;
   var treeCache = null;
+  // Version = Fingerabdruck von Liste, Programm, eigenen Listen (+ 6-Stunden-Takt für die Programmvorschau, die etwa
+  // 8–12 h reicht; stündlich kostete den alten Stick jedes Mal ~30 s Rechenzeit): gleich auch nach
+  // einem Neustart der App – dann behält die App ihre gespeicherte Senderliste, und hier wird gar nichts gebaut.
   IPTV.setTreeProvider(function () {
     if (!IPTV.buildTree) return null;   // alte senioren.html ohne js/tree.js: ältere Übergabe
-    var version = 'sen:' + pageId + ':' + dataVersion + ':' + IPTV.epgStamp() + ':' + Math.floor(Date.now() / 3600000) +
-      ':' + (IPTV.myStamp ? IPTV.myStamp() : 0);
-    if (treeCache && treeCache.version === version) return treeCache;
     var own = !IPTV.hasDeviceList() && seniorEntries.length;
-    // ganz oben: eigene Listen (zentral, z. B. „⚽ Fussball“), dann ggf. „Meine Sender“ aus config.js
-    var mine = IPTV.myListNodes ? IPTV.myListNodes(allEntries) : [];
-    var first = mine.concat(own ? [{ n: 'Meine Sender', c: seniorEntries.map(function (e) { return IPTV.nativeLeaf(e); }) }] : []);
-    var t = IPTV.buildTree(allEntries, { first: first });
-    seniorEntries.forEach(function (e, i) {
-      t.paths.set(e, own ? [mine.length, i] : t.paths.get(seniorFound[i].entry));
-    });
+    var version = 'sen2:' + (IPTV.dataSig ? IPTV.dataSig() : pageId + ':' + dataVersion) + ':' + IPTV.epgStamp() + ':' +
+      Math.floor(Date.now() / 21600000) + ':' + (IPTV.myStamp ? IPTV.myStamp() : 0) + ':' + (own ? 'o' + seniorEntries.length : '');
+    if (treeCache && treeCache.version === version) return treeCache;
+    var t = null;
+    function ensure() {   // Baum erst bauen, wenn er wirklich gebraucht wird (Übergabe an die App, Pfad)
+      if (t) return t;
+      // ganz oben: eigene Listen (zentral, z. B. „⚽ Fussball“), dann ggf. „Meine Sender“ aus config.js
+      var mine = IPTV.myListNodes ? IPTV.myListNodes(allEntries) : [];
+      var first = mine.concat(own ? [{ n: 'Meine Sender', c: seniorEntries.map(function (e) { return IPTV.nativeLeaf(e); }) }] : []);
+      t = IPTV.buildTree(allEntries, { first: first });
+      seniorEntries.forEach(function (e, i) {
+        t.paths.set(e, own ? [mine.length, i] : t.paths.get(seniorFound[i].entry));
+      });
+      return t;
+    }
     treeCache = {
       version: version,
-      build: function () { return { n: 'Übersicht', c: t.root }; },
-      pathOf: function (e) { return t.paths.get(e) || null; },
+      build: function () { return { n: 'Übersicht', c: ensure().root }; },
+      pathOf: function (e) { return ensure().paths.get(e) || null; },
       pathOfUrl: function (url) {
         // Zugangsdaten in der Adresse ignorieren (Playlist kann auf anderen Zugang umgestellt sein)
         var norm = function (u) { return String(u || '').replace(/^https?:\/\/[^/]+\/(live|movie|series)\/[^/]+\/[^/]+\//, '$1/'); };
         var hit = allEntries.find(function (e) { return norm(e.url) === norm(url); });
-        return hit ? t.paths.get(hit) || null : null;
+        return hit ? ensure().paths.get(hit) || null : null;
       }
     };
     return treeCache;
@@ -185,6 +193,9 @@
       if (tiles.length) tiles[0].click(); else document.documentElement.classList.remove('appplayer');
       return;
     }
+    // App hat diese Senderliste schon (gespeichert, gleicher Fingerabdruck): nur „den letzten Sender spielen“ sagen –
+    // die App sucht ihn selbst und läuft schon, wenn sie ihn aus dem Speicher gestartet hat
+    if (typeof N.playUrl === 'function' && N.hasTree(tp.version) && N.playUrl(N.lastSeniorUrl() || '')) return;
     // Zuletzt gesehen (Sender, Film oder Folge), sonst erster Sender, sonst nur die Übersicht
     var path = tp.pathOfUrl(N.lastSeniorUrl());
     if (!path && tiles.length) path = tp.pathOf(tiles[0]._play.entry);

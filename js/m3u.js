@@ -66,7 +66,18 @@
     return 'live';
   }
 
+  // Kurzer Fingerabdruck eines Textes (Länge + Stichproben): gleiche Liste = gleicher Wert, auch nach einem Neustart.
+  // Damit merkt die App, dass sie ihre gespeicherte Senderliste behalten kann (keine 5 MB erneut übergeben).
+  function quickHash(t) {
+    t = String(t || '');
+    var h = 5381, step = Math.max(1, Math.floor(t.length / 200000));
+    for (var i = 0; i < t.length; i += step) h = ((h * 33) ^ t.charCodeAt(i)) | 0;
+    return t.length.toString(36) + '-' + (h >>> 0).toString(36);
+  }
+  var dataSig = '';
+
   function parse(text) {
+    dataSig = quickHash(text);
     readMyHeader(text);
     var sc = /\bx-series-chunks="(\d+)"/.exec(text.slice(0, 2000).split(/\r?\n/)[0] || '');
     seriesChunks = sc ? +sc[1] : 0;
@@ -113,7 +124,9 @@
     if (data === null) delete o[parts[parts.length - 1]]; else o[parts[parts.length - 1]] = data;
   }
   function myChanged() {
-    myStamp = Date.now();
+    var sig = quickHash(JSON.stringify(myData));
+    if (sig === myStamp) return;   // gleicher Inhalt (z. B. erste Meldung von Firebase = Zwischenspeicher)
+    myStamp = sig;
     try { localStorage.setItem('iptv-mylists', JSON.stringify({ u: myUrl, d: myData })); } catch (err) { /* egal */ }
     myWatchers.forEach(function (fn) { try { fn(); } catch (err) { console.warn(err); } });
     if (typeof pushTree === 'function') pushTree();   // Player der App: Listen sofort in der ☰-Übersicht
@@ -134,7 +147,7 @@
     } catch (err) { /* egal */ }
     if (mySrc) mySrc.close();
     mySrc = null;
-    myStamp = Date.now();
+    myStamp = quickHash(JSON.stringify(myData));
     if (!url || !window.EventSource) return;
     mySrc = new EventSource(url + '.json');
     var on = function (ev) {
@@ -325,6 +338,7 @@
     epg = d && d.channels ? d.channels : null;
     epgOrder = d && d.order ? d.order : [];
     epgGenerated = d && d.generated ? d.generated : 0;
+    epgStamp = epgGenerated || (epg ? Object.keys(epg).length : 0);   // ändert sich nur mit neuem Programm
   }
 
   function loadEpg() {
@@ -489,7 +503,7 @@
   // Holt die Playlist erneut, wenn die App wieder in den Vordergrund kommt
   // (z. B. vom Home-Bildschirm), und meldet nur echte Änderungen.
   var REFRESH_AFTER = 5 * 60 * 1000;
-  var epgStamp = 0;   // ändert sich bei jeder Hintergrund-Auffrischung (neuer Baum fürs Programm)
+  var epgStamp = 0;   // ändert sich nur mit neu veröffentlichtem Programm (setEpg)
   function watch(onChange) {
     watchers.push(onChange);
     document.addEventListener('visibilitychange', function () {
@@ -642,8 +656,7 @@
       } else {
         refreshEpgEls();
       }
-      epgStamp = Date.now();
-      pushTree();
+      pushTree();   // nur wenn sich Liste/Programm wirklich geändert haben (Fingerabdruck in der Version)
     }).catch(function (err) {
       console.warn('Auffrischen fehlgeschlagen, alte Liste bleibt:', err.message);
     });
@@ -787,6 +800,7 @@
     // Fernwartung nach „Veröffentlichen“: neue Fassung sofort laden (ohne die laufende Sendung zu unterbrechen)
     refreshTo: function (rev) { setRev(rev); nativeRefresh(); },
     epgStamp: function () { return epgStamp; },
+    dataSig: function () { return dataSig; },
     nativeTree: function () { return treeProvider ? treeProvider() : null; },   // zum Testen
     nativeLeaf: nativeLeaf,
     norm: norm,

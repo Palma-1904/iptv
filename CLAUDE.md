@@ -344,7 +344,22 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 - Auto-Update ohne Klick bestätigt (Küche, mit Wächter); Fire OS 6 fragt immer nach.
 - Jeder Push = neue App-Version (auch bei reinen Editor-/Notiz-Änderungen) → Änderungen gesammelt pushen.
 
+## Messung am Stick (15.10. abends, `Zeit.java`, `adb logcat -s IPTVZEIT`) und Beschleunigung (App 87)
+- Logcat-Puffer vorher vergrößern (`adb logcat -G 4M`), Messwerte live mitschreiben – sonst überschreiben andere Meldungen.
+- TKH groß (24 500 Einträge, Baum 5 MB): Küche (Fire OS 7) Bild nach 12 s (Webapp rechnet 7,8 s), Wohnzimmer
+  (Fire OS 6) nach 36 s (Webapp rechnet 31 s). Baum wurde 3× übergeben (EPG-Stempel = Date.now, eigene Listen).
+  Übersicht im Wohnzimmer 5,2 s (findLeaf durchsuchte für jeden Lieblingssender/Zuletzt alles, `Memory.norm` übersetzte
+  das Muster jedes Mal neu). Andere Ebenen 0,01 s, Umschalten 1–2,6 s (Anbieter).
+- **Behoben**: Webapp-Version = Fingerabdruck (`quickHash` der Liste, EPG-`generated`, eigene Listen, 6-h-Takt) →
+  gleiche Liste = kein Neubau/keine Übergabe; Baum wird erst gebaut, wenn nötig (senioren.js `ensure`); App speichert den
+  Baum (`TreeCache`, files/tree.json) und startet beim Kaltstart sofort damit den letzten Sender (`startFromCache`);
+  Webapp sagt dann nur `IPTVNative.playUrl` (läuft schon → nichts tun), `playPath` startet nicht neu, wenn derselbe
+  Eintrag läuft; `findLeaf` mit Verzeichnis je Baum, `Memory.norm` vorübersetzt. Ergebnis Wohnzimmer: Bild nach
+  5,4–6,5 s, Übersicht 0,007 s. Rest-Kosten: jede neue Liste ≈ 30 s Rechenzeit am Fire OS 6 (im Hintergrund).
+
 ## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
+- **Gewünscht (Thomas)**: Senderauswahl einer Playlist auf andere Zugänge/Playlists übernehmen (gleicher Sender im
+  eigenen Zugang, Gruppen/Reihenfolge/Namen; fehlende auflisten). Später evtl.: Nutzer löschen Sender in App/Webapp.
 - **15.10. abends – Kategorien nachladen versucht, verworfen**: Filme/Serien je Kategorie in `<liste>.g<k>.m3u`
   (Startdatei TKH 6,8 → 0,74 MB, Baum 5 → 1 MB) – im Browser gut, am Wohnzimmer-Stick (Fire OS 6) aber gefühlt nicht
   schneller und die Suche viel langsamer (lud alle 61 Kategorien einzeln). Code liegt im git stash. **Thomas'

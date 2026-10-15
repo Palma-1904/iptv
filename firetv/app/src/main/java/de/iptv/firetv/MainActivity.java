@@ -69,6 +69,7 @@ public class MainActivity extends Activity implements Remote.Target {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Zeit.log("MainActivity.onCreate");
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prefs = getSharedPreferences("iptv", MODE_PRIVATE);
@@ -102,6 +103,16 @@ public class MainActivity extends Activity implements Remote.Target {
 
         web.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                Zeit.log("Webapp lädt: " + url.replaceAll("#.*", ""));
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                Zeit.log("Webapp geladen");
+            }
+
+            @Override
             @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 return handleLink(url);
@@ -126,10 +137,37 @@ public class MainActivity extends Activity implements Remote.Target {
         if (takePendingSetup()) {
             return;
         } else if (prefs.getBoolean(PREF_CONFIGURED, false)) {
+            startFromCache();
             load(null);
         } else {
             showSetup();
         }
+    }
+
+    /**
+     * Schnellstart: gespeicherte Senderliste einlesen und gleich den letzten Sender spielen (Seniorenansicht), während
+     * die Webapp noch lädt. Hat sie dieselbe Liste (Fingerabdruck), schickt sie nichts Neues und der Sender läuft weiter.
+     */
+    private void startFromCache() {
+        if (PlayerActivity.treeRoot != null) return;
+        new Thread(() -> {
+            if (!TreeCache.load(this)) return;
+            String last = prefs.getString("lastSeniorUrl", "");
+            if (last.isEmpty()) return;
+            org.json.JSONArray path = Remote.pathTo(PlayerActivity.treeRoot, Memory.norm(last));
+            if (path == null) return;
+            runOnUiThread(() -> {
+                if (isFinishing() || PlayerActivity.current != null || System.currentTimeMillis() < quietUntil) return;
+                try {
+                    PlayerActivity.pendingPath = new JSONObject().put("path", path).put("view", "senioren").toString();
+                } catch (Exception e) {
+                    return;
+                }
+                PlayerActivity.pending = null;
+                Zeit.log("Start aus dem Speicher: " + last.replaceAll("^.*/", "…/"));
+                startActivity(new Intent(this, PlayerActivity.class));
+            });
+        }, "Schnellstart").start();
     }
 
     private void load(String hash) {
@@ -204,10 +242,14 @@ public class MainActivity extends Activity implements Remote.Target {
         /** Ganze Playlist als Baum (läuft im Hintergrund-Thread der Brücke, nicht im Bild-Thread). */
         @JavascriptInterface
         public void setTree(String version, String json) {
+            long t0 = Zeit.now();
+            Zeit.log("Baum von der Webapp: " + (json.length() / 1024) + " KB");
             try {
                 PlayerActivity.Node root = PlayerActivity.parseTree(new JSONObject(json));
+                Zeit.log("Baum eingelesen in " + (Zeit.now() - t0) + "ms, " + root.count() + " Einträge");
                 PlayerActivity.treeRoot = root;
                 PlayerActivity.treeVersion = version;
+                TreeCache.save(MainActivity.this, version, json);   // nächster Start: sofort aus dem Speicher
             } catch (Exception e) {
                 PlayerActivity.treeRoot = null;
                 PlayerActivity.treeVersion = null;
@@ -245,10 +287,37 @@ public class MainActivity extends Activity implements Remote.Target {
                 if (System.currentTimeMillis() < quietUntil) return;   // nächtliches Auffrischen
                 String url = web.getUrl();
                 if (url == null || !url.startsWith(BuildConfig.START_URL)) return;
+                if (alreadyPlaying(json)) return;   // läuft schon (z. B. Start aus dem Speicher): nicht neu starten
                 PlayerActivity.pendingPath = json;
                 PlayerActivity.pending = null;
                 startActivity(new Intent(MainActivity.this, PlayerActivity.class));
             });
+        }
+
+        /**
+         * Webapp (Seniorenansicht): „letzten Sender spielen“, wenn die App die Senderliste schon hat. Sucht den
+         * Eintrag selbst; läuft er schon (Start aus dem Speicher), bleibt alles, wie es ist. false = nicht gefunden.
+         */
+        @JavascriptInterface
+        public boolean playUrl(String url) {
+            PlayerActivity.Node root = PlayerActivity.treeRoot;
+            if (root == null || url == null || url.isEmpty()) return false;
+            final String norm = Memory.norm(url);
+            final org.json.JSONArray path = Remote.pathTo(root, norm);
+            if (path == null) return false;
+            runOnUiThread(() -> {
+                if (System.currentTimeMillis() < quietUntil) return;   // nächtliches Auffrischen
+                PlayerActivity p = PlayerActivity.current;
+                if (p != null && !p.isFinishing() && p.playingNorm(norm)) return;   // läuft schon
+                try {
+                    PlayerActivity.pendingPath = new JSONObject().put("path", path).put("view", "senioren").toString();
+                } catch (Exception e) {
+                    return;
+                }
+                PlayerActivity.pending = null;
+                startActivity(new Intent(MainActivity.this, PlayerActivity.class));
+            });
+            return true;
         }
 
         @JavascriptInterface
@@ -262,6 +331,23 @@ public class MainActivity extends Activity implements Remote.Target {
                 PlayerActivity.pendingPath = null;
                 startActivity(new Intent(MainActivity.this, PlayerActivity.class));
             });
+        }
+    }
+
+    /** Spielt der offene Player schon genau den Eintrag dieses Pfads? */
+    private static boolean alreadyPlaying(String json) {
+        PlayerActivity p = PlayerActivity.current;
+        PlayerActivity.Node n = PlayerActivity.treeRoot;
+        if (p == null || p.isFinishing() || n == null) return false;
+        try {
+            org.json.JSONArray path = new JSONObject(json).getJSONArray("path");
+            for (int i = 0; n != null && i < path.length(); i++) {
+                int k = path.getInt(i);
+                n = k >= 0 && k < n.children.size() ? n.children.get(k) : null;
+            }
+            return n != null && n.item != null && p.playingNorm(Memory.norm(n.item.url));
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -480,6 +566,7 @@ public class MainActivity extends Activity implements Remote.Target {
     }
 
     private void applySetup(String raw, String view) {
+        TreeCache.clear(this);   // andere Liste: gespeicherte Senderliste gilt nicht mehr
         view = "senioren";   // App: nur noch Seniorenansicht
         String v = raw.trim();
         String hash;

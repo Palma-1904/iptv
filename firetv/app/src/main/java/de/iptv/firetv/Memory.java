@@ -29,9 +29,13 @@ final class Memory {
 
     /** Adresse ohne Server und Zugangsdaten: ".../movie/USER/PASS/42.mkv" -> "movie/42.mkv".
      *  So bleibt alles erhalten, wenn eine Playlist auf einen anderen Zugang umgestellt wird. */
+    private static final java.util.regex.Pattern NORM =
+            java.util.regex.Pattern.compile("^https?://[^/]+/(live|movie|series)/[^/]+/[^/]+/");
+
     static String norm(String url) {
         if (url == null) return "";
-        return url.replaceFirst("^https?://[^/]+/(live|movie|series)/[^/]+/[^/]+/", "$1/");
+        // vorübersetztes Muster: wird für jeden Eintrag der Liste gebraucht (String.replaceFirst übersetzt jedes Mal neu)
+        return NORM.matcher(url).replaceFirst("$1/");
     }
 
     static synchronized Memory get(Context c) {

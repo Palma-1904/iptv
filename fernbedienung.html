@@ -166,7 +166,17 @@
   .sec:not(.shut) > button.head .sum { display: none; }   /* Kurzinfo nur im zugeklappten Zustand */
   .sec > .body > .card { padding: 0; margin: 0; background: none; }
   .sec .list button { background: var(--panel2); }
+  .sec.group > .body > .card { background: var(--panel2); margin-bottom: 8px; }
+  #ov button .s b { color: var(--warn); font-weight: 600; }
   .sec > .body > section > h2, .sec > .body > h2 { display: none; }
+  /* Kurzleiste unten: erscheint, wenn die große Fernbedienung nicht zu sehen ist (weggescrollt/zugeklappt) */
+  .qbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; gap: 6px; justify-content: center;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--panel);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, .18); }
+  .qbar button { flex: 1; max-width: 110px; min-height: 50px; font-size: 22px; padding: 6px; }
+  .qbar button.ok { background: var(--accent); color: #fff; font-size: 17px; font-weight: 700; }
+  body.hasq { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
+  body.hasq .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
   .foldall { display: flex; gap: 8px; margin: -4px 0 12px; }
   .foldall button { flex: 1; min-height: 40px; padding: 6px 10px; font-size: 14px; background: var(--panel); }
 </style>
@@ -175,6 +185,7 @@
 <h1><span class="dot" id="dot"></span><span id="devname">Fernbedienung</span></h1>
 <div id="warn" hidden></div>
 <div class="card" id="conn" hidden></div>
+<div class="list" id="ov" hidden></div>
 <select id="devsel" hidden aria-label="Fernseher wählen"></select>
 <div class="foldall" id="foldall" hidden><button data-f="0">▸ Alle zuklappen</button><button data-f="1">▾ Alle aufklappen</button></div>
 <div class="card" id="state"><span class="muted">Verbinde …</span></div>
@@ -225,6 +236,14 @@
 <div class="card fold" id="edi" hidden></div>
 <div class="card fold" id="adm" hidden></div>
 <p class="muted" id="foot"></p>
+<div class="qbar" id="qbar" hidden>
+  <button data-k="menu" aria-label="Senderliste">☰</button>
+  <button data-k="up" aria-label="Hoch">▲</button>
+  <button data-k="ok" class="ok" aria-label="OK">OK</button>
+  <button data-k="down" aria-label="Runter">▼</button>
+  <button data-k="playpause" aria-label="Play/Pause">⏯</button>
+  <button data-k="back" aria-label="Zurück">↩</button>
+</div>
 <div class="toast" id="toast"></div>
 <script>
   // tree.js (derselbe Baum wie in der App) braucht nur IPTV.nativeLeaf: hier ohne Adresse, nur Kennung (norm)
@@ -256,13 +275,15 @@
   // ---------- Jeder Bereich auf-/zuklappbar (gemerkt je Handy) ----------
   // Die Inhalte bleiben, wie sie sind; um sie kommt eine Hülle mit Kopfzeile. Ist der Inhalt versteckt oder leer,
   // verschwindet auch die Hülle. Die übrigen Karten (⚙️, 🔔, 📋, 🖥, 🔗) klappen schon selbst.
-  var SECS = [   // id, Titel, anfangs offen?
+  var SECS = [   // id, Titel, anfangs offen?, [weitere Teile] (Admin: Übersicht und Verwaltung)
     ['conn', '📡 Wer schaut gerade', false],
+    ['ov', '📺 Alle Fernseher', true],
     ['state', '▶ Was läuft', true],
     ['remote', '🎮 Fernbedienung', true],
     ['rems', '🔔 Erinnerungen', false],
     ['list', '📺 Sender', true],
-    ['all', '📺 Alles auf diesem Fernseher', false]
+    ['all', '📺 Alles auf diesem Fernseher', false],
+    ['ntf', '🛠 Verwaltung', false, ['ntf', 'myl', 'edi', 'adm']]
   ];
   var secOpen = {};
   try { secOpen = JSON.parse(localStorage.getItem(KEY + '-open') || '{}') || {}; } catch (e) { /* privat */ }
@@ -287,9 +308,9 @@
   SECS.forEach(function (d) {
     var el = $(d[0]);
     if (!el) return;
-    var parts = d[0] === 'list' ? [$('lhead'), el] : [el];
+    var parts = d[3] ? d[3].map($) : d[0] === 'list' ? [$('lhead'), el] : [el];
     var wrap = document.createElement('div');
-    wrap.className = 'card fold sec';
+    wrap.className = 'card fold sec' + (d[3] ? ' group' : '');
     wrap.hidden = true;
     var head = document.createElement('button');
     head.className = 'head';
@@ -305,7 +326,11 @@
     wrap.appendChild(body);
     parts.forEach(function (p) { body.appendChild(p); });
     secs[d[0]] = { wrap: wrap, head: head, arrow: arrow, title: title, sum: sum, parts: parts };
-    head.onclick = function () { secSet(d[0], wrap.classList.contains('shut')); secSave(); };
+    head.onclick = function () {
+      secSet(d[0], wrap.classList.contains('shut'));
+      secSave();
+      if (d[0] === 'ov') render();   // Übersicht zu → Auswahlliste wieder zeigen
+    };
     secSet(d[0], d[0] in secOpen ? !!secOpen[d[0]] : d[2]);
     var mo = new MutationObserver(function () { secSync(d[0]); });
     parts.forEach(function (p) { mo.observe(p, { attributes: true, attributeFilter: ['hidden'], childList: true }); });
@@ -317,7 +342,8 @@
       var open = b.getAttribute('data-f') === '1';
       Object.keys(secs).forEach(function (k) { secSet(k, open); });
       secSave();
-      ['cfg', 'ntf', 'myl', 'edi', 'adm'].forEach(function (id) {
+      render();
+      (open ? ['cfg'] : ['cfg', 'ntf', 'myl', 'edi', 'adm']).forEach(function (id) {   // Verwaltung: Karten bleiben zu
         var c = $(id), h = c && !c.hidden && c.querySelector(':scope > button.head');
         if (h && (h.textContent.charAt(0) === '▾') !== open) h.click();
       });
@@ -501,6 +527,33 @@
     render();
   }
 
+  function renderOv(ids) {
+    var box = $('ov'), admin = ids.length > 1 && ids.some(function (id) { return devices[id].cfg; });
+    box.hidden = !admin;
+    if (!admin) return false;
+    var now = Date.now() / 1000;
+    box.innerHTML = '';
+    var play = 0;
+    ids.forEach(function (id) {
+      var x = devices[id], age = now - (x.t || 0);
+      var st = age > 30 * 60 ? '📴 aus/keine Meldung' : x.screen === false ? '💤 Standby' : x.state === 'closed' ? '● App zu'
+        : (STATE[x.state] || '●');
+      if (age <= 30 * 60 && x.state === 'playing' && x.screen !== false) play++;
+      var warn = [];
+      if (latest && x.ver && x.ver < latest) warn.push('⬆️ App ' + x.ver);
+      if (x.cfg && (!x.cfg.overlay || !x.cfg.install)) warn.push('⚠️ Erlaubnis');
+      var b = document.createElement('button');
+      if (id === sel) b.className = 'cur';
+      b.innerHTML = '<span><span class="t">' + esc(label(id)) + (x.list ? ' · ' + esc(String(x.list).toUpperCase()) : '') + '</span>' +
+        '<span class="s">' + esc(st) + (x.title && age <= 30 * 60 && x.state !== 'closed' ? ' · ' + esc(x.title) : '') +
+        (warn.length ? ' · <b>' + esc(warn.join(' ')) + '</b>' : '') + '</span></span>';
+      b.onclick = function () { choose(id); window.scrollTo(0, $('state').getBoundingClientRect().top + window.scrollY - 80); };
+      box.appendChild(b);
+    });
+    secSum('ov', ids.length + ' Sticks · ' + play + ' schau' + (play === 1 ? 't' : 'en'));
+    return true;
+  }
+
   function render() {
     var ids = Object.keys(devices).filter(function (k) { return devices[k] && devices[k].name; });
     ids.sort(function (a, b) { return label(a).localeCompare(label(b)); });
@@ -510,9 +563,11 @@
       return;
     }
     if (ids.indexOf(sel) < 0) return choose(ids[0]);
+    // Admin: Übersicht aller Fernseher (eine Zeile je Stick, antippen = wählen); die Auswahlliste nur, wenn sie zu ist
+    var ovOn = renderOv(ids);
     // Fernseher wählen: Auswahlliste (mit Zustand), nicht beim Aufklappen neu zeichnen
     var ds = $('devsel');
-    ds.hidden = ids.length < 2;
+    ds.hidden = ids.length < 2 || (ovOn && !secs.ov.wrap.classList.contains('shut'));
     if (document.activeElement !== ds) {
       var now = Date.now() / 1000;
       ds.innerHTML = ids.map(function (id) {
@@ -671,11 +726,11 @@
       loadSrc(src).then(function () { drawBrowse(); }, function (e) {
         $('tree').innerHTML = '<p class="err">Liste nicht ladbar: ' + esc(e.message) + '</p>';
       });
-    } else if (d.norm !== adminFor.norm || JSON.stringify(d.rem || null) !== adminFor.rem) {
-      drawBrowse();   // anderer Sender läuft / Erinnerungen geändert: neu zeichnen
+    } else if (d.norm !== adminFor.norm || JSON.stringify([d.rem, d.rec, d.fav]) !== adminFor.rem) {
+      drawBrowse();   // anderer Sender läuft / Erinnerungen, Zuletzt, Lieblinge geändert: neu zeichnen
     }
     adminFor.norm = d.norm;
-    adminFor.rem = JSON.stringify(d.rem || null);
+    adminFor.rem = JSON.stringify([d.rem, d.rec, d.fav]);
   }
 
   function nowTitle(epg, id) {
@@ -816,10 +871,20 @@
       if (src.key !== shownKey) return;
       var by = { live: [], movie: [], series: [] };
       data.entries.forEach(function (e) { (by[e.type] || by.live).push(e); });
+      // „⭐ Meine“: Zuletzt gesehen + Lieblingssender des Sticks (Status rec/fav, ab App 82)
+      if (!data.byNorm) {
+        data.byNorm = {};
+        data.entries.forEach(function (e) { if (e.norm && !data.byNorm[e.norm]) data.byNorm[e.norm] = e; });
+      }
+      var find = function (n) { return data.byNorm[n]; };
+      by.mine = [];
+      var recE = (d.rec || []).map(find).filter(Boolean), favE = (d.fav || []).map(find).filter(Boolean);
+      if (recE.length || favE.length) by.mine = [1];
+      if (!by[bTab] || !by[bTab].length) bTab = by.live.length ? 'live' : by.movie.length ? 'movie' : 'series';
       // Reiter
       var tabs = $('btabs');
       tabs.innerHTML = '';
-      [['live', '📺 Live TV'], ['movie', '🎬 Filme'], ['series', '📚 Serien']].forEach(function (x) {
+      [['mine', '⭐ Meine'], ['live', '📺 Live TV'], ['movie', '🎬 Filme'], ['series', '📚 Serien']].forEach(function (x) {
         if (!by[x[0]].length) return;
         var b = document.createElement('button');
         b.textContent = x[1];
@@ -827,7 +892,6 @@
         b.onclick = function () { bTab = x[0]; bOpen = null; $('q').value = ''; saveB(); drawBrowse(); };
         tabs.appendChild(b);
       });
-      if (!by[bTab].length) bTab = by.live.length ? 'live' : by.movie.length ? 'movie' : 'series';
       var box = $('tree'), sel_ = $('bgrp'), q = fold($('q').value.trim());
       box.innerHTML = '';
       // Suche über alles (ab 2 Buchstaben)
@@ -845,6 +909,23 @@
           hits += sm.size;
         }
         if (!hits) box.innerHTML = '<p class="muted">Nichts gefunden.</p>';
+        return;
+      }
+      if (bTab === 'mine') {
+        sel_.hidden = true;
+        var row = function (e) {
+          if (e.type === 'live') return liveRow(e, data);
+          if (e.type === 'movie') return movieRow(movieUnits(by.movie.filter(function (x) { return x === e || (e.work && x.work === e.work); }))[0]);
+          return playBtn(e, e.name, e.group);
+        };
+        if (recE.length) {
+          box.appendChild(Object.assign(document.createElement('h2'), { textContent: '🕘 Zuletzt gesehen' }));
+          recE.forEach(function (e) { box.appendChild(row(e)); });
+        }
+        if (favE.length) {
+          box.appendChild(Object.assign(document.createElement('h2'), { textContent: '★ Lieblingssender' }));
+          favE.forEach(function (e) { box.appendChild(row(e)); });
+        }
         return;
       }
       // Gruppe wählen (Serien: Kategorie), gemerkt je Reiter
@@ -1773,7 +1854,7 @@
   document.addEventListener('visibilitychange', updLive);
 
   // Tasten wie auf der Fire-TV-Fernbedienung (Fernwartung „key“)
-  document.querySelectorAll('#remote [data-k]').forEach(function (b) {
+  document.querySelectorAll('#remote [data-k], #qbar [data-k]').forEach(function (b) {
     b.onclick = function () {
       if (navigator.vibrate) navigator.vibrate(15);
       send('key', { k: b.getAttribute('data-k') }, true);
@@ -1794,6 +1875,22 @@
     if (off || !(d.cfg && d.cfg.waechter)) { send('wake', {}); return; }
     if (confirm('Fernseher/Stick ausschalten (Standby)?')) send('sleep', {});
   };
+
+  // Kurzleiste unten nur, wenn die große Fernbedienung da ist, aber gerade nicht im Bild (oder zugeklappt)
+  var padSeen = true;
+  function updQbar() {
+    var r = $('remote'), shut = secs.remote && secs.remote.wrap.classList.contains('shut');
+    var show = !r.hidden && (shut || !padSeen);
+    $('qbar').hidden = !show;
+    document.body.classList.toggle('hasq', show);
+  }
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) { padSeen = es[0].isIntersecting; updQbar(); })
+      .observe(document.querySelector('#remote .dpad'));
+  }
+  new MutationObserver(updQbar).observe($('remote'), { attributes: true, attributeFilter: ['hidden'] });
+  if (secs.remote) new MutationObserver(updQbar).observe(secs.remote.wrap, { attributes: true, attributeFilter: ['class'] });
+  updQbar();
 
   // Laufende Sendung (Fortschritt) jede Minute neu zeichnen
   setInterval(render, 60000);

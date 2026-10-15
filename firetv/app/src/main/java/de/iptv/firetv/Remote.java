@@ -412,6 +412,27 @@ final class Remote {
         if (t.matches("[A-Za-z0-9_-]{16,64}")) topic = t;
     }
 
+    /** „Zuletzt gesehen“ (neueste zuerst) und Lieblingssender als norm-Adressen – fürs Handy (Reiter „Meine“). */
+    private static JSONArray recentJson() {
+        JSONArray a = new JSONArray();
+        try {
+            for (String u : Memory.get(app).recent()) a.put(u);
+        } catch (RuntimeException ignored) {
+            // gleichzeitig geändert (Bedienung am Stick) – nächste Meldung bringt den Stand
+        }
+        return a;
+    }
+
+    private static JSONArray favJson() {
+        JSONArray a = new JSONArray();
+        try {
+            for (String u : Memory.get(app).favLive()) a.put(u);
+        } catch (RuntimeException ignored) {
+            // gleichzeitig geändert (Bedienung am Stick) – nächste Meldung bringt den Stand
+        }
+        return a;
+    }
+
     private static void send() throws Exception {
         lastSent = System.currentTimeMillis();
         dirty = false;
@@ -435,7 +456,8 @@ final class Remote {
                         .put("phone", phoneLink() == null ? "" : phoneLink()))   // nur Haupt-Kanal (Admin)
                 .put("diag", Diag.json(app))
                 .put("norm", nowNorm).put("epg", nowEpg).put("rem", Reminders.upcoming(app))
-                .put("screen", screenOn());
+                .put("screen", screenOn())
+                .put("rec", recentJson()).put("fav", favJson());
         if (fb != null) {
             o.put("noteT", noteT);
             put(fb + topic + "/status/" + deviceId + ".json", o.toString());   // überschreibt: immer der neueste Stand
@@ -447,6 +469,7 @@ final class Remote {
                         .put("state", state).put("title", title).put("type", type).put("t", o.get("t"))
                         .put("note", note).put("noteT", noteT).put("norm", nowNorm).put("epg", nowEpg)
                         .put("rem", Reminders.upcoming(app))
+                        .put("rec", o.opt("rec")).put("fav", o.opt("fav"))   // Handy: Reiter „Meine“
                         .put("m3u", playlistUrl)   // Handy-Seite lädt damit die ganze Liste (Reiter, Gruppen, Suche)
                         .put("ver", BuildConfig.VERSION_CODE);
                 put(fb + k + "/status/" + deviceId + ".json", h.toString());

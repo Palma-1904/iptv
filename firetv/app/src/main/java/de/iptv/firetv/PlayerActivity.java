@@ -1955,7 +1955,8 @@ public class PlayerActivity extends Activity implements Remote.Target {
         handler.removeCallbacks(hideList);
         new android.app.AlertDialog.Builder(this)
                 .setTitle("App neu starten?")
-                .setMessage("Die Senderliste wird neu geladen und nach einer neuen App-Version gesucht.\n"
+                .setMessage("Die Senderliste wird neu geladen und nach einer neuen App-Version gesucht. "
+                        + "Andere Apps (z. B. Netflix) werden geschlossen, damit der Stick mehr Speicher hat.\n"
                         + "Favoriten, Einstellungen und „Weiterschauen“ bleiben erhalten.")
                 .setPositiveButton("Neu starten", (d, w) -> {
                     Intent i = new Intent(this, MainActivity.class)

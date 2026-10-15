@@ -357,6 +357,12 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   Eintrag läuft; `findLeaf` mit Verzeichnis je Baum, `Memory.norm` vorübersetzt. Ergebnis Wohnzimmer: Bild nach
   5,4–6,5 s, Übersicht 0,007 s. Rest-Kosten: jede neue Liste ≈ 30 s Rechenzeit am Fire OS 6 (im Hintergrund).
 
+- **Andere Apps schließen** (`AppsCleanup`, KILL_BACKGROUND_PROCESSES): bei „App neu starten“ (Stick und Admin) und
+  nachts. Wirkt nur auf Apps im Hintergrund ohne laufenden Dienst – **Netflix nicht** (Amazon hält `NetflixService` am
+  Laufen, startet sogar nach dem Neustart; ~90 MB am Wohnzimmer). Netflix los = deinstallieren.
+- Gemessen 15.10. (Wohnzimmer, große TKH, App 87): Suche „chic“ ≈ 2 s, Ebenen/Übersicht < 0,01 s; Speicher: App 167 MB
+  + WebView 75 MB, frei nur ~240 MB von 1,3 GB. Küche/Schlafzimmer (AFTSSS) haben nur 1 GB → Listen dort ≤ 🟡 halten.
+
 ## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
 - **📋 Senderauswahl übernehmen** (gebaut 15.10., Editor ⋯-Menü, `copySelection`): Gruppen/Reihenfolge/eigene Namen/
   „★ Meine Sender“ einer anderen Playlist für Fernsehsender/Filme/Serien (ankreuzbar) – Schlüssel über

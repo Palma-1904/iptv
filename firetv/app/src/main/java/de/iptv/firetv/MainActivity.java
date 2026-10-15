@@ -61,6 +61,7 @@ public class MainActivity extends Activity implements Remote.Target {
             if (p instanceof PlayerActivity && ((PlayerActivity) p).watching()) return;
             prefs.edit().putString("nightly", today).apply();
             quietUntil = System.currentTimeMillis() + 2 * 60 * 1000L;
+            AppsCleanup.closeOthersAsync(MainActivity.this, null);   // nachts auch Netflix & Co. aus dem Speicher
             web.reload();
             handler.postDelayed(() -> { if (!isFinishing()) Updater.check(MainActivity.this, true); }, 60000);
         }
@@ -184,6 +185,10 @@ public class MainActivity extends Activity implements Remote.Target {
         super.onNewIntent(intent);
         if (intent != null && intent.getBooleanExtra("restart", false)) {
             Toast.makeText(this, "Wird neu gestartet …", Toast.LENGTH_SHORT).show();
+            // andere Apps (Netflix & Co.) aus dem Speicher – der Stick hat dann mehr Luft
+            AppsCleanup.closeOthersAsync(this, mb -> runOnUiThread(() -> {
+                if (mb > 0 && !isFinishing()) Toast.makeText(this, "Andere Apps geschlossen – " + mb + " MB Speicher frei", Toast.LENGTH_LONG).show();
+            }));
             web.reload();
             handler.postDelayed(() -> Updater.check(this, true), 4000);
         }
@@ -710,6 +715,7 @@ public class MainActivity extends Activity implements Remote.Target {
                 break;
             case "restart":                  // Admin: App neu starten (Liste frisch, nach Updates sehen)
                 if (player != null) player.remote("close", arg);
+                AppsCleanup.closeOthersAsync(this, mb -> Remote.report("App neu gestartet, andere Apps geschlossen (" + mb + " MB frei)"));
                 web.reload();
                 handler.postDelayed(() -> Updater.check(this, true), 4000);
                 Remote.report("App neu gestartet");

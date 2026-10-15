@@ -236,30 +236,113 @@
     draw();
   }
 
+  // Suche über alles, geordnet: Live · Filme · Serien (eine Zeile je Serie) · 🗓 Im Programm (nächste 36 h)
   function renderSearch(q) {
     content.textContent = '';
     var terms = IPTV.normalize(q).split(/\s+/).filter(Boolean);
-    var hits = [];
-    var total = 0;
+    var match = function (text) {
+      for (var t = 0; t < terms.length; t++) if (text.indexOf(terms[t]) < 0) return false;
+      return true;
+    };
+    var hits = { live: [], movie: [], series: [] }, seen = {}, total = 0;
     for (var i = 0; i < all.length; i++) {
       var e = all[i];
-      var ok = true;
-      for (var t = 0; t < terms.length; t++) {
-        if (e.search.indexOf(terms[t]) < 0) { ok = false; break; }
+      if (!match(e.search)) continue;
+      if (e.type === 'series' && SPLIT) {           // Folgen derselben Serie zusammenfassen
+        if (seen[e.group]) { seen[e.group].n++; continue; }
+        seen[e.group] = { e: e, n: 1 };
+        hits.series.push(seen[e.group]);
+        total++;
+        continue;
       }
-      if (ok) { total++; if (hits.length < MAX_RESULTS) hits.push(e); }
+      total++;
+      var list = hits[e.type] || hits.live;
+      if (list.length < MAX_RESULTS) list.push(e);
     }
+    // Sendungen im Programm (je Sender die normale Fassung)
+    // Gleiche Sendung zur gleichen Zeit (z. B. 20 Uhr Tagesschau auf allen ARD-Sendern) nur einmal, je Sender höchstens 2
+    var progHits = [], sameShow = {};
+    var tEnd = Date.now() / 1000 + 36 * 3600;
+    epgChannels().forEach(function (ch) {
+      var n = 0;
+      IPTV.programmes(ch.tvgId).forEach(function (p) {
+        if (n >= 2 || p[0] >= tEnd || progHits.length >= 40 || !match(IPTV.normalize(p[2] || ''))) return;
+        var k = p[0] + '|' + IPTV.normalize(p[2]);
+        if (sameShow[k]) { sameShow[k].more++; return; }
+        sameShow[k] = { ch: ch, p: p, more: 0 };
+        progHits.push(sameShow[k]);
+        n++;
+      });
+    });
+    progHits.sort(function (a, b) { return a.p[0] - b.p[0]; });
     var info = document.createElement('p');
     info.className = 'status small';
-    info.textContent = total === 0 ? 'Keine Treffer.'
-      : total > MAX_RESULTS ? total + ' Treffer – die ersten ' + MAX_RESULTS + ' werden angezeigt.'
-      : total + ' Treffer';
+    info.textContent = total + progHits.length === 0 ? 'Keine Treffer.' : total + ' Treffer' +
+      (progHits.length ? ' · ' + progHits.length + ' Sendungen im Programm' : '');
     content.appendChild(info);
-    var box = document.createElement('div');
-    box.className = 'list';
-    var liveHits = hits.filter(function (e) { return e.type === 'live'; });
-    units(hits).forEach(function (u) { box.appendChild(unitEl(u, true, u.entry.type === 'live' ? liveHits : null)); });
-    content.appendChild(box);
+    function section(title, n) {
+      var h = document.createElement('h2');
+      h.className = 'hits-head';
+      h.textContent = title + ' (' + n + ')';
+      content.appendChild(h);
+      var box = document.createElement('div');
+      box.className = 'list';
+      content.appendChild(box);
+      return box;
+    }
+    if (hits.live.length) {
+      var lb = section('📺 Live', hits.live.length);
+      hits.live.forEach(function (e) { lb.appendChild(itemEl(e, true, hits.live)); });
+    }
+    if (hits.movie.length) {
+      var mu = units(hits.movie);
+      var mb = section('🎬 Filme', mu.length);
+      mu.forEach(function (u) { mb.appendChild(unitEl(u, true)); });
+    }
+    if (hits.series.length) {
+      var sb = section('📚 Serien', hits.series.length);
+      hits.series.forEach(function (x) {
+        if (!SPLIT) { sb.appendChild(itemEl(x, true)); return; }
+        var a = itemEl(x.e, false);
+        a.querySelector('.name').textContent = x.e.group;
+        var meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = 'Serie · ' + (x.e.lazy ? (x.e.eps || '') + ' Folgen' : x.n + (x.n === 1 ? ' Folge' : ' Folgen'));
+        a.querySelector('.text').appendChild(meta);
+        if (!x.e.lazy) {   // Folge → ganze Serie öffnen (wie bei großen Listen)
+          var b = a.cloneNode(true);
+          b.href = '#';
+          b.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            search.value = '';
+            activeType = 'series';
+            catSel.series = x.e.cat || 'Serien';
+            saveCat();
+            openSeries = x.e.group;
+            tabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.type === 'series')); });
+            render();
+            window.scrollTo(0, 0);
+          });
+          a = b;
+        }
+        sb.appendChild(a);
+      });
+    }
+    if (progHits.length) {
+      var pb = section('🗓 Im Programm', progHits.length);
+      var now = Date.now() / 1000;
+      progHits.forEach(function (x) {
+        var a = itemEl(x.ch, false, null);
+        var meta = document.createElement('span');
+        meta.className = 'meta now';
+        meta.textContent = (x.p[0] <= now ? 'läuft jetzt · ' : dayLabel(x.p[0]) + ' ' + IPTV.hhmm(x.p[0]) + ' · ') + x.p[2] +
+          (x.more ? ' (auch auf ' + x.more + ' weiteren)' : '');
+        var old = a.querySelector('.meta.now');
+        if (old) old.remove();
+        a.querySelector('.text').appendChild(meta);
+        pb.appendChild(a);
+      });
+    }
   }
 
   // ---------- Browser (iPad, iPhone, Mac): links Kategorien, rechts Inhalt ----------
@@ -470,8 +553,9 @@
         : mac ? 'IINA schließen oder zurück zu Safari wechseln.' : 'Mit „Zurück“.'],
       ['⏭️', 'Weiterschalten', 'Oben in der Leiste „Zuletzt“: ◀ / ▶▶ für den vorigen/nächsten Sender, „nochmal“ startet ihn erneut.'],
       ['ⓘ', 'Worum geht es?', 'Das ⓘ neben einem Sender zeigt den Inhalt der laufenden Sendung.'],
-      ['🎬', 'Filme und Serien', 'Oben umschalten. Mit ☆ merken – die stehen dann unter „★ Meine Favoriten“.'],
-      ['🔍', 'Suchen', 'Ins Suchfeld oben tippen: findet Sender, Filme und Serien.']
+      ['🎬', 'Filme und Serien', 'Oben umschalten. Mit ☆ merken – die stehen dann unter „★ Meine Favoriten“. „▶ Weiterschauen“ oben bringt die nächste Folge.'],
+      ['🔍', 'Suchen', 'Ins Suchfeld oben tippen: findet Sender, Filme, Serien und Sendungen im Programm (z. B. „Tatort“).'],
+      ['Aa', 'Größere Schrift', 'Oben auf „Aa“ tippen – zweimal für noch größer, dreimal zurück.']
     ];
     if (IPTV.myCanEdit()) tips.push(['＋', 'Eigene Listen', 'Mit ＋ am Sender in eine eigene Liste (z. B. „⚽ Fussball“) aufnehmen – sie steht dann links ganz oben, auch auf den Fernsehern.']);
     if (ios) tips.push(['📲', 'Wie eine App', 'In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen.']);
@@ -514,6 +598,23 @@
   if (SPLIT) {
     var hb = document.getElementById('help');
     if (hb) { hb.hidden = false; hb.addEventListener('click', showHelp); }
+    // „Aa“: Schrift und Tipp-Flächen größer (normal → groß → sehr groß), gemerkt je Gerät
+    var FONT = [1, 1.15, 1.3], fontIdx = 0, fb = document.getElementById('fontbtn');
+    try { fontIdx = Math.max(0, FONT.indexOf(parseFloat(localStorage.getItem('iptv-font') || '1'))); } catch (err) { /* egal */ }
+    var applyFont = function () {
+      document.documentElement.style.zoom = FONT[fontIdx] === 1 ? '' : String(FONT[fontIdx]);
+      if (fb) fb.textContent = ['Aa', 'Aa+', 'Aa++'][fontIdx];
+      measureHeader();
+    };
+    applyFont();
+    if (fb) {
+      fb.hidden = false;
+      fb.addEventListener('click', function () {
+        fontIdx = (fontIdx + 1) % FONT.length;
+        try { localStorage.setItem('iptv-font', String(FONT[fontIdx])); } catch (err) { /* egal */ }
+        applyFont();
+      });
+    }
   }
   var helpShown = false;
   function firstHelp() {   // einmal nach dem ersten Laden der Liste
@@ -674,6 +775,11 @@
       if (st) pane.appendChild(st);
       pane.appendChild(liveList(cur.items));
     }
+    if (type !== 'live' && !openSeries && cur.name.indexOf('🕘') !== 0) {
+      var cs = continueStrip(type);
+      if (cs) pane.insertBefore(cs, h);
+    }
+    if (type === 'live') { /* oben erledigt */ }
     else if (type === 'movie') pane.appendChild(movieGrid(cur.units));
     else if (openSeries && cur.series.has(openSeries)) pane.appendChild(seriesDetail(openSeries, cur.series.get(openSeries)));
     else pane.appendChild(seriesGrid(cur.series));
@@ -681,6 +787,55 @@
     wrap.appendChild(pane);
     content.appendChild(wrap);
   }
+  // ▶ Weiterschauen (oben bei Filmen/Serien): Serien mit der nächsten Folge (gleiche Sprache), Filme zum erneuten
+  // Öffnen – die Stelle merkt sich der Player selbst (Outplayer/VLC/IINA), die Webseite erfährt sie nicht.
+  function continueStrip(type) {
+    var rec = recentOf(type);
+    if (!rec.length) return null;
+    var out = [];
+    if (type === 'series') {
+      var groups = groupsOf(byType.series), seenG = {};
+      rec.forEach(function (e) {
+        if (seenG[e.group] || out.length >= 8) return;
+        seenG[e.group] = 1;
+        var same = function (x) { return x.type === 'series' && x.group === e.group && x.lang === e.lang && !x.lazy; };
+        var eps = (groups.get(e.group) || []).filter(same);
+        if (!eps.length) byUrl.forEach(function (x) { if (same(x)) eps.push(x); });   // große Liste: nachgeladene Folgen
+        var i = eps.indexOf(e), nx = i >= 0 ? eps[i + 1] : null;
+        var ep = function (x) { return x.name.indexOf(x.group) === 0 ? x.name.slice(x.group.length).replace(/^[\s–-]+/, '') : x.name; };
+        out.push({ e: nx || e, t: e.group, s: nx ? '▶ weiter: ' + ep(nx) : '↻ zuletzt: ' + ep(e) });
+      });
+    } else {
+      var seenW = {};
+      rec.forEach(function (e) {
+        if (out.length >= 8 || seenW[favKey(e)]) return;
+        seenW[favKey(e)] = 1;
+        out.push({ e: e, t: e.name, s: '↻ weiterschauen' + (e.lang ? ' · ' + langName(e.lang) : '') });
+      });
+    }
+    var box = document.createElement('div');
+    box.className = 'continue';
+    var h = document.createElement('h3');
+    h.textContent = '▶ Weiterschauen';
+    box.appendChild(h);
+    var row = document.createElement('div');
+    row.className = 'crow';
+    out.forEach(function (x) {
+      var a = itemEl(x.e, false, [x.e]);
+      a.classList.add('ccard');
+      a.querySelector('.name').textContent = x.t;
+      var m = document.createElement('span');
+      m.className = 'meta';
+      m.textContent = x.s;
+      a.querySelector('.text').appendChild(m);
+      var f = a.querySelector('.fav');
+      if (f) f.remove();
+      row.appendChild(a);
+    });
+    box.appendChild(row);
+    return box;
+  }
+
   // offenes Kategorien-Menü (iPhone): Tippen daneben oder Escape klappt es zu
   function closeCatMenu(ev) {
     var o = document.querySelector('.cats.open');
@@ -710,7 +865,13 @@
           text.appendChild(nx);
         }
         text.appendChild(progressEl(e.tvgId));
-        if (nn && nn.now[3]) a.appendChild(infoBtn(text, nn.now));
+        if (nn && nn.now[3]) {
+          var pk = document.createElement('span');   // iPad quer/Mac: Inhalt kurz sichtbar, ohne ⓘ
+          pk.className = 'peek';
+          pk.textContent = nn.now[3];
+          text.appendChild(pk);
+          a.appendChild(infoBtn(text, nn.now));
+        }
       }
       if (IPTV.myCanEdit()) a.appendChild(addListBtn(e));
       box.appendChild(a);

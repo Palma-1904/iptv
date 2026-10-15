@@ -12,6 +12,12 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
     tv/web → `player.html`, app → eingebauter Player). Mac: erst `player.html` (Anbieter hat kein https → Browser sperrt,
     Seite erklärt: „In IINA öffnen“ / „IINA laden“ / „Immer in IINA öffnen“ / „Adresse kopieren“); nach „Immer …“
     (`iptv-iina-ok`) direkt `iina://` – automatisch erkennen geht nicht sicher (Safari-Meldung „Adresse ungültig“).
+  - **Ab 15.10. abends**: Suche ordnet Treffer (📺 Live · 🎬 Filme · 📚 Serien = eine Zeile je Serie, öffnet sie ·
+    🗓 Im Programm = passende Sendungen der nächsten 36 h, gleiche Sendung/Zeit nur einmal, je Sender ≤ 2, max. 40).
+    „▶ Weiterschauen“ oben bei Filmen/Serien (`continueStrip`, aus `iptv-recent`: Serie → nächste Folge gleicher
+    Sprache, auch nachgeladene Folgen aus `byUrl`; Filme → nochmal öffnen; die Stelle merkt sich der Player selbst).
+    „Aa“ neben der Uhr (`#fontbtn`, `iptv-font`: zoom 1 / 1,15 / 1,3; iPhone: Kopfzeile darf umbrechen). iPad quer/Mac
+    (≥ 1024 px quer): Inhalt der laufenden Sendung zwei Zeilen in der Live-Zeile (`.peek`), ⓘ zeigt alles.
   - Einrichtungs-Link `#liste=BENUTZER/GIST/name` bzw. `#m3u=…` + `&ansicht=komplett|senioren`, wird im localStorage gespeichert.
   - Reiter Live/Filme/Serien/Programm (EPG aus `<liste>.epg.json`), Sprachfassungen über `x-work`/`x-lang`,
     HEVC → automatisch HD-Fassung im Browser-Player.
@@ -183,6 +189,12 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Fernbedienung · Erinnerungen · Senderliste · Alles auf diesem Fernseher; zugeklappt zeigt der Kopf eine Kurzinfo
   (laufender Sender, Anzahl …). Anfangs offen: Was läuft, Fernbedienung, Senderliste; gemerkt je Handy
   (`iptv-fernbedienung-open`). Oben „Alle zuklappen / Alle aufklappen“ (auch für ⚙️/🔔/📋/🖥/🔗).
+  **Bedienung vereinfacht (15.10. abends, Thomas „alle acht“)**: Kurzleiste unten (`#qbar`: ☰ ▲ OK ▼ ⏯ ↩), sobald
+  die große Fernbedienung weggescrollt/zugeklappt ist (IntersectionObserver auf `.dpad`). Reiter **„⭐ Meine“** in
+  „Alles auf diesem Fernseher“: Zuletzt gesehen + Lieblingssender des Sticks (Status `rec`/`fav` = norm-Adressen,
+  Remote.java `recentJson/favJson`, auch im Handy-Status; **ab App 83**). Admin: **„📺 Alle Fernseher“** (`#ov`,
+  `renderOv`: eine Zeile je Stick mit Zustand, Sender, ⬆️/⚠️; antippen = wählen; Auswahlliste nur, wenn zugeklappt)
+  und **„🛠 Verwaltung“** fasst 🔔/📋/🖥/🔗 zusammen (Hülle mit mehreren Teilen, Klasse `.sec.group`).
   „📋 Link kopieren“ kopiert nur den Link (Anleitungstext nur über „Teilen“). Die Karte heißt „🔗 Links senden“ und
   enthält auch die Handy-Fernbedienung je Fernseher (Geräte-Link `cfg.phone`, ab App 72; Admin-Link nie).
   **🖥 Editor aus der Ferne** (`#edi`, Editor ab VERSION 28): Editor-Thread `remote_editor_loop` holt alle 10 s

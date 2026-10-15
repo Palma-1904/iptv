@@ -331,7 +331,8 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   die Sticks zu Hause „Komplett“ → prüfen. SetupReceiver kann `autostart`/`home`/`waechter` = 0/1.
 - **Offen**:
   - Anita meldet sich seit 10.10. 15:27 nicht mehr (zuletzt beim Abspielen, WLAN -66 dBm) → vor Ort Strom/WLAN prüfen lassen.
-  - Schlafzimmer: per Fernwartung „Update“ auf 69; Erlaubnis „Über anderen Apps einblenden“ (Knopf in ☰ 3 s).
+  - Schlafzimmer: ~~Erlaubnis „Über anderen Apps einblenden“~~ – **erledigt 15.10.** per ADB (`appops set … SYSTEM_ALERT_WINDOW allow`),
+    Stick meldet overlay ✓, install ✓, Wächter ✓ (App 85).
   - Noch zu bestätigen: „Fernseher aus“ am echten TV; kein „Bild – schwarz – Bild“ beim Umschalten.
   - Samsung: Smarters zeigt aus M3U keine Serien/Filme → Fire-TV-Stick oder Smarters per Xtream-Login.
   - iPad mit Outplayer noch ungetestet.

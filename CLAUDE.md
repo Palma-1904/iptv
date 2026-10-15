@@ -187,6 +187,9 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   ACTION_MANAGE_OVERLAY_PERMISSION bzw. …UNKNOWN_APP_SOURCES für die App, legt nur den Schalter in der Nähe des
   Textes „Fernsehen“ um, Zurück, nächste; 90 s, Ergebnis per report; Fire OS zeigt die Seiten nicht überall –
   dann nur ADB/vor Ort). Was nur vor Ort/ADB geht: Overlay-, Installations-Erlaubnis, Ersteinrichtung Wächter.
+  **Ab App 74**: „🧹 Zuletzt gesehen, Lieblingssender & Favoriten löschen“ (Befehl `forget`: Memory recent/favLive/
+  resume + lastSeniorUrl, Webapp-localStorage iptv-fav/-recent/-lastplay/-cat, Seite neu); eigene Listen und
+  Erinnerungen bleiben. Gedacht vor dem Wechsel eines Sticks auf eine andere Liste.
 - **Selbst-ADB geht nicht** (getestet 9.10.2026, Wohnzimmer Fire OS 6): App verband sich mit dem eigenen adbd
   (127.0.0.1 und eigene WLAN-IP, Port 5555) → adbd schließt sofort (EOF), vom Mac aus klappt dasselbe Protokoll.
   Fire OS sperrt ADB-Verbindungen vom Gerät selbst. Wieder entfernt (Revert). Außerdem: Fire OS erlaubt nur EINE
@@ -255,6 +258,9 @@ TKH bis 26.10.2027, ASW bis 04.10.2027, KMH bis 04.10.2027 (player_api für KMH/
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
 ## Stand / nächste Schritte (15.10.2026)
+- **15.10. nachmittags**: Neuer Stick **„ERO“** (4K Max, Thomas, am Monitor) per Assistent eingerichtet, App 73,
+  vorläufig Liste ASW (teilt Anitas Verbindung!), eigene Listen erlaubt – OK-lang-Menü funktioniert. Thomas legt im
+  Editor eine neue Xtream-Liste für ERO an. Lokal: Befehl „forget“ (→ App 74), IPTV-Automatik (einmal einrichten).
 - **15.10. Mittag**: **App 72 online, alles gepusht** (inkl. Admin-Auswahlliste, Handy-Code je Stick, Einstellungen
   übertragen, Erlaubnisse über den Wächter). Sticks noch auf altem Stand: Anita 65 (seit 10.10. offline!), Küche 69,
   Wohnzimmer 69 (Fire OS 6: Update braucht Klick vor Ort), Max 70, Schlafzimmer 62 (ohne Wächter, Autostart-Erlaubnis

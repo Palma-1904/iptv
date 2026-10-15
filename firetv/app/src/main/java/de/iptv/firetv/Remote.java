@@ -606,6 +606,17 @@ final class Remote {
             dirty = true;
             return;
         }
+        if ("forget".equals(action)) {          // Admin: Zuletzt gesehen, Lieblingssender, Weiterschauen löschen
+            Memory m = Memory.get(app);
+            m.clearRecent();
+            m.clearFavLive();
+            m.clearResume();
+            app.getSharedPreferences("iptv", Context.MODE_PRIVATE).edit().remove("lastSeniorUrl").apply();
+            Target mt = main_target;
+            if (mt != null) mt.remote("forget", arg);   // Webapp: Filme-/Serien-Favoriten, Zuletzt gesehen
+            report("Gelöscht: Zuletzt gesehen, Lieblingssender, Favoriten, Weiterschauen");
+            return;
+        }
         if ("newcode".equals(action)) {         // Admin: neuer Handy-Code (alte Links/QR-Codes gelten nicht mehr)
             newHandyKey();
             report("Neuer Handy-Code – alte Links gelten nicht mehr");

@@ -602,6 +602,11 @@ public class MainActivity extends Activity implements Remote.Target {
             case "message":
                 Remote.showMessage(this, arg.optString("text"));
                 break;
+            case "forget":                   // Gerätespeicher der Webapp (Favoriten Filme/Serien u. a.)
+                web.evaluateJavascript("try{['iptv-fav','iptv-recent','iptv-lastplay','iptv-cat'].forEach("
+                        + "function(k){localStorage.removeItem(k)})}catch(e){}", null);
+                web.reload();
+                break;
             case "reload":
                 if (player != null) player.remote("close", arg);
                 web.reload();

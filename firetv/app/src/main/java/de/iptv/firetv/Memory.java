@@ -157,6 +157,11 @@ final class Memory {
         return favLive;
     }
 
+    void clearFavLive() {
+        favLive.clear();
+        writeList("favLive", favLive);
+    }
+
     /** Umschalten; liefert den neuen Zustand. */
     boolean toggleFavLive(String url) {
         url = norm(url);

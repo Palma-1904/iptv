@@ -736,6 +736,16 @@
     }
     chk(c.overlay, 'Autostart erlaubt', 'Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)');
     chk(c.install, 'Updates erlaubt', 'Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)');
+    // Gerätespeicher leeren (ab App 74: „forget“), z. B. vor dem Wechsel auf eine andere Liste
+    if (d.ver >= 74) {
+      var fg = document.createElement('button');
+      fg.className = 'sw';
+      fg.innerHTML = '<span>🧹 Zuletzt gesehen, Lieblingssender & Favoriten löschen</span><b></b>';
+      fg.onclick = function () {
+        if (confirm('Auf „' + label(sel) + '“ löschen: Zuletzt gesehen, Lieblingssender, Film-/Serien-Favoriten und Weiterschauen-Stellen? (Eigene Listen und Erinnerungen bleiben.)')) send('forget', {});
+      };
+      body.appendChild(fg);
+    }
     // Fehlende Erlaubnisse: Notlösung über den Wächter (ab App 72: „grant“)
     if ((!c.overlay || !c.install) && d.ver >= 72) {
       var gb = document.createElement('button');

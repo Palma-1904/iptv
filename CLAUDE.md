@@ -264,7 +264,8 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
 - **Mini-Erklärung** in der Webapp (iPhone/iPad/Mac): kurz, wie man sie benutzt (Kategorien, Abspielen mit
   Outplayer/VLC/IINA, zurückkommen, Favoriten, Suche).
 - **Eigene Listen** (z. B. „⚽ Fussball“) – Entscheidung Thomas 15.10.: **Stick-App nur noch Seniorenansicht**
-  (Wahl Komplett/Senioren in der Einrichtung entfällt). **Freigabe je Gerät** im Editor/Admin (⚙️ „Darf eigene
+  (**umgesetzt**: `mode.js` leitet in der App (UA IPTVApp) immer auf senioren.html; Einrichtung am Stick nur noch
+  „Übernehmen“, `applySetup` erzwingt senioren; Admin ⚙️ ohne Komplett/Senioren-Wahl). **Freigabe je Gerät** im Editor/Admin (⚙️ „Darf eigene
   Listen bearbeiten“, Standard aus – Schwiegermutter nein, Jüngere ja). Listen **zentral in Firebase** unter eigenem
   geheimen Schlüssel je Playlist, sofort auf allen Geräten der Playlist (oben in der Übersicht); Stick mit Freigabe:
   OK lang → „Zu Liste hinzufügen / ＋ Neue Liste“. Webapp zeigt sie als Kategorien, Bearbeiten nur wenn für die

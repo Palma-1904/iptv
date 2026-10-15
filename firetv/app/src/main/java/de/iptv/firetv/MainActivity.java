@@ -269,19 +269,18 @@ public class MainActivity extends Activity implements Remote.Target {
 
         boolean configured = prefs.getBoolean(PREF_CONFIGURED, false);
         String list = Remote.currentList();
-        String view = "senioren".equals(prefs.getString("view", "")) ? "Senioren" : "Komplett";
         String msg = configured
-                ? "Eingerichtet: Liste „" + (list.isEmpty() ? "?" : list) + "“ · Ansicht " + view + "\n\n"
-                  + "Ansicht wechseln: unten wählen. Andere Liste: Einrichtungs-Link eingeben."
-                : "Einrichtungs-Link aus dem Playlist-Editor eingeben und Ansicht wählen.\n"
+                ? "Eingerichtet: Liste „" + (list.isEmpty() ? "?" : list) + "“\n\n"
+                  + "Andere Liste: Einrichtungs-Link eingeben und „Übernehmen“."
+                : "Einrichtungs-Link aus dem Playlist-Editor eingeben.\n"
                   + "Tipp: Mit der Fire-TV-App auf dem Handy lässt sich bequem tippen.";
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Einrichtung")
                 .setMessage(msg)
                 .setView(scroll(box))
-                .setPositiveButton("Komplett", (d, w) -> applySetup(input.getText().toString(), "komplett"))
-                .setNegativeButton("Senioren", (d, w) -> applySetup(input.getText().toString(), "senioren"))
+                // nur noch Seniorenansicht (Player mit ☰-Liste); mode.js stellt die Webapp in der App ebenso um
+                .setPositiveButton("Übernehmen", (d, w) -> applySetup(input.getText().toString(), "senioren"))
                 .setNeutralButton("Abbrechen", (d, w) -> closeSetup())
                 .setCancelable(false)
                 .create();
@@ -469,6 +468,7 @@ public class MainActivity extends Activity implements Remote.Target {
     }
 
     private void applySetup(String raw, String view) {
+        view = "senioren";   // App: nur noch Seniorenansicht
         String v = raw.trim();
         String hash;
         int i = v.indexOf('#');

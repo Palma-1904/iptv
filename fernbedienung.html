@@ -653,21 +653,7 @@
       b.onclick = function () { if (confirm(w[2])) send(w[0], {}); };
       body.appendChild(b);
     });
-    // Ansicht und Liste (wie im Editor)
-    var seg = document.createElement('div');
-    seg.className = 'seg';
-    [['komplett', 'Komplett'], ['senioren', 'Senioren']].forEach(function (v) {
-      var b = document.createElement('button');
-      b.textContent = v[1];
-      if (d.view === v[0]) b.className = 'sel';
-      b.onclick = function () {
-        if (d.view === v[0]) return;
-        send('view', { view: v[0] });
-        toast('Ansicht wird umgestellt auf ' + v[1] + ' …');
-      };
-      seg.appendChild(b);
-    });
-    body.appendChild(seg);
+    // Liste (wie im Editor). Ansicht gibt es in der App nur noch eine: Senioren (Player mit ☰-Liste).
     if (lists) {
       var selEl = document.createElement('select');
       Object.keys(lists).forEach(function (slug) {

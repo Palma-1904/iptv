@@ -30,9 +30,18 @@
     && !/AFT[A-Z0-9]|Android ?TV|GoogleTV|SMART-TV|SmartTV|BRAVIA/i.test(ua);
   if (browser && getMode() === 'senior') setMode('main');
 
+  // Fire-TV-App: nur noch die Seniorenansicht (Thomas 15.10.) – startet im Player, ☰ = ganze Liste
+  if (/IPTVApp/.test(ua)) {
+    setMode('senior');
+    if (page === 'main') {
+      location.replace('senioren.html' + location.search + location.hash.replace('ansicht=komplett', 'ansicht=senioren'));
+      return;
+    }
+  }
+
   var wanted = new URLSearchParams(location.hash.slice(1)).get('ansicht');
   if (wanted === 'senioren') setMode(browser ? 'main' : 'senior');
-  if (wanted === 'komplett') setMode('main');
+  if (wanted === 'komplett' && !/IPTVApp/.test(ua)) setMode('main');
   if (browser && page === 'senior') {
     setMode('main');
     location.replace('index.html' + location.search + location.hash.replace('ansicht=senioren', 'ansicht=komplett'));

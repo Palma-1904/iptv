@@ -242,10 +242,19 @@ def xtream_episodes(src, series_id):
     info = xtream_api(src, 'get_series_info', series_id=series_id)
     base, u, p = xtream_base(src), src['username'], src['password']
     eps = []
-    episodes = info.get('episodes') if isinstance(info, dict) else None
-    if isinstance(episodes, dict):
-        episodes = [e for season in episodes.values() for e in season]
-    for e in episodes or []:
+
+    def episodes_of(x):
+        """Folgen aus jeder Verschachtelung: {Staffel: [Folge]}, [[Folge]], {Staffel: {Nr: Folge}} …"""
+        if isinstance(x, dict):
+            if 'id' in x and ('episode_num' in x or 'container_extension' in x):
+                yield x
+                return
+            for v in x.values():
+                yield from episodes_of(v)
+        elif isinstance(x, list):
+            for v in x:
+                yield from episodes_of(v)
+    for e in episodes_of(info.get('episodes') if isinstance(info, dict) else None):
         season = int(e.get('season') or 0)
         num = int(e.get('episode_num') or 0)
         title = (e.get('title') or '').strip()

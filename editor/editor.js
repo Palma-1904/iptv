@@ -1859,7 +1859,7 @@ function linksBox(r) {
   card.appendChild(head);
 
   if (r.setupRef) {
-    const tv = section('📺', 'Fire-TV-App', 'Beim ersten Start der App eingeben, dann „Komplett“ oder „Senioren“ wählen. Später erneut: Menü-Taste ☰ auf der Fernbedienung.');
+    const tv = section('📺', 'Fire-TV-App', 'Beim ersten Start der App eingeben und „Übernehmen“ (die App startet im Player, ☰ = ganze Liste). Später erneut: ☰ 3 Sekunden halten. Bequemer: Editor → Geräte → „📺 Neuen Stick einrichten“.');
     tv.appendChild(bigValue(r.setupRef));
     card.appendChild(tv);
   }
@@ -1904,12 +1904,10 @@ function linksBox(r) {
   test.appendChild(el('summary', '', '🔧 Zum Testen (WLAN / dieser Mac)'));
   if (r.lanLinks) {
     test.appendChild(el('p', 'hint', 'Im WLAN – „Start-Webapp“ muss auf dem Mac laufen:'));
-    test.appendChild(linkRow('Komplett:', r.lanLinks.komplett));
-    test.appendChild(linkRow('Senioren:', r.lanLinks.senioren));
+    test.appendChild(linkRow('Webapp:', r.lanLinks.komplett));
   }
   test.appendChild(el('p', 'hint', 'Auf diesem Mac:'));
-  test.appendChild(linkRow('Komplett:', r.macLinks.komplett));
-  test.appendChild(linkRow('Senioren:', r.macLinks.senioren));
+  test.appendChild(linkRow('Webapp:', r.macLinks.komplett));
   card.appendChild(test);
 
   if (r.warnings && r.warnings.length) {

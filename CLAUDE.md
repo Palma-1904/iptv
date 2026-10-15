@@ -261,7 +261,7 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   fehlt). Erlaubnisse: Anita/Küche/Max alles ✓; Wohnzimmer Overlay+Install ✓, Wächter unmöglich; Schlafzimmer
   Install ✓, Overlay ✗, Wächter aus (fernschaltbar) → nach App 72: Wächter an, dann 🔧 Erlaubnisse setzen.
 - **15.10. ~11 Uhr**: Thomas hat gepusht → **App 71** (EPG-Ausbau, Admin: Wer schaut/Links/Editor aus der Ferne/
-  Zeitpläne, eigene Listen A+B, Stick nur Senioren, Mini-Erklärung). Editor **VERSION 29** läuft (10:52 neu
+  Zeitpläne, eigene Listen A+B, Stick nur Senioren, Mini-Erklärung). Editor **VERSION 30** (ab Assistent; läuft noch 29 bis Neustart) (10:52 neu
   gestartet, Listen-Schlüssel angelegt). Lokal, noch nicht gepusht → **App 72**: Admin-Auswahlliste, Handy-Code je
   Stick, Einstellungen übertragen, Erlaubnisse über den Wächter. Offen: „Veröffentlichen → Alle“ (KMH-Programm
   noch vom 8.10.!). Ungetestet am echten Stick: Inhaltstext in der Info, Zeitplan, OK-lang-Menü; VLC auf iPhone.

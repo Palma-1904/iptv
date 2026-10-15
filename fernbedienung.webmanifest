@@ -1,0 +1,12 @@
+{
+  "name": "TV-Fernbedienung",
+  "short_name": "Fernbedienung",
+  "description": "Fernseher der Familie fernsteuern und Warnungen bekommen",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "icons": [
+    { "src": "icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icons/logo.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

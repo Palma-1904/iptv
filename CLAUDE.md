@@ -358,5 +358,20 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   Kurzlebig → blockiert das Auswerfen der SSD nicht. macOS fragt evtl. einmal nach Zugriff auf Wechseldatenträger.
   Getestet 15.10.: Probelauf echte Daten, Veröffentlichen in Test-Kopie, Übergabe an (Schein-)Editor frei/beschäftigt.
 
+## Warnungen aufs iPhone (Web-Push, ab 15.10.; Editor 31)
+- Nur die **Admin-Fernbedienung** (Haupt-Link) als Home-Bildschirm-App (iOS 16.4+): Karte „🔔 Benachrichtigungen“
+  → Einschalten (Service Worker `sw-admin.js`, Scope `./fernbedienung`, kein fetch-Handler; Manifest
+  `fernbedienung.webmanifest`; beides in deploy.yml mitkopiert). Anmeldung `<kanal>/push/subs/<id>` = {endpoint}.
+- Mac sendet (`editor/webpush.py`): VAPID-Schlüssel `editor/data/vapid.pem` per `/usr/bin/openssl` (P-256, ES256,
+  geprüft „Verified OK“), öffentlicher Schlüssel `<kanal>/push/vapid` (Editor legt ihn beim Start an). Push OHNE
+  Inhalt; der Service Worker holt `<kanal>/alerts` (last, open, n) → Banner + rote Zahl (`setAppBadge`). 404/410 →
+  Anmeldung gelöscht. Test: Admin → „Test-Nachricht“ → Editor-Auftrag `pushtest`.
+- `editor/alerts.py` (stündlich aus `auto_publish.py`): Stick > 24 h ohne Meldung, Programm > 24 h, Abo ≤ 14 Tage
+  (wöchentlich), App > 48 h alt; je Ereignis einmal, Erledigtes mit „✓“; Merker `editor/data/alerts.json`.
+  `night_updates`: 3–5 Uhr Update an wache Sticks mit alter App, auf denen nicht geschaut wird (je Nacht einmal).
+  ntfy wird dafür NICHT benutzt (Thomas: nur Firebase/Admin-App). Hilfe-Knopf für Senioren: nicht gewünscht.
+- Admin „⬆️ Alle aktualisieren“ (bei Warnungen): fragt bei laufender Sendung „alle“ oder „nur nicht schauende“.
+- App 75: „Fernseher aus“ (tvoff) gilt mit Wächter als ruhiger Moment für ein Update (nach 60 s).
+
 ## Testen lokal
 `Start-Webapp.command` (Port 8765, auch im WLAN), `Start-Editor.command` (Port 8790, beendet alten Editor vorher).

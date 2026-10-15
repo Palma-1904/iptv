@@ -501,6 +501,8 @@ public class PlayerActivity extends Activity implements Remote.Target {
         closeList();
         info.setVisibility(View.GONE);
         showStatus("Fernseher aus – Wiedergabe angehalten.\n\nZum Weiterschauen eine beliebige Taste drücken.");
+        // Fernseher aus = niemand schaut: ruhiger Moment für ein Update (sonst erst beim nächsten Öffnen/nachts)
+        if (Waechter.running()) handler.postDelayed(() -> { if (tvOff) Updater.check(this, true); }, 60000);
     };
 
     private void tvBack() {

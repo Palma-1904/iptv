@@ -37,7 +37,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 30  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 31  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html', '/stick.html': 'stick.html'}
 
@@ -2181,7 +2181,7 @@ class Handler(SimpleHTTPRequestHandler):
 # Die Admin-Seite schreibt nach <kanal>/editor/inbox/<id> = {action, arg, t}; der Editor holt alle 10 s ab,
 # führt aus und löscht. Stand nach <kanal>/editor/status (bei Änderung, sonst jede Minute): Mac, Aufgabe,
 # nicht gepushte Commits, Push-Stand. Nur solange der Editor auf einem Mac läuft.
-REMOTE_ACTIONS = ('publish', 'check', 'push', 'ping')
+REMOTE_ACTIONS = ('publish', 'check', 'push', 'ping', 'pushtest')
 REMOTE_LOG = {}
 
 
@@ -2208,6 +2208,10 @@ def remote_editor_run(cmd):
     action, arg = cmd.get('action'), cmd.get('arg') or {}
     if action == 'ping':
         return 'Editor antwortet ✓'
+    if action == 'pushtest':                 # Admin-Seite: Test-Benachrichtigung an alle angemeldeten iPhones
+        import webpush
+        ok, bad = webpush.test(sys.modules[__name__])
+        return f'Test-Nachricht an {ok} Gerät(e)' + (f', {bad} Fehler' if bad else '') if ok or bad else 'Noch kein Gerät angemeldet'
     if action == 'publish':
         ids = [i for i in (arg.get('ids') or []) if isinstance(i, str)]
         names = [p.get('name') for p in load_state()['playlists'] if p['id'] in ids]
@@ -2234,6 +2238,14 @@ def remote_editor_loop():
             topic = st.get('remoteTopic')
             if not base or not topic:
                 continue
+            if not st.get('_vapidPublished'):    # Schlüssel für die Benachrichtigungen einmal bereitstellen
+                try:
+                    import webpush
+                    webpush.publish_key(sys.modules[__name__])
+                    st['_vapidPublished'] = 1
+                    write_json(SETTINGS_FILE, st)
+                except Exception:
+                    pass
             url = f'{base}{topic}/editor'
             inbox = json.loads(fetch(f'{url}/inbox.json', timeout=20) or b'null') or {}
             for cid, cmd in sorted(inbox.items(), key=lambda kv: (kv[1] or {}).get('t', 0) if isinstance(kv[1], dict) else 0):

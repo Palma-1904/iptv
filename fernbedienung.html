@@ -7,6 +7,8 @@
 <meta name="theme-color" content="#0b1220">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Fernbedienung</title>
+<link rel="manifest" href="fernbedienung.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
   :root {
     --bg: #0b1220; --panel: #151f33; --panel2: #1d2a44; --text: #f1f5ff; --muted: #a9b6cf;
@@ -191,6 +193,7 @@
   <input type="search" id="q" placeholder="Sender, Film oder Serie suchen …" hidden>
   <div class="list" id="tree"></div>
 </section>
+<div class="card fold" id="ntf" hidden></div>
 <div class="card fold" id="myl" hidden></div>
 <div class="card fold" id="edi" hidden></div>
 <div class="card fold" id="adm" hidden></div>
@@ -299,6 +302,34 @@
     });
     $('warn').hidden = !w.length;
     $('warn').innerHTML = w.map(function (x) { return '<div>' + x + '</div>'; }).join('');
+    // ⬆️ Alle Sticks mit alter App aktualisieren (Befehl bleibt in Firebase liegen, bis ein Stick online kommt)
+    var old = ids.filter(function (id) { return devices[id].cfg && latest && devices[id].ver < latest; });
+    if (old.length) {
+      var ub = document.createElement('button');
+      ub.className = 'state-upd hot';
+      ub.textContent = '⬆️ Alle aktualisieren (' + old.length + ' Stick' + (old.length > 1 ? 's' : '') + ' auf Version ' + latest + ')';
+      ub.onclick = function () { updateAll(old); };
+      $('warn').appendChild(ub);
+      $('warn').hidden = false;
+    }
+  }
+  function updateAll(old) {
+    var now = Date.now() / 1000;
+    var busy = old.filter(function (id) { var d = devices[id]; return d.state === 'playing' && d.screen !== false && now - (d.t || 0) < 900; });
+    var idle = old.filter(function (id) { return busy.indexOf(id) < 0; });
+    var send2 = idle.slice();
+    if (busy.length) {
+      // Wahl: alle (laufende Sendung wird ~1 Minute unterbrochen) oder nur die, auf denen gerade nicht geschaut wird
+      if (confirm('Auf ' + busy.map(label).join(', ') + ' wird gerade geschaut.\n\n' +
+          'OK = ALLE jetzt aktualisieren (dort ist die Sendung ca. 1 Minute weg)\n' +
+          'Abbrechen = nur Sticks, auf denen gerade nicht geschaut wird' +
+          (idle.length ? ' (' + idle.map(label).join(', ') + ')' : ' – das sind keine') +
+          '\n\nOhne Knopfdruck aktualisieren sich alle nachts von selbst.')) send2 = send2.concat(busy);
+    } else if (!confirm('Update an ' + send2.map(label).join(', ') + ' schicken?\nSticks ohne Wächter zeigen „Installieren“ – dort einmal OK drücken. ' +
+        'Ausgeschaltete holen es beim nächsten Einschalten; ohne Knopfdruck kommt es nachts von selbst.')) return;
+    if (!send2.length) return toast('Kein Stick ohne laufende Sendung – die anderen aktualisieren sich nachts');
+    send2.forEach(function (id) { sendTo(id, 'update', {}); });
+    toast('Update an ' + send2.length + ' Stick' + (send2.length > 1 ? 's' : '') + ' geschickt');
   }
 
   // Firebase-Live-Verbindung (Server-Sent Events): put/patch mit Pfad relativ zum Abo
@@ -425,6 +456,7 @@
     renderCfg(d);
     renderConn(ids);
     renderEdi();
+    renderNtf();
     renderMyl();
     renderAdm();
     renderRems(d);
@@ -869,6 +901,92 @@
           (who.length > 1 ? ' – ⚠️ gleichzeitig, einer bekommt kein Bild' : '') : '<span class="muted">frei</span>') + '</span></div>';
     });
     box.innerHTML = h;
+  }
+
+  // ---------- 🔔 Benachrichtigungen (nur Haupt-Link): Web-Push vom Mac, Banner + rote Zahl am Symbol ----------
+  // iPhone: nur als Home-Bildschirm-App (iOS 16.4+). Anmeldung nach <kanal>/push/subs/<id>, Schlüssel <kanal>/push/vapid.
+  var ntfOpen = false, ntfState = '', alertsSrc = null, alertsN = 0;
+  function standalone() { return window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); }
+  function subId(ep) { var h = 0; for (var i = 0; i < ep.length; i++) h = (h * 31 + ep.charCodeAt(i)) | 0; return 's' + (h >>> 0).toString(36); }
+  function b64uToBytes(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '=';
+    var raw = atob(s), out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function swReg() {
+    return navigator.serviceWorker.register('sw-admin.js', { scope: './fernbedienung' });
+  }
+  function ntfCheck() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) { ntfState = 'unsupported'; return renderNtf(); }
+    if (!standalone() && /iPhone|iPad/.test(navigator.userAgent)) { ntfState = 'install'; return renderNtf(); }
+    swReg().then(function (r) { return r.pushManager.getSubscription(); })
+      .then(function (sub) { ntfState = sub ? 'on' : 'off'; renderNtf(); }, function () { ntfState = 'off'; renderNtf(); });
+  }
+  function ntfOn() {
+    var reg;
+    Notification.requestPermission().then(function (p) {
+      if (p !== 'granted') throw new Error('Mitteilungen nicht erlaubt (Einstellungen → Mitteilungen → Fernbedienung)');
+      return swReg();
+    }).then(function (r) {
+      reg = r;
+      // Zugang für den Service Worker (holt dort Titel/Text der Meldung)
+      return caches.open('admin-cfg').then(function (c) { return c.put('cfg', new Response(JSON.stringify({ db: cfg.db, k: cfg.k }))); });
+    }).then(function () {
+      return fetch(BASE + 'push/vapid.json').then(function (r) { return r.json(); });
+    }).then(function (key) {
+      if (!key) throw new Error('Noch kein Schlüssel – bitte einmal den Editor am Mac starten (legt ihn an)');
+      return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(key) });
+    }).then(function (sub) {
+      var j = sub.toJSON();
+      return fetch(BASE + 'push/subs/' + subId(j.endpoint) + '.json', { method: 'PUT',
+        body: JSON.stringify({ endpoint: j.endpoint, ua: navigator.userAgent.slice(0, 80), t: Math.floor(Date.now() / 1000) }) });
+    }).then(function () { ntfState = 'on'; toast('🔔 Benachrichtigungen eingeschaltet'); renderNtf(); })
+      .catch(function (e) { toast(e.message); });
+  }
+  function ntfOff() {
+    swReg().then(function (r) { return r.pushManager.getSubscription(); }).then(function (sub) {
+      if (!sub) return;
+      fetch(BASE + 'push/subs/' + subId(sub.endpoint) + '.json', { method: 'DELETE' }).catch(function () {});
+      return sub.unsubscribe();
+    }).then(function () { ntfState = 'off'; renderNtf(); toast('Benachrichtigungen aus'); });
+  }
+  function setBadge(n) {
+    try { if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(function () {}); } catch (e) { /* egal */ }
+  }
+  function renderNtf() {
+    var box = $('ntf');
+    box.hidden = !lists;
+    if (!lists) return;
+    if (!alertsSrc) alertsSrc = live(BASE + 'alerts/n.json', function (path, data) { alertsN = +data || 0; setBadge(alertsN); });
+    if (!ntfState) { ntfState = '…'; ntfCheck(); }
+    box.innerHTML = '';
+    var head = document.createElement('button');
+    head.className = 'head';
+    head.innerHTML = '<span>' + (ntfOpen ? '▾' : '▸') + '</span><span>🔔 Benachrichtigungen aufs iPhone: ' +
+      ({ on: 'an ✓', off: 'aus', install: 'aus', unsupported: 'nicht möglich' }[ntfState] || '…') + '</span>';
+    head.onclick = function () { ntfOpen = !ntfOpen; renderNtf(); };
+    box.appendChild(head);
+    if (!ntfOpen) return;
+    var body = document.createElement('div');
+    body.className = 'body';
+    var p = document.createElement('p');
+    p.className = 'muted';
+    p.style.marginTop = '0';
+    p.textContent = 'Banner und rote Zahl am Symbol bei: Stick länger als 24 h aus, Programm veraltet, Abo läuft ab, Stick aktualisiert nicht. Kommt vom Mac (Automatik stündlich, Editor sofort).';
+    body.appendChild(p);
+    function b(text, fn, cls) { var x = document.createElement('button'); x.className = 'sw' + (cls ? ' ' + cls : ''); x.innerHTML = '<span>' + text + '</span><b></b>'; x.onclick = fn; body.appendChild(x); }
+    if (ntfState === 'install') {
+      p.insertAdjacentHTML('afterend', '<p>So geht es auf dem iPhone: in Safari unten <b>Teilen</b> → <b>„Zum Home-Bildschirm“</b>, dann die Fernbedienung <b>vom Home-Bildschirm</b> öffnen und hier „Einschalten“ tippen.</p>');
+    } else if (ntfState === 'unsupported') {
+      p.insertAdjacentHTML('afterend', '<p>Dieser Browser kann keine Benachrichtigungen (iPhone: iOS 16.4 oder neuer nötig).</p>');
+    } else if (ntfState === 'off') {
+      b('🔔 Auf diesem Gerät einschalten', ntfOn, 'hot');
+    } else if (ntfState === 'on') {
+      b('Test-Nachricht schicken (über den Editor am Mac)', function () { ediSend('pushtest', {}, 'Test-Nachricht'); });
+      b('Auf diesem Gerät ausschalten', ntfOff);
+    }
+    box.appendChild(body);
   }
 
   // ---------- Eigene Listen (nur Haupt-Link): je Playlist zentral in Firebase <db>/<my>.json ----------

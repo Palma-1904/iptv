@@ -47,6 +47,13 @@ def main():
         return log('Keine Daten (SSD nicht da?) – nichts zu tun')
     sys.path.insert(0, HERE)
     import server as s   # nur Standardbibliothek; startet beim Import nichts
+    if not dry:
+        try:
+            import alerts       # Handy-Nachrichten (Ausfälle, Programm, Abo) und Nacht-Updates der Sticks
+            alerts.check(s, log)
+            alerts.night_updates(s, log)
+        except Exception as e:
+            log(f'Hinweise/Nacht-Updates: {type(e).__name__}: {e}')
     state = s.load_state()
     slugs = [s.slugify(p.get('slug') or p.get('name') or p['id']) for p in state.get('playlists', [])]
     oldest = oldest_epg(s.OUT, slugs)

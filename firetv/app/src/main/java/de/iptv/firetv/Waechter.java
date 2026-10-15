@@ -159,6 +159,132 @@ public class Waechter extends AccessibilityService {
         return Math.max(0, prefs(c).getLong("waechterPause", 0) - System.currentTimeMillis());
     }
 
+    // ---------- Notlösung: fehlende Erlaubnisse selbst setzen (Admin „grant“) ----------
+    // Öffnet die Android-Seite der fehlenden Erlaubnis für diese App und legt dort den Schalter um (wie
+    // „Installieren“ im Installer). Fire OS zeigt manche Seiten nicht an – dann bleibt nur ADB/vor Ort.
+
+    private static boolean overlayMissing(Context c) {
+        return android.os.Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(c);
+    }
+
+    private static boolean installMissing(Context c) {
+        return !Updater.installAllowed(c);
+    }
+
+    /** Startet den Versuch; Rückmeldung für die Fernwartung. */
+    static String grant(Context c) {
+        Waechter w = running;
+        if (w == null) return "Erlaubnisse setzen geht nur mit laufendem Wächter (erst Wächter einschalten)";
+        if (!overlayMissing(c) && !installMissing(c)) return "Alle Erlaubnisse sind schon da ✓";
+        prefs(c).edit().putLong("autoGrantUntil", System.currentTimeMillis() + 90 * 1000L).apply();
+        w.handler.post(w::grantNext);
+        return "Wächter versucht, die fehlenden Erlaubnisse zu setzen …";
+    }
+
+    private int grantClicks;
+
+    /** Nächste fehlende Erlaubnis öffnen – oder fertig: App zurück und Ergebnis melden. */
+    private void grantNext() {
+        if (System.currentTimeMillis() >= prefs(this).getLong("autoGrantUntil", 0)) return;
+        String action = overlayMissing(this) ? Settings.ACTION_MANAGE_OVERLAY_PERMISSION
+                : installMissing(this) ? Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES : null;
+        if (action == null) {
+            grantFinish("Erlaubnisse gesetzt ✓ (Autostart und Updates)");
+            return;
+        }
+        grantClicks = 0;
+        AutostartService.suppress(90 * 1000L);   // Einstellungen nicht gleich wieder wegholen
+        try {
+            Intent i = new Intent(action, android.net.Uri.parse("package:" + getPackageName()));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (Exception e) {
+            grantFinish((overlayMissing(this) ? "„Über anderen Apps einblenden“" : "„Unbekannte Apps installieren“")
+                    + ": Fire OS bietet diese Seite nicht an – nur per ADB (Stick-einrichten) oder vor Ort");
+            return;
+        }
+        handler.postDelayed(this::grantTry, 1500);
+        handler.postDelayed(this::grantTimeout, 20000);
+    }
+
+    /** In der geöffneten Einstellungsseite den Schalter für diese App umlegen. */
+    private void grantTry() {
+        if (System.currentTimeMillis() >= prefs(this).getLong("autoGrantUntil", 0)) return;
+        if (!overlayMissing(this) && !installMissing(this)) {
+            grantNext();
+            return;
+        }
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        AccessibilityNodeInfo sw = root == null ? null : ownSwitch(root);
+        if (sw != null && !sw.isChecked() && grantClicks < 3) {
+            grantClicks++;
+            AccessibilityNodeInfo target = sw;
+            while (target != null && !target.isClickable()) target = target.getParent();
+            if (target != null) target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        }
+        // Seite schließen, sobald diese Erlaubnis da ist, dann die nächste
+        handler.postDelayed(() -> {
+            boolean stillOverlay = overlayMissing(this), stillInstall = installMissing(this);
+            if (sw != null && (sw.refresh() && sw.isChecked() || grantClicks >= 3)) {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                handler.postDelayed(this::grantNext, 1200);
+            } else if (stillOverlay || stillInstall) {
+                handler.postDelayed(this::grantTry, 1500);
+            } else {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                handler.postDelayed(this::grantNext, 1200);
+            }
+        }, 1200);
+    }
+
+    private void grantTimeout() {
+        if (System.currentTimeMillis() >= prefs(this).getLong("autoGrantUntil", 0)) return;
+        if (overlayMissing(this) || installMissing(this)) {
+            grantFinish("Erlaubnisse nicht gesetzt (Schalter nicht gefunden) – nur per ADB (Stick-einrichten) oder vor Ort");
+        }
+    }
+
+    private void grantFinish(String msg) {
+        prefs(this).edit().remove("autoGrantUntil").apply();
+        handler.removeCallbacks(this::grantTry);
+        AutostartService.suppress(0);
+        Remote.report(msg + (overlayMissing(this) ? " · Autostart fehlt" : "") + (installMissing(this) ? " · Updates fehlen" : ""));
+        Remote.changed();
+        Intent start = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(start);
+        } catch (Exception ignored) {
+            // egal
+        }
+    }
+
+    /** Schalter, der zu UNSERER App gehört: nur in der Nähe (bis 3 Ebenen darüber) eines Textes „Fernsehen“ –
+     *  so wird in einer Liste aller Apps nie der Schalter einer fremden App umgelegt. */
+    private AccessibilityNodeInfo ownSwitch(AccessibilityNodeInfo root) {
+        for (AccessibilityNodeInfo name : root.findAccessibilityNodeInfosByText(getString(R.string.app_name))) {
+            AccessibilityNodeInfo up = name;
+            for (int i = 0; i < 3 && up != null; i++) {
+                up = up.getParent();
+                AccessibilityNodeInfo s = findSwitch(up);
+                if (s != null) return s;
+            }
+        }
+        return null;
+    }
+
+    /** Erster Schalter (Switch/CheckBox/Toggle bzw. ankreuzbares Element) im Fenster. */
+    private static AccessibilityNodeInfo findSwitch(AccessibilityNodeInfo n) {
+        if (n == null) return null;
+        CharSequence cls = n.getClassName();
+        String c = cls == null ? "" : cls.toString();
+        if (n.isCheckable() || c.contains("Switch") || c.contains("CheckBox") || c.contains("Toggle")) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo f = findSwitch(n.getChild(i));
+            if (f != null) return f;
+        }
+        return null;
+    }
+
     /** Eigenes Update kommt: die nächsten 10 Minuten im Installer „Installieren“ drücken. */
     static void expectInstall(Context c) {
         // 2 Stunden: kommt das Update im Standby, ist der Knopf gesperrt, bis der Fernseher wieder an ist

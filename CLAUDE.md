@@ -179,6 +179,14 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   dem Standby), neu gestellt beim Hochfahren, App-/Dienst-Start und nach jedem Auslösen. Aus = Player stoppen +
   Wächter-Standby (`Remote.scheduledOff`, ohne Wächter nur Stopp), An = `Remote.wake()`. Schlaf-Timer 0/1/2/3/4/6 h
   (0 = aus, Standard 3; früher fest `SLEEP_MS`). Am echten Stick noch ungetestet.
+  **Ab App 71 außerdem** (Admin ⚙️): Stick-Auswahl als Auswahlliste `#devsel` (Zustand · Name · Liste) statt Reiter;
+  „📱 Handy-Fernbedienung für diesen Fernseher“ (Status `cfg.phone` = Geräte-Link, nur im Haupt-Kanal) mit Teilen/
+  Kopieren/QR und „♻ Neuer Code“ (Befehl `newcode` → `Remote.newHandyKey`); „⧉ Einstellungen übertragen“ auf alle /
+  alle derselben Liste / einen Stick (setting autostart/home/normvol/ownlists + schedule; Wächter bleibt je Stick);
+  „🔧 Fehlende Erlaubnisse über den Wächter setzen“ (Befehl `grant` → `Waechter.grant`: öffnet
+  ACTION_MANAGE_OVERLAY_PERMISSION bzw. …UNKNOWN_APP_SOURCES für die App, legt nur den Schalter in der Nähe des
+  Textes „Fernsehen“ um, Zurück, nächste; 90 s, Ergebnis per report; Fire OS zeigt die Seiten nicht überall –
+  dann nur ADB/vor Ort). Was nur vor Ort/ADB geht: Overlay-, Installations-Erlaubnis, Ersteinrichtung Wächter.
 - **Selbst-ADB geht nicht** (getestet 9.10.2026, Wohnzimmer Fire OS 6): App verband sich mit dem eigenen adbd
   (127.0.0.1 und eigene WLAN-IP, Port 5555) → adbd schließt sofort (EOF), vom Mac aus klappt dasselbe Protokoll.
   Fire OS sperrt ADB-Verbindungen vom Gerät selbst. Wieder entfernt (Revert). Außerdem: Fire OS erlaubt nur EINE

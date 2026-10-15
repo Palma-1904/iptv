@@ -38,6 +38,8 @@
   button:active { transform: scale(.97); background: var(--accent); }
   button.big { font-size: 24px; }
   button.wide { grid-column: span 3; }
+  #devsel { width: 100%; font: inherit; font-size: 18px; font-weight: 600; padding: 12px 14px; border-radius: 12px;
+    border: 0; background: var(--panel2); color: var(--text); margin-bottom: 12px; }
   .tabs { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; padding-bottom: 2px; }
   .tabs button { min-height: 44px; padding: 8px 14px; white-space: nowrap; flex: none; }
   .tabs button.sel { background: var(--accent); color: #fff; }
@@ -136,6 +138,7 @@
   .fold .lk { background: var(--panel2); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
   .fold .lk .row2 { display: flex; gap: 8px; margin-top: 8px; }
   .fold .lk .row2 button { flex: 1; min-height: 46px; background: var(--panel); }
+  .fold .lk select { margin: 8px 0; }
   .fold .lk .qr { background: #fff; border-radius: 10px; padding: 10px; margin-top: 8px; text-align: center; }
   .fold .lk .qr svg { width: 220px; height: 220px; }
   input[type=search] { width: 100%; font: inherit; padding: 12px 14px; border-radius: 12px; border: 0;
@@ -146,7 +149,7 @@
 <h1><span class="dot" id="dot"></span><span id="devname">Fernbedienung</span></h1>
 <div id="warn" hidden></div>
 <div class="card" id="conn" hidden></div>
-<div class="tabs" id="tabs" hidden></div>
+<select id="devsel" hidden aria-label="Fernseher wählen"></select>
 <div class="card" id="state"><span class="muted">Verbinde …</span></div>
 <div class="card remote" id="remote" hidden>
   <div class="rrow">
@@ -365,16 +368,19 @@
       return;
     }
     if (ids.indexOf(sel) < 0) return choose(ids[0]);
-    var tabs = $('tabs');
-    tabs.hidden = ids.length < 2;
-    tabs.innerHTML = '';
-    ids.forEach(function (id) {
-      var b = document.createElement('button');
-      b.textContent = label(id);
-      if (id === sel) b.className = 'sel';
-      b.onclick = function () { choose(id); };
-      tabs.appendChild(b);
-    });
+    // Fernseher wählen: Auswahlliste (mit Zustand), nicht beim Aufklappen neu zeichnen
+    var ds = $('devsel');
+    ds.hidden = ids.length < 2;
+    if (document.activeElement !== ds) {
+      var now = Date.now() / 1000;
+      ds.innerHTML = ids.map(function (id) {
+        var x = devices[id], age = now - (x.t || 0);
+        var st = age > 30 * 60 ? '📴' : x.screen === false ? '💤' : x.state === 'playing' ? '▶' : '●';
+        return '<option value="' + esc(id) + '"' + (id === sel ? ' selected' : '') + '>' + st + '  ' + esc(label(id)) +
+          (x.list ? ' · ' + esc(String(x.list).toUpperCase()) : '') + '</option>';
+      }).join('');
+    }
+    ds.onchange = function () { choose(ds.value); };
     var d = devices[sel];
     var age = Date.now() / 1000 - (d.t || 0);
     $('dot').className = 'dot' + (age < 12 * 60 ? ' on' : '');
@@ -621,7 +627,7 @@
   });
 
   // ---------- Einstellungen des Sticks (nur Haupt-Link: der Status enthält dann „cfg“) ----------
-  var cfgOpen = false;
+  var cfgOpen = false, phoneQr = false;
   function renderCfg(d) {
     var box = $('cfg'), c = d.cfg;
     box.hidden = !c;
@@ -730,6 +736,80 @@
     }
     chk(c.overlay, 'Autostart erlaubt', 'Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)');
     chk(c.install, 'Updates erlaubt', 'Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)');
+    // Fehlende Erlaubnisse: Notlösung über den Wächter (ab App 71: „grant“)
+    if ((!c.overlay || !c.install) && d.ver >= 71) {
+      var gb = document.createElement('button');
+      gb.className = 'sw';
+      gb.innerHTML = '<span>🔧 Fehlende Erlaubnisse über den Wächter setzen (Versuch)</span><b></b>';
+      gb.disabled = !c.waechter;
+      gb.onclick = function () {
+        if (confirm('Der Wächter öffnet am Fernseher kurz die Einstellungsseite und legt den Schalter für „Fernsehen“ um. Fire OS zeigt diese Seite nicht auf jedem Stick – dann geht es nur vor Ort. Versuchen?')) send('grant', {});
+      };
+      body.appendChild(gb);
+      if (!c.waechter) chk(false, '', 'Dafür zuerst den Wächter einschalten');
+    }
+    // 📱 Handy-Fernbedienung DIESES Sticks (Geräte-Link für die Familie): teilen, QR, neuer Code
+    if (c.phone) {
+      var ph = document.createElement('div');
+      ph.className = 'lk';
+      ph.innerHTML = '<b>📱 Handy-Fernbedienung für diesen Fernseher</b><div class="muted">Nur Bedienen (Sender, Ein/Aus, Erinnerungen) – keine Einstellungen.</div>';
+      var row = document.createElement('div');
+      row.className = 'row2';
+      var text = 'Fernbedienung für den Fernseher „' + label(sel) + '“ – Link am Handy öffnen (am besten zum Home-Bildschirm hinzufügen):\n' + c.phone;
+      function pbtn(txt, fn) { var b = document.createElement('button'); b.textContent = txt; b.onclick = fn; row.appendChild(b); }
+      if (navigator.share) pbtn('📤 Teilen', function () { navigator.share({ title: 'Fernbedienung ' + label(sel), text: text }).catch(function () {}); });
+      pbtn('📋 Kopieren', function () {
+        (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
+          .then(function () { toast('Link kopiert ✓'); }, function () { prompt('Link kopieren:', c.phone); });
+      });
+      pbtn(phoneQr ? '✕ QR' : '▦ QR', function () { phoneQr = !phoneQr; renderCfg(devices[sel] || {}); });
+      pbtn('♻ Neuer Code', function () {
+        if (confirm('Neuen Code erzeugen? Alle bisherigen Handy-Links dieses Fernsehers funktionieren dann nicht mehr.')) send('newcode', {});
+      });
+      ph.appendChild(row);
+      if (phoneQr) {
+        var qr = document.createElement('div');
+        qr.className = 'qr';
+        qr.textContent = 'QR wird erstellt …';
+        ph.appendChild(qr);
+        loadQr().then(function () {
+          var q = window.qrcode(0, 'M');
+          q.addData(c.phone);
+          q.make();
+          qr.innerHTML = q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+        }, function () { qr.textContent = 'QR-Code konnte nicht geladen werden.'; });
+      }
+      body.appendChild(ph);
+    }
+    // Einstellungen dieses Sticks auf andere übertragen (alle bzw. alle derselben Liste)
+    var others = Object.keys(devices).filter(function (id) { return id !== sel && devices[id] && devices[id].cfg; });
+    if (others.length) {
+      var cp = document.createElement('div');
+      cp.className = 'lk';
+      cp.innerHTML = '<b>⧉ Einstellungen übertragen</b><div class="muted">Autostart, Home-Taste, Lautstärke, eigene Listen, Zeitplan und Schlaf-Timer dieses Sticks auf andere übernehmen (Wächter bleibt je Stick).</div>';
+      var tgt = document.createElement('select');
+      var sameList = others.filter(function (id) { return devices[id].list && devices[id].list === d.list; });
+      tgt.innerHTML = '<option value="all">auf alle anderen Sticks (' + others.length + ')</option>' +
+        (d.list && sameList.length ? '<option value="list">auf alle Sticks der Liste ' + esc(String(d.list).toUpperCase()) + ' (' + sameList.length + ')</option>' : '') +
+        others.map(function (id) { return '<option value="' + esc(id) + '">nur auf ' + esc(label(id)) + '</option>'; }).join('');
+      cp.appendChild(tgt);
+      var go = document.createElement('button');
+      go.className = 'sw';
+      go.innerHTML = '<span>Übertragen</span><b></b>';
+      go.onclick = function () {
+        var ids = tgt.value === 'all' ? others : tgt.value === 'list' ? sameList : [tgt.value];
+        if (!confirm('Einstellungen von „' + label(sel) + '“ übertragen auf: ' + ids.map(label).join(', ') + '?')) return;
+        ids.forEach(function (id) {
+          [['autostart', c.autostart], ['home', c.home], ['normvol', c.normvol], ['ownlists', c.ownlists]].forEach(function (s) {
+            if (s[1] !== undefined) sendTo(id, 'setting', { key: s[0], on: !!s[1] });
+          });
+          if (c.sched) sendTo(id, 'schedule', { off: c.sched.off || '', on: c.sched.on || '', sleepH: +c.sched.sleepH });
+        });
+        toast('An ' + ids.length + ' Stick' + (ids.length > 1 ? 's' : '') + ' geschickt ✓');
+      };
+      cp.appendChild(go);
+      body.appendChild(cp);
+    }
     var g = d.diag;
     if (g) {
       var r = g.rssi, p = document.createElement('div');

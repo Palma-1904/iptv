@@ -431,7 +431,8 @@ final class Remote {
                         .put("pause", (Waechter.pausedFor(app) + 59999) / 60000)
                         .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true))
                         .put("sched", Schedule.json(app))
-                        .put("ownlists", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("ownLists", false)))
+                        .put("ownlists", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("ownLists", false))
+                        .put("phone", phoneLink() == null ? "" : phoneLink()))   // nur Haupt-Kanal (Admin)
                 .put("diag", Diag.json(app))
                 .put("norm", nowNorm).put("epg", nowEpg).put("rem", Reminders.upcoming(app))
                 .put("screen", screenOn());
@@ -602,6 +603,16 @@ final class Remote {
             if (pl != null) pl.remote("stop", new JSONObject());   // Verbindung zum Anbieter freigeben
             report(Waechter.sleep() ? "Ausgeschaltet (Standby)"
                     : "Ausschalten geht nur mit Wächter (ab Fire OS 7) – Wiedergabe gestoppt");
+            dirty = true;
+            return;
+        }
+        if ("newcode".equals(action)) {         // Admin: neuer Handy-Code (alte Links/QR-Codes gelten nicht mehr)
+            newHandyKey();
+            report("Neuer Handy-Code – alte Links gelten nicht mehr");
+            return;
+        }
+        if ("grant".equals(action)) {           // Admin: fehlende Erlaubnisse über den Wächter setzen (Versuch)
+            report(Waechter.grant(app));
             dirty = true;
             return;
         }

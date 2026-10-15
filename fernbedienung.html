@@ -814,8 +814,8 @@
       var text = 'Fernbedienung für den Fernseher „' + label(sel) + '“ – Link am Handy öffnen (am besten zum Home-Bildschirm hinzufügen):\n' + c.phone;
       function pbtn(txt, fn) { var b = document.createElement('button'); b.textContent = txt; b.onclick = fn; row.appendChild(b); }
       if (navigator.share) pbtn('📤 Teilen', function () { navigator.share({ title: 'Fernbedienung ' + label(sel), text: text }).catch(function () {}); });
-      pbtn('📋 Kopieren', function () {
-        (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
+      pbtn('📋 Link kopieren', function () {
+        (navigator.clipboard ? navigator.clipboard.writeText(c.phone) : Promise.reject())
           .then(function () { toast('Link kopiert ✓'); }, function () { prompt('Link kopieren:', c.phone); });
       });
       pbtn(phoneQr ? '✕ QR' : '▦ QR', function () { phoneQr = !phoneQr; renderCfg(devices[sel] || {}); });
@@ -1310,7 +1310,7 @@
     box.innerHTML = '';
     var head = document.createElement('button');
     head.className = 'head';
-    head.innerHTML = '<span>' + (admOpen ? '▾' : '▸') + '</span><span>🔗 Webapp-Links senden (iPhone, iPad, Mac)</span>';
+    head.innerHTML = '<span>' + (admOpen ? '▾' : '▸') + '</span><span>🔗 Links senden (Webapp, Handy-Fernbedienung)</span>';
     head.onclick = function () { admOpen = !admOpen; renderAdm(); };
     box.appendChild(head);
     if (!admOpen) return;
@@ -1336,9 +1336,9 @@
       if (navigator.share) btn('📤 Teilen', function () {
         navigator.share({ title: 'Fernsehen – Liste ' + (lists[slug].name || slug), text: shareText(slug) }).catch(function () { /* abgebrochen */ });
       });
-      btn('📋 Kopieren', function () {
-        (navigator.clipboard ? navigator.clipboard.writeText(shareText(slug)) : Promise.reject())
-          .then(function () { toast('Link mit Anleitung kopiert ✓'); }, function () { prompt('Link kopieren:', webLink(slug)); });
+      btn('📋 Link kopieren', function () {
+        (navigator.clipboard ? navigator.clipboard.writeText(webLink(slug)) : Promise.reject())
+          .then(function () { toast('Link kopiert ✓'); }, function () { prompt('Link kopieren:', webLink(slug)); });
       });
       btn(qrOpen === slug ? '✕ QR' : '▦ QR-Code', function () { qrOpen = qrOpen === slug ? null : slug; renderAdm(); });
       lk.appendChild(row);
@@ -1350,6 +1350,46 @@
         loadQr().then(function () {
           var q = window.qrcode(0, 'M');
           q.addData(webLink(slug));
+          q.make();
+          qr.innerHTML = q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+        }, function () { qr.textContent = 'QR-Code konnte nicht geladen werden.'; });
+      }
+      body.appendChild(lk);
+    });
+    // 📱 Handy-Fernbedienung je Fernseher (Geräte-Link: nur Bedienen, keine Einstellungen; ab App 72)
+    var phones = Object.keys(devices).filter(function (id) { return devices[id].cfg && devices[id].cfg.phone; })
+      .sort(function (a, b) { return label(a).localeCompare(label(b)); });
+    var ph = document.createElement('p');
+    ph.className = 'muted';
+    ph.innerHTML = '<b>📱 Handy-Fernbedienung je Fernseher</b> – nur Bedienen (Sender, Ein/Aus, Erinnerungen), keine Einstellungen.' +
+      (phones.length ? '' : ' Erscheint, sobald ein Stick App 72 oder neuer hat.');
+    body.appendChild(ph);
+    phones.forEach(function (id) {
+      var link = devices[id].cfg.phone, key = 'ph:' + id;
+      var lk = document.createElement('div');
+      lk.className = 'lk';
+      lk.innerHTML = '<b>' + esc(label(id)) + '</b>';
+      var row = document.createElement('div');
+      row.className = 'row2';
+      function btn(text, fn) { var b = document.createElement('button'); b.textContent = text; b.onclick = fn; row.appendChild(b); }
+      if (navigator.share) btn('📤 Teilen', function () {
+        navigator.share({ title: 'Fernbedienung ' + label(id), text: 'Fernbedienung für den Fernseher „' + label(id) +
+          '“ – Link am Handy öffnen, am besten „Zum Home-Bildschirm“:\n' + link }).catch(function () {});
+      });
+      btn('📋 Link kopieren', function () {
+        (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject())
+          .then(function () { toast('Link kopiert ✓'); }, function () { prompt('Link kopieren:', link); });
+      });
+      btn(qrOpen === key ? '✕ QR' : '▦ QR-Code', function () { qrOpen = qrOpen === key ? null : key; renderAdm(); });
+      lk.appendChild(row);
+      if (qrOpen === key) {
+        var qr = document.createElement('div');
+        qr.className = 'qr';
+        qr.textContent = 'QR wird erstellt …';
+        lk.appendChild(qr);
+        loadQr().then(function () {
+          var q = window.qrcode(0, 'M');
+          q.addData(link);
           q.make();
           qr.innerHTML = q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
         }, function () { qr.textContent = 'QR-Code konnte nicht geladen werden.'; });

@@ -168,6 +168,8 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   pausiert, nicht Standby, Meldung < 15 min; Webapp-Geräte melden sich nicht) + Warnung bei Doppelbelegung einer
   Liste; aufklappbar „🔗 Webapp-Links senden“ (`#adm`, `renderAdm`): je Liste Teilen (navigator.share, Text mit
   Kurzanleitung), Kopieren, QR (qrcode-generator 1.4.4 von cdnjs, erst bei Bedarf). Aufklappkarten: Klasse `.fold`.
+  „📋 Link kopieren“ kopiert nur den Link (Anleitungstext nur über „Teilen“). Die Karte heißt „🔗 Links senden“ und
+  enthält auch die Handy-Fernbedienung je Fernseher (Geräte-Link `cfg.phone`, ab App 72; Admin-Link nie).
   **🖥 Editor aus der Ferne** (`#edi`, Editor ab VERSION 28): Editor-Thread `remote_editor_loop` holt alle 10 s
   `<kanal>/editor/inbox` ab (publish {ids}, check {id}, push {updateDevices}, ping; älter als 10 min = verworfen),
   löscht sie, schreibt `<kanal>/editor/status` (Mac-Name, Version, laufende Aufgabe, `ahead` = nicht gepushte

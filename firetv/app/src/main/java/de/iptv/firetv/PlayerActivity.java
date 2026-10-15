@@ -99,6 +99,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         }
         long[] start = new long[0], end = new long[0];
         String[] title = new String[0];
+        String[] desc = new String[0];   // Inhalt (vom Editor, nur für die nächsten Sendungen)
 
         boolean live() {
             return "live".equals(type);
@@ -109,6 +110,10 @@ public class PlayerActivity extends Activity implements Remote.Target {
             long t = System.currentTimeMillis() / 1000;
             for (int i = 0; i < start.length; i++) if (start[i] <= t && end[i] > t) return i;
             return -1;
+        }
+
+        String descAt(int i) {
+            return i >= 0 && i < desc.length && desc[i] != null ? desc[i] : "";
         }
 
         String nowTitle() {
@@ -176,11 +181,13 @@ public class PlayerActivity extends Activity implements Remote.Target {
             it.start = new long[k];
             it.end = new long[k];
             it.title = new String[k];
+            it.desc = new String[k];
             for (int i = 0; i < k; i++) {
                 JSONArray p = epg.getJSONArray(i);
                 it.start[i] = p.optLong(0);
                 it.end[i] = p.optLong(1);
                 it.title[i] = p.optString(2);
+                it.desc[i] = p.optString(3);
             }
             n.item = it;
             readFav(n, j);
@@ -317,7 +324,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
     private TextView status;
     private LinearLayout info;
     private ImageView infoLogo;
-    private TextView infoNum, infoName, infoNow, infoNext, infoClock, infoHint;
+    private TextView infoNum, infoName, infoNow, infoDesc, infoNext, infoClock, infoHint;
     private ProgressBar infoProgress;
 
     // Senderliste
@@ -518,11 +525,13 @@ public class PlayerActivity extends Activity implements Remote.Target {
         it.start = new long[n];
         it.end = new long[n];
         it.title = new String[n];
+        it.desc = new String[n];
         for (int k = 0; k < n; k++) {
             JSONArray p = epg.getJSONArray(k);
             it.start[k] = p.optLong(0);
             it.end[k] = p.optLong(1);
             it.title[k] = p.optString(2);
+            it.desc[k] = p.optString(3);
         }
         return it;
     }
@@ -779,7 +788,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
         org.json.JSONArray epg = new org.json.JSONArray();
         int i = it.now();
         for (int k = Math.max(i, 0); i >= 0 && k < Math.min(i + 2, it.start.length); k++) {
-            epg.put(new org.json.JSONArray().put(it.start[k]).put(it.end[k]).put(it.title[k]));
+            org.json.JSONArray p = new org.json.JSONArray().put(it.start[k]).put(it.end[k]).put(it.title[k]);
+            if (k == i && !it.descAt(k).isEmpty()) p.put(it.descAt(k));   // Inhalt der laufenden Sendung
+            epg.put(p);
         }
         Remote.playing(Memory.norm(it.url), epg);
         Remote.status("playing", it.heading != null ? it.heading : it.name, it.type);
@@ -1454,6 +1465,8 @@ public class PlayerActivity extends Activity implements Remote.Target {
 
         infoNow = text(22, Color.WHITE, false);
         mid.addView(infoNow);
+        infoDesc = lines(text(16, MUTED, false), 3);   // Inhalt der laufenden Sendung
+        mid.addView(infoDesc);
         infoProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         infoProgress.setMax(1000);
         infoProgress.setProgressTintList(ColorStateList.valueOf(0xFF4D7CFF));
@@ -1500,12 +1513,15 @@ public class PlayerActivity extends Activity implements Remote.Target {
             int n = it.now();
             if (n >= 0) {
                 infoNow.setText(time(it.start[n]) + " – " + time(it.end[n]) + "   " + it.title[n]);
+                infoDesc.setText(it.descAt(n));
+                infoDesc.setVisibility(it.descAt(n).isEmpty() ? View.GONE : View.VISIBLE);
                 long t = System.currentTimeMillis() / 1000;
                 infoProgress.setProgress((int) (1000 * (t - it.start[n]) / Math.max(1, it.end[n] - it.start[n])));
                 infoProgress.setVisibility(View.VISIBLE);
                 infoNext.setText(n + 1 < it.start.length ? "Danach  " + time(it.start[n + 1]) + "   " + it.title[n + 1] : "");
             } else {
                 infoNow.setText(ctx.name == null ? "" : ctx.name);
+                infoDesc.setVisibility(View.GONE);
                 infoProgress.setVisibility(View.GONE);
                 infoNext.setText("");
             }
@@ -1519,6 +1535,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
             boolean known = dur > 0;
             infoNow.setText((player.isPlaying() ? "▶  " : "❚❚  Pause   ")
                     + duration(pos) + (known ? "  /  " + duration(dur) : ""));
+            infoDesc.setVisibility(View.GONE);
             infoProgress.setVisibility(known ? View.VISIBLE : View.GONE);
             if (known) infoProgress.setProgress((int) (1000 * pos / dur));
             infoNext.setText(size > 1 && i + 1 < size ? "Nächste Folge:  " + items().get(i + 1).name : "");
@@ -1877,6 +1894,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
             if (sb.length() > 0) sb.append("\n");
             boolean bell = k > now && Reminders.isSet(this, it.url, it.start[k]);
             sb.append(k == now ? "Jetzt  " : time(it.start[k]) + "   ").append(bell ? "🔔 " : "").append(it.title[k]);
+            if (k == now && !it.descAt(k).isEmpty()) sb.append("\n").append(it.descAt(k)).append("\n");
         }
         if (now + 1 < it.start.length) sb.append("\n\n⏯ = an „").append(it.title[now + 1]).append("“ erinnern");
         previewEpg.setText(sb);

@@ -23,7 +23,7 @@ import urllib.parse
 import urllib.request
 import webbrowser
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,7 +36,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 26  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 27  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -50,7 +50,11 @@ EPG_FUTURE = 36 * 3600      # ... bis 36 Stunden voraus
 EXTRA_EPG = [
     'https://epgshare01.online/epgshare01/epg_ripper_DE1.xml.gz',
     'https://www.open-epg.com/files/germany.xml.gz',
+    'https://epgshare01.online/epgshare01/epg_ripper_AT1.xml.gz',   # u. a. Sky Cinema Special/Thriller/Premieren
+    'https://epgshare01.online/epgshare01/epg_ripper_CH1.xml.gz',
 ]
+EPG_DESC_MAX = 250          # Inhaltstext je Sendung (gekürzt), 4. Feld im EPG: [start, ende, titel, text]
+EVENT_HOURS = 2             # Event-Sender (PPV): angenommene Dauer, Ende steht nicht im Namen
 
 for d in (DATA, CACHE, OUT, LOCAL_OUT, os.path.join(CACHE, 'series')):
     os.makedirs(d, exist_ok=True)
@@ -1017,6 +1021,10 @@ def fb_sync_lists(rev=None):
         slug = slugify(p.get('slug') or p.get('name') or p['id'])
         lists[slug] = {'name': p.get('name') or slug, 'link': f'{st["login"]}/{st["gistId"]}/{slug}',
                        'rev': rev or (old.get(slug) or {}).get('rev') or ''}
+        # Stand des veröffentlichten Programms (Admin-Seite warnt, wenn älter als ein Tag)
+        gen = read_json(os.path.join(OUT, slug + '.epg.json'), {}).get('generated')
+        if gen:
+            lists[slug]['epg'] = gen
     if lists == _fb_lists_sent:
         return
     with http(f'{base}{topic}/lists.json', data=json.dumps(lists).encode(), method='PUT', timeout=20):
@@ -1374,7 +1382,8 @@ def build_playlist(pl, state, warnings):
                 continue
             parts = ['#EXTINF:-1']
             if ch['type'] == 'live':
-                live.append({'line': len(lines), 'tvgId': ch.get('tvgId') or '', 'names': [ch['name'], name]})
+                live.append({'line': len(lines), 'tvgId': ch.get('tvgId') or '', 'names': [ch['name'], name],
+                             'key': item['key']})
             if ch.get('tvgId'):
                 parts.append(f'tvg-id="{attr(ch["tvgId"])}"')
                 epg_ids.setdefault(sid, set()).add(ch['tvgId'])
@@ -1402,6 +1411,18 @@ def parse_xmltv_time(s):
         except ValueError:
             continue
     return None
+
+
+def prog_entry(el, start, stop):
+    """XMLTV-<programme> -> [start, ende, titel] bzw. [start, ende, titel, text] (Untertitel + Inhalt, gekürzt)."""
+    title = (el.findtext('title') or '').strip()
+    sub = re.sub(r'\s+', ' ', el.findtext('sub-title') or '').strip()
+    desc = re.sub(r'\s+', ' ', el.findtext('desc') or '').strip()
+    if sub and sub not in desc:
+        desc = sub + (' – ' + desc if desc else '')
+    if len(desc) > EPG_DESC_MAX:
+        desc = desc[:EPG_DESC_MAX].rsplit(' ', 1)[0].rstrip(' ,.;:–-') + ' …'
+    return [start, stop, title, desc] if desc else [start, stop, title]
 
 
 def clean_programmes(progs):
@@ -1454,8 +1475,7 @@ def epg_for_source(source_id, epg_url, wanted, warnings):
                 if cid:
                     start, stop = parse_xmltv_time(el.get('start')), parse_xmltv_time(el.get('stop'))
                     if start and stop and stop > lo and start < hi:
-                        title = (el.findtext('title') or '').strip()
-                        result.setdefault(cid, []).append([start, stop, title])
+                        result.setdefault(cid, []).append(prog_entry(el, start, stop))
                 el.clear()
     except ET.ParseError as e:
         warnings.append(f'EPG-Datei fehlerhaft ({e}); EPG unvollständig.')
@@ -1471,6 +1491,7 @@ def epg_name_key(s):
     """Sendername -> Vergleichsschlüssel: "DE| SKY SPORT BUNDESLIGA 1 HEVC" -> "skysportbundesliga1"."""
     s = unicodedata.normalize('NFKC', s or '').lower()
     s = re.sub(r'^\s*(de|ger|germany|deutschland)\s*[:|\-]\s*', '', s)
+    s = re.sub(r'^\s*[a-z]{2,4}\s*\|\s*', '', s)            # andere Kürzel: "WOW| SKY CINEMA ACTION"
     s = re.sub(r'\(.*?\)|\[.*?\]', ' ', s)
     s = re.sub(r'\b(full ?hd|fhd|uhd|hd|sd|4k|hevc|h\.?265|h\.?264|raw|50fps|60fps|backup|live|\.de|de)\b', ' ', s)
     s = s.replace('&', 'und').replace('+', 'plus').replace('*', '')
@@ -1522,8 +1543,7 @@ def load_extra_epg(url, warnings):
                 elif el.tag == 'programme':
                     start, stop = parse_xmltv_time(el.get('start')), parse_xmltv_time(el.get('stop'))
                     if start and stop and stop > lo and start < hi:
-                        title = (el.findtext('title') or '').strip()
-                        progs.setdefault(el.get('channel') or '', []).append([start, stop, title])
+                        progs.setdefault(el.get('channel') or '', []).append(prog_entry(el, start, stop))
                     el.clear()
     except (ET.ParseError, OSError, EOFError) as e:
         warnings.append(f'Zusatz-EPG fehlerhaft ({url.split("/")[2]}): {e}')
@@ -1575,6 +1595,82 @@ def fill_from_extra_epg(lines, live, epg, warnings):
     return filled
 
 
+MONTHS = {m: i + 1 for i, m in enumerate('jan feb mar apr may jun jul aug sep oct nov dec'.split())}
+
+
+def event_programme(name, now=None):
+    """Event-Sender (DAZN/DYN PPV) tragen die Sendung im Namen:
+    "NEXT | SC MAGDEBURG - HC ERLANGEN | Sun 04 Oct 14:45 CEST (DE) | 8K EXCLUSIVE | DE: DYN PPV 6" bzw.
+    "End | A vs. B | National League | 2026-10-04 | 00:00 (GMT) | 8K EXCLUSIVE | DE: DAZN PPV 1".
+    -> [start, ende, titel, text] oder None."""
+    parts = [x.strip() for x in (name or '').split('|') if x.strip()]
+    if len(parts) < 3:
+        return None
+    start = None
+    m = re.search(r'(\d{4})-(\d{2})-(\d{2})\s*\|\s*(\d{1,2}):(\d{2})\s*\(GMT\)', name)
+    if m:
+        y, mo, d, h, mi = map(int, m.groups())
+        start = int(datetime(y, mo, d, h, mi, tzinfo=timezone.utc).timestamp())
+    m = m or re.search(r'\b(\d{1,2})\s+([A-Za-z]{3})\s+(\d{1,2}):(\d{2})\s+(CEST|CET)\b', name)
+    if m and start is None:
+        d, mon, h, mi, zone = int(m.group(1)), MONTHS.get(m.group(2).lower()), int(m.group(3)), int(m.group(4)), m.group(5)
+        if not mon:
+            return None
+        now = now or time.time()
+        tz = timezone(timedelta(hours=2 if zone == 'CEST' else 1))
+        year = datetime.fromtimestamp(now, tz).year
+        start = int(datetime(year, mon, d, h, mi, tzinfo=tz).timestamp())
+        if start - now > 180 * 86400:          # Jahreswechsel: Event aus dem Vorjahr
+            start = int(datetime(year - 1, mon, d, h, mi, tzinfo=tz).timestamp())
+    if start is None:
+        return None
+    if parts[0].lower() in ('live', 'next', 'end', 'ended', 'soon', 'upcoming'):
+        parts = parts[1:]
+    skip = re.compile(r'^(\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}.*|(mon|tue|wed|thu|fri|sat|sun)\b.*|\d+k\b.*|.*exclusive.*|[a-z]{2}:.*)$', re.I)
+    text = [x for x in parts if not skip.match(x)]
+    if not text:
+        return None
+    desc = ' · '.join(text[1:])
+    return [start, start + EVENT_HOURS * 3600, text[0]] + ([desc] if desc else [])
+
+
+def live_names(src):
+    """Aktuelle Sendernamen des Zugangs {stream_id: name} – Event-Sender wechseln den Namen täglich,
+    der Katalog im Editor wird aber nur auf Wunsch aufgefrischt. Fehler -> {} (dann Katalognamen)."""
+    try:
+        return {str(s.get('stream_id')): s.get('name') or '' for s in xtream_api(src, 'get_live_streams') or []}
+    except Exception:
+        return {}
+
+
+def fill_from_events(lines, live, epg, state, warnings):
+    """Sender ohne Programm, deren Name eine Sendung mit Uhrzeit enthält (PPV/Events): Eintrag daraus bauen."""
+    todo = [c for c in live if not (c['tvgId'] and c['tvgId'] in epg) and c.get('key', '').count(':') == 2]
+    if not todo:
+        return 0
+    fresh_names = {}
+    for sid in {c['key'].split(':', 1)[0] for c in todo}:
+        src = next((s for s in state['sources'] if s['id'] == sid and s.get('type') == 'xtream'), None)
+        fresh_names[sid] = live_names(src) if src else {}
+    now, filled = time.time(), 0
+    for c in todo:
+        sid, _, stream_id = c['key'].split(':')
+        name = fresh_names.get(sid, {}).get(stream_id) or c['names'][0]
+        p = event_programme(name, now)
+        if not p or p[1] < now - EPG_PAST or p[0] > now + EPG_FUTURE:
+            continue
+        key = c['tvgId']
+        if not key:
+            key = 'x:ev:' + stream_id
+            lines[c['line']] = lines[c['line']].replace('#EXTINF:-1 ', f'#EXTINF:-1 tvg-id="{attr(key)}" ', 1)
+            c['tvgId'] = key
+        epg[key] = [p]
+        filled += 1
+    if filled:
+        warnings.append(f'Programm für {filled} Event-Sender aus dem Sendernamen.')
+    return filled
+
+
 def gist_upload(files, settings):
     token = settings.get('token')
     if not token:
@@ -1616,6 +1712,7 @@ def publish(ids):
             epg.update(epg_for_source(sid, catalogs.get(sid, {}).get('epg'), wanted, warnings))
         job_progress('Programm aus Zusatzquellen …')
         fill_from_extra_epg(lines, live, epg, warnings)
+        fill_from_events(lines, live, epg, state, warnings)
         # Andere IPTV-Apps (z. B. Smarters): Adresse des XMLTV-Programms in die Kopfzeile
         if settings.get('gistId') and settings.get('login'):
             xml_url = f'https://gist.githubusercontent.com/{settings["login"]}/{settings["gistId"]}/raw/{slug}.xml'
@@ -1680,9 +1777,10 @@ def build_xmltv(epg, live):
     for cid in epg:
         out.append(f'<channel id={quoteattr(cid)}><display-name>{escape(names.get(cid, cid))}</display-name></channel>')
     for cid, progs in epg.items():
-        for start, stop, title in progs:
-            out.append(f'<programme start="{t(start)}" stop="{t(stop)}" channel={quoteattr(cid)}>'
-                       f'<title lang="de">{escape(title or "")}</title></programme>')
+        for p in progs:
+            desc = f'<desc lang="de">{escape(p[3])}</desc>' if len(p) > 3 and p[3] else ''
+            out.append(f'<programme start="{t(p[0])}" stop="{t(p[1])}" channel={quoteattr(cid)}>'
+                       f'<title lang="de">{escape(p[2] or "")}</title>{desc}</programme>')
     out.append('</tv>')
     return '\n'.join(out) + '\n'
 

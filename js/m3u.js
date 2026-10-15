@@ -176,9 +176,11 @@
   var epgOrder = []; // Senderreihenfolge im Reiter „Programm“ (aus dem Editor)
 
   var lastEpgData = null;   // zuletzt geladenes Programm (für den Schnellstart-Speicher)
+  var epgGenerated = 0;     // Zeitpunkt der Veröffentlichung (Sekunden) – für den Hinweis „Programm veraltet“
   function setEpg(d) {
     epg = d && d.channels ? d.channels : null;
     epgOrder = d && d.order ? d.order : [];
+    epgGenerated = d && d.generated ? d.generated : 0;
   }
 
   function loadEpg() {
@@ -210,12 +212,18 @@
     return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
   }
 
-  // Sendungen eines Senders, die noch laufen oder kommen: [[start, ende, titel], …]
+  // Sendungen eines Senders, die noch laufen oder kommen: [[start, ende, titel, text?], …]
   function programmes(id) {
     var progs = epg && id ? epg[id] : null;
     if (!progs) return [];
     var t = Date.now() / 1000;
     return progs.filter(function (p) { return p[1] > t; });
+  }
+
+  // Fürs Gerät: 12 Sendungen, Inhaltstext nur bei den ersten 4 (der Baum geht stündlich an die App,
+  // der Text würde ihn sonst um ein Vielfaches vergrößern)
+  function nativeEpg(id) {
+    return programmes(id).slice(0, 12).map(function (p, i) { return i < 4 ? p : p.slice(0, 3); });
   }
 
   function epgText(id) {
@@ -447,7 +455,7 @@
   function nativeItem(e) {
     return {
       name: e.name, url: e.url, logo: absUrl(e.logo), tvgId: e.tvgId || '', type: e.type, group: e.group,
-      epg: e.tvgId ? programmes(e.tvgId).slice(0, 12) : []
+      epg: e.tvgId ? nativeEpg(e.tvgId) : []
     };
   }
 
@@ -463,7 +471,7 @@
     if (title && title !== o.n) o.ti = title;
     if (e.logo) o.l = absUrl(e.logo);
     if (e.tvgId) o.id = e.tvgId;
-    if (e.type === 'live' && e.tvgId) o.e = programmes(e.tvgId).slice(0, 12);
+    if (e.type === 'live' && e.tvgId) o.e = nativeEpg(e.tvgId);
     if (e.type === 'live' && e.alt && e.alt.length) o.a = e.alt;
     return o;
   }
@@ -621,6 +629,7 @@
     nowNext: nowNext,
     programmes: programmes,
     epgOrder: function () { return epgOrder; },
+    epgGenerated: function () { return epgGenerated; },
     isHevc: function (e) { return HEVC.test(e.name || ''); },
     hhmm: hhmm,
     epgEl: epgEl,

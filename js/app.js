@@ -330,7 +330,7 @@
   if (SPLIT) {
     document.addEventListener('click', function (ev) {
       var a = ev.target.closest ? ev.target.closest('a') : null;
-      if (!a || !a._play || ev.target.closest('.fav')) return;
+      if (!a || !a._play || ev.target.closest('.fav, .info')) return;
       remember(a._play.entry, a._play.list);
       checkPlayerApp(a.getAttribute('href'));
       setTimeout(render, 500);   // beim Zurückkommen ist die Leiste schon da
@@ -438,7 +438,7 @@
     a.textContent = '⬇ ' + app[0];
     var s = document.createElement('span');
     s.className = 'long';
-    s.textContent = ' laden';
+    s.textContent = 'laden';
     a.appendChild(s);
   }
   document.addEventListener('visibilitychange', function () { if (!document.hidden) updateAppLink(); });
@@ -565,7 +565,11 @@
     h.className = 'panehead';
     h.textContent = cur.name;
     pane.appendChild(h);
-    if (type === 'live') pane.appendChild(liveList(cur.items));
+    if (type === 'live') {
+      var st = staleEpgNote();
+      if (st) pane.appendChild(st);
+      pane.appendChild(liveList(cur.items));
+    }
     else if (type === 'movie') pane.appendChild(movieGrid(cur.units));
     else if (openSeries && cur.series.has(openSeries)) pane.appendChild(seriesDetail(openSeries, cur.series.get(openSeries)));
     else pane.appendChild(seriesGrid(cur.series));
@@ -602,10 +606,46 @@
           text.appendChild(nx);
         }
         text.appendChild(progressEl(e.tvgId));
+        if (nn && nn.now[3]) a.appendChild(infoBtn(text, nn.now));
       }
       box.appendChild(a);
     });
     return box;
+  }
+
+  // ⓘ: Inhalt der laufenden Sendung auf- und zuklappen (startet den Sender nicht)
+  function infoBtn(text, prog) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'info';
+    b.textContent = 'ⓘ';
+    b.title = 'Worum geht es?';
+    b.setAttribute('aria-expanded', 'false');
+    b.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      var d = text.querySelector('.desc');
+      if (d) d.remove();
+      else {
+        d = document.createElement('span');
+        d.className = 'desc';
+        d.textContent = prog[2] + ': ' + prog[3];
+        text.appendChild(d);
+      }
+      b.setAttribute('aria-expanded', String(!!text.querySelector('.desc')));
+    });
+    return b;
+  }
+
+  // Programm älter als ein Tag (Liste lange nicht veröffentlicht): Hinweis über den Live-Sendern
+  function staleEpgNote() {
+    var g = IPTV.epgGenerated();
+    if (!g || Date.now() / 1000 - g < 24 * 3600) return null;
+    var d = new Date(g * 1000);
+    var p = document.createElement('p');
+    p.className = 'stale';
+    p.textContent = 'Hinweis: Das Programm ist vom ' + d.getDate() + '.' + (d.getMonth() + 1) + '. und daher teils veraltet.';
+    return p;
   }
 
   // Große Gruppen (z. B. 6000 Filme) stückweise zeigen

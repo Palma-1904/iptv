@@ -29,6 +29,7 @@
   .muted { color: var(--muted); font-size: 15px; }
   .now { font-size: 21px; font-weight: 600; margin: 2px 0 6px; overflow-wrap: anywhere; }
   .prog { font-size: 16px; margin-top: 8px; }
+  .desc { font-size: 14px; line-height: 1.35; margin-top: 6px; opacity: .85; }
   .bar { height: 6px; background: var(--panel2); border-radius: 3px; margin: 6px 0 2px; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--accent); }
   .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
@@ -242,6 +243,13 @@
       if (d.cfg && latest && d.ver && d.ver < latest) w.push('⬆️ ' + esc(label(id)) + ': App ' + d.ver + ', neu ist ' + latest);
       if (d.cfg && !d.cfg.install) w.push('⚠️ ' + esc(label(id)) + ': Updates nicht erlaubt');
     });
+    // Programm einer Liste lange nicht veröffentlicht (Editor lief nicht): Sticks zeigen kein „jetzt/danach“ mehr
+    Object.keys(lists || {}).forEach(function (k) {
+      var g = lists[k].epg;
+      if (g && now - g > 24 * 3600 && ids.some(function (id) { return devices[id].list === k; })) {
+        w.push('🗓 Programm der Liste ' + esc(lists[k].name || k) + ' ist vom ' + new Date(g * 1000).toLocaleDateString('de-DE') + ' – im Editor veröffentlichen');
+      }
+    });
     Object.keys(accounts).forEach(function (k) {
       var a = accounts[k], days = Math.round((a.expires - now) / 86400);
       var date = new Date(a.expires * 1000).toLocaleDateString('de-DE');
@@ -345,6 +353,7 @@
       var pc = Math.max(0, Math.min(100, (t - epg[0][0]) / (epg[0][1] - epg[0][0]) * 100));
       h += '<div class="prog">' + hhmm(epg[0][0]) + '–' + hhmm(epg[0][1]) + '  ' + esc(epg[0][2]) + '</div>' +
         '<div class="bar"><i style="width:' + pc.toFixed(0) + '%"></i></div>';
+      if (epg[0][3]) h += '<div class="desc">' + esc(epg[0][3]) + '</div>';
       if (epg[1]) h += '<div class="muted">danach ' + hhmm(epg[1][0]) + '  ' + esc(epg[1][2]) + '</div>';
     }
     if (d.note && d.noteT && t - d.noteT < 120) h += '<div class="muted">↩ ' + esc(d.note) + '</div>';
@@ -379,7 +388,7 @@
   // Der Editor legt unter <kanal>/lists die Einrichtungs-Links ab; die Handy-Codes einzelner Sticks haben keine.
   var lists = null, trees = {}, nav = [], shownList = null, query = '';
   fetch(BASE + 'lists.json').then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (l) { lists = l; if (sel && devices[sel]) { renderList(); adminFor(devices[sel]); } })
+    .then(function (l) { lists = l; render(); if (sel && devices[sel]) { renderList(); adminFor(devices[sel]); } })
     .catch(function () { /* keine Admin-Ansicht */ });
 
   function norm(u) { return u.replace(/^https?:\/\/[^\/]+\/(live|movie|series)\/[^\/]+\/[^\/]+\//, '$1/'); }

@@ -40,6 +40,15 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Veröffentlichen → `editor/data/out/` + `lokal/` (WLAN-Test) + **Secret Gist** (Token in Editor-Einstellungen).
   EPG: Anbieter zuerst, Lücken aus `EXTRA_EPG` (epgshare01 DE1, open-epg germany) per tvg-id oder Sendername
   (`epg_name_keys` + `EPG_ALIASES`); Sender ohne tvg-id bekommen `x:<id>`. ASW: 197 → 324 von 506 Sendern.
+  **Ab Editor 27 (15.10.)**: Quellen zusätzlich epgshare01 AT1/CH1 (Sky Cinema Special/Thriller/Premieren …), Namens-
+  schlüssel streicht jedes Kürzel „XX| “ (WOW| …); ASW 173 → 220 Sender. **Inhaltstext**: Einträge `[start, ende,
+  titel, text]` (`prog_entry`: Untertitel + desc, max. `EPG_DESC_MAX` 250 Zeichen; epg.json ASW ~1 MB, TKH ~600 KB),
+  auch im XMLTV. Event-Sender (PPV): `fill_from_events` liest Sendung/Uhrzeit aus dem Namen (`event_programme`,
+  Namen frisch per `get_live_streams`, Dauer `EVENT_HOURS`), tvg-id `x:ev:<stream>` – der Anbieter führt die Namen
+  aber oft veraltet. Geräte bekommen im Baum Text nur für die ersten 4 Sendungen (`nativeEpg`). Anzeige: Webapp ⓘ in
+  der Live-Zeile, App Info-Leiste (OK) + Vorschau in der Liste, Admin „Was läuft“ (Stick schickt Text der laufenden
+  Sendung im Status-`epg`). epg.json `generated` > 24 h → Hinweis in der Webapp (`.stale`) und Warnung „🗓“ auf der
+  Admin-Seite (`lists/<slug>.epg` aus `fb_sync_lists`). Automatisch per GitHub-Auftrag: Thomas will das noch nicht.
   Zusätzlich `<liste>.xml` (XMLTV) im Gist + `url-tvg` in der M3U → für andere Apps (IPTV Smarters, TiviMate).
   Aufgaben laufen im Hintergrund (`start_job`, `/api/job` mit Fortschritt): „Veröffentlichen“ (gewählte Playlist),
   „Alle“, „Sender prüfen“ (nacheinander, Verbindungslimit, Ergebnis `data/check_<id>.json`, ✕ in der Playlist).

@@ -454,7 +454,7 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   (`sys.base_prefix`), und Thomas schaltet für „Python“ einmal **Festplattenvollzugriff** ein (Skript öffnet die
   Einstellung + Finder). Erste Fassung über /bin/bash (15.10.) scheiterte daran; das Skript erkennt und erneuert sie.
 - `editor/auto_publish.py [--force] [--dry-run]`: Programm (ältestes `generated` der `<liste>.epg.json`) älter als
-  6 h → alle Listen veröffentlichen. Läuft der Editor (8790): Auftrag per `/api/publish` (beschäftigt → nächstes Mal),
+  12 h (seit 15.10. abends, vorher 6 h – jedes neue Programm lässt die Sticks neu rechnen) → alle Listen veröffentlichen. Läuft der Editor (8790): Auftrag per `/api/publish` (beschäftigt → nächstes Mal),
   sonst selbst `server.publish([])` mit Sperre `editor/data/auto_publish.lock`; schreibt `autoResult`.
   Kurzlebig → blockiert das Auswerfen der SSD nicht. macOS fragt evtl. einmal nach Zugriff auf Wechseldatenträger.
   Getestet 15.10.: Probelauf echte Daten, Veröffentlichen in Test-Kopie, Übergabe an (Schein-)Editor frei/beschäftigt.

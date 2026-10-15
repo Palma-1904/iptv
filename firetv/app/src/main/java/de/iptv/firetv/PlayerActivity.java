@@ -341,7 +341,6 @@ public class PlayerActivity extends Activity implements Remote.Target {
     private TextView digitBox;
     private long lastInput = System.currentTimeMillis();
     private boolean sleeping, sleepWarned;
-    private static final long SLEEP_MS = 3 * 3600 * 1000L;   // Schlaf-Timer: 3 Stunden ohne Taste
     private static final long SLEEP_GRACE = 60 * 1000L;      // dann 1 Minute Vorwarnung
     private static final long TV_OFF_MS = 20 * 1000L;         // Fernseher so lange aus (HDMI getrennt): anhalten
     private boolean tvOff;          // wegen „Fernseher aus“ angehalten – geht er wieder an, läuft es weiter
@@ -1213,14 +1212,16 @@ public class PlayerActivity extends Activity implements Remote.Target {
         handler.postDelayed(digitGo, 1500);
     }
 
-    /** Schlaf-Timer: 3 Stunden ohne Taste -> Vorwarnung, nach 1 Minute Wiedergabe anhalten (Verbindung frei). */
+    /** Schlaf-Timer: x Stunden ohne Taste (Schedule.sleepMs, Standard 3) -> Vorwarnung, nach 1 Minute anhalten. */
     private final Runnable sleepCheck = new Runnable() {
         @Override
         public void run() {
             handler.postDelayed(this, 30000);
             if (sleeping || idle() || !player.isPlaying()) return;
+            long sleepMs = Schedule.sleepMs(PlayerActivity.this);   // einstellbar (Admin ⚙️), 0 = aus
+            if (sleepMs <= 0) return;
             long quiet = System.currentTimeMillis() - lastInput;
-            if (quiet >= SLEEP_MS + SLEEP_GRACE) {
+            if (quiet >= sleepMs + SLEEP_GRACE) {
                 saveResume();
                 stopPlayer();
                 sleeping = true;
@@ -1229,9 +1230,10 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 sleepWarned = false;
                 closeList();
                 info.setVisibility(View.GONE);
-                showStatus("Wiedergabe angehalten – seit 3 Stunden wurde keine Taste gedrückt.\n\n"
+                showStatus("Wiedergabe angehalten – seit " + sleepMs / 3600000 + " Stunde" + (sleepMs > 3600000 ? "n" : "")
+                        + " wurde keine Taste gedrückt.\n\n"
                         + "Zum Weiterschauen eine beliebige Taste drücken.");
-            } else if (quiet >= SLEEP_MS && !sleepWarned) {
+            } else if (quiet >= sleepMs && !sleepWarned) {
                 sleepWarned = true;
                 showStatus("Läuft noch jemand?\n\nBitte eine Taste drücken –\nsonst endet die Wiedergabe in einer Minute.");
             }

@@ -101,6 +101,9 @@
             android:exported="true"
             android:permission="android.permission.WRITE_SECURE_SETTINGS" />
 
+        <!-- Zeitplan: täglich aus/an (Wecker vom AlarmManager, nur die App selbst sendet) -->
+        <receiver android:name=".Schedule" android:exported="false" />
+
         <!-- Startet die App nach dem Einschalten des Sticks -->
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>

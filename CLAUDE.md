@@ -174,6 +174,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Commits, Push-Stand, Online-Version/Bau höchstens alle 5 min wegen GitHub-Limit, Listen, Nacht-Ergebnis, letzte
   Rückmeldung `log`). Admin-Seite zeigt „🟢 läuft auf …/⚪ aus“, Knöpfe nur wenn online (Status < 90 s alt) und keine
   Aufgabe läuft. Getestet 15.10. mit Test-Editor (Veröffentlichen vom Handy ✓, Push gestubbt).
+  **⏰ Zeitplan je Stick** (ab App 71, `Schedule.java`): ⚙️ → „Aus um / An um / Schlaf-Timer“ → Befehl `schedule
+  {off, on, sleepH}` (Prefs schedOff/schedOn/sleepH, Status `cfg.sched`). AlarmManager RTC_WAKEUP (exakt, holt aus
+  dem Standby), neu gestellt beim Hochfahren, App-/Dienst-Start und nach jedem Auslösen. Aus = Player stoppen +
+  Wächter-Standby (`Remote.scheduledOff`, ohne Wächter nur Stopp), An = `Remote.wake()`. Schlaf-Timer 0/1/2/3/4/6 h
+  (0 = aus, Standard 3; früher fest `SLEEP_MS`). Am echten Stick noch ungetestet.
 - **Selbst-ADB geht nicht** (getestet 9.10.2026, Wohnzimmer Fire OS 6): App verband sich mit dem eigenen adbd
   (127.0.0.1 und eigene WLAN-IP, Port 5555) → adbd schließt sofort (EOF), vom Mac aus klappt dasselbe Protokoll.
   Fire OS sperrt ADB-Verbindungen vom Gerät selbst. Wieder entfernt (Revert). Außerdem: Fire OS erlaubt nur EINE
@@ -264,7 +269,7 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   geheimen Schlüssel je Playlist, sofort auf allen Geräten der Playlist (oben in der Übersicht); Stick mit Freigabe:
   OK lang → „Zu Liste hinzufügen / ＋ Neue Liste“. Webapp zeigt sie als Kategorien, Bearbeiten nur wenn für die
   Playlist freigegeben. Admin-Webapp bearbeitet alle Listen.
-- **Admin-Webapp** (Thomas 15.10., alle vier gewünscht; (1)–(3) erledigt): (1) Links senden – Webapp-Link je Playlist per
+- **Admin-Webapp** (Thomas 15.10., alle vier gewünscht; alle gebaut, (4) braucht App 71): (1) Links senden – Webapp-Link je Playlist per
   Teilen (WhatsApp/iMessage), QR, Kurzanleitung; (2) Wer schaut womit – Belegung je Zugang, Warnung bei
   Doppelbelegung; (3) Editor aus der Ferne – Veröffentlichen, Sender prüfen **und Pushen** vom Handy (Editor holt
   Aufträge über Firebase ab, nur solange er auf einem Mac läuft); (4) Zeitpläne je Stick (aus/an, Schlaf-Timer).

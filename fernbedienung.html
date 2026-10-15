@@ -113,6 +113,11 @@
   #conn .z { display: flex; gap: 8px; margin: 3px 0; }
   #conn .z b { flex: none; width: 46px; }
   #conn .z.busy2 { color: var(--bad); font-weight: 600; }
+  .fold .sched { background: var(--panel2); border-radius: 12px; padding: 10px 12px; margin: 4px 0 10px; }
+  .fold .sched label { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
+  .fold .sched input, .fold .sched select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 0;
+    background: var(--panel); color: var(--text); width: auto; margin: 0; }
+  .fold .sched .sw { margin: 8px 0 6px; background: var(--accent); color: #fff; }
   .fold .eb { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
   .fold .eb button { flex: 1 1 45%; min-height: 48px; font-size: 15px; }
   .fold .eb button.hot { flex-basis: 100%; }
@@ -609,6 +614,9 @@
     var box = $('cfg'), c = d.cfg;
     box.hidden = !c;
     if (!c) return;
+    // Während der Eingabe (Zeitplan) nicht neu zeichnen – Statusmeldungen kommen laufend
+    var ae = document.activeElement;
+    if (cfgOpen && ae && box.contains(ae) && /^(INPUT|SELECT)$/.test(ae.tagName)) return;
     var missing = !c.overlay || !c.install || (c.waechterSwitch && !c.waechter && c.home);
     box.innerHTML = '';
     var head = document.createElement('button');
@@ -697,6 +705,29 @@
       }
     } else if (c.waechter !== undefined) {
       chk(c.waechter, 'Wächter aktiv', 'Wächter nicht eingerichtet (vor Ort mit „Stick-einrichten“)');
+    }
+    // ⏰ Zeitplan und Schlaf-Timer (ab App 71: cfg.sched)
+    var zs = document.createElement('div');
+    zs.className = 'sched';
+    if (c.sched) {
+      var s = c.sched;
+      zs.innerHTML = '<div class="muted">⏰ Zeitplan (täglich) und Schlaf-Timer</div>' +
+        '<label>Aus um <input type="time" id="soff" value="' + esc(s.off || '') + '"></label>' +
+        '<label>An um <input type="time" id="son" value="' + esc(s.on || '') + '"></label>' +
+        '<label>Schlaf-Timer <select id="sslp">' + [0, 1, 2, 3, 4, 6].map(function (h) {
+          return '<option value="' + h + '"' + (+s.sleepH === h ? ' selected' : '') + '>' +
+            (h ? h + ' Std. ohne Taste' : 'aus') + '</option>';
+        }).join('') + '</select></label>' +
+        '<button class="sw" id="ssave"><span>Zeitplan speichern</span><b></b></button>' +
+        '<div class="muted">Leer lassen = kein automatisches Aus/An. „Aus“ stoppt die Wiedergabe und schaltet mit Wächter in den Standby; „An“ weckt den Stick und startet den letzten Sender.</div>';
+      body.appendChild(zs);
+      zs.querySelector('#ssave').onclick = function () {
+        send('schedule', { off: $('soff').value, on: $('son').value, sleepH: +$('sslp').value });
+        toast('Zeitplan wird gespeichert …');
+      };
+    } else {
+      zs.innerHTML = '<div class="muted">⏰ Zeitplan: ab App-Version 71 auf diesem Stick</div>';
+      body.appendChild(zs);
     }
     chk(c.overlay, 'Autostart erlaubt', 'Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)');
     chk(c.install, 'Updates erlaubt', 'Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)');

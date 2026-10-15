@@ -74,6 +74,7 @@ public class MainActivity extends Activity implements Remote.Target {
         prefs = getSharedPreferences("iptv", MODE_PRIVATE);
         instance = this;
         Remote.init(this);
+        Schedule.apply(this);   // Zeitplan-Wecker (z. B. nach einem App-Update)
         Remote.main_target = this;
         AutostartService.start(this);
         Waechter.ensure(this);   // falls Fire OS den Wächter abgeschaltet hat

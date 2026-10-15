@@ -429,7 +429,8 @@ final class Remote {
                         .put("waechterSwitch", Waechter.canSwitch(app) && Waechter.supported())
                         .put("waechterOld", !Waechter.supported())
                         .put("pause", (Waechter.pausedFor(app) + 59999) / 60000)
-                        .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true)))
+                        .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true))
+                        .put("sched", Schedule.json(app)))
                 .put("diag", Diag.json(app))
                 .put("norm", nowNorm).put("epg", nowEpg).put("rem", Reminders.upcoming(app))
                 .put("screen", screenOn());
@@ -579,6 +580,16 @@ final class Remote {
         }
     }
 
+    /** Zeitplan „aus“: Wiedergabe stoppen (Verbindung frei), mit Wächter in den Standby. */
+    static void scheduledOff() {
+        main.post(() -> {
+            Target pl = player_target;
+            if (pl != null) pl.remote("stop", new JSONObject());
+            report(Waechter.sleep() ? "Zeitplan: ausgeschaltet (Standby)" : "Zeitplan: Wiedergabe gestoppt (Standby nur mit Wächter)");
+            dirty = true;
+        });
+    }
+
     /** Spielt gerade der Player, bekommt er den Befehl, sonst die Übersicht (MainActivity). */
     private static void dispatch(String action, JSONObject arg) {
         if ("wake".equals(action)) {
@@ -590,6 +601,11 @@ final class Remote {
             if (pl != null) pl.remote("stop", new JSONObject());   // Verbindung zum Anbieter freigeben
             report(Waechter.sleep() ? "Ausgeschaltet (Standby)"
                     : "Ausschalten geht nur mit Wächter (ab Fire OS 7) – Wiedergabe gestoppt");
+            dirty = true;
+            return;
+        }
+        if ("schedule".equals(action)) {        // Admin: Zeitplan aus/an und Schlaf-Timer
+            report(Schedule.set(app, arg));
             dirty = true;
             return;
         }

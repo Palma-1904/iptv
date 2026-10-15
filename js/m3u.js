@@ -65,6 +65,7 @@
   }
 
   function parse(text) {
+    readMyHeader(text);
     var lines = text.split(/\r?\n/);
     var out = [];
     var cur = null;
@@ -90,6 +91,87 @@
     }
     buildAlternatives(out);
     return out;
+  }
+
+  // ---------- Eigene Listen (z. B. „⚽ Fussball“), zentral in Firebase ----------
+  // Der Editor schreibt die Adresse in den Kopf der Playlist: x-mylists="https://<db>/<schlüssel>" (+ x-mylists-edit="1",
+  // wenn die Webapp bearbeiten darf). Daten: { l: { <id>: { n: Name, o: Reihenfolge, i: [norm, …] } } }.
+  // Einträge über „norm“ (Adresse ohne Server/Zugangsdaten, wie Memory.norm in der App). Live per EventSource.
+  var myUrl = '', myEdit = false, myData = {}, mySrc = null, myStamp = 0, myWatchers = [];
+  function norm(u) { return String(u || '').replace(/^https?:\/\/[^/]+\/(live|movie|series)\/[^/]+\/[^/]+\//, '$1/'); }
+  function myApply(path, data) {
+    var parts = path.split('/').filter(Boolean);
+    if (!parts.length) { myData = data || {}; return; }
+    var o = myData;
+    for (var i = 0; i < parts.length - 1; i++) o = o[parts[i]] = o[parts[i]] && typeof o[parts[i]] === 'object' ? o[parts[i]] : {};
+    if (data === null) delete o[parts[parts.length - 1]]; else o[parts[parts.length - 1]] = data;
+  }
+  function myChanged() {
+    myStamp = Date.now();
+    try { localStorage.setItem('iptv-mylists', JSON.stringify({ u: myUrl, d: myData })); } catch (err) { /* egal */ }
+    myWatchers.forEach(function (fn) { try { fn(); } catch (err) { console.warn(err); } });
+    if (typeof pushTree === 'function') pushTree();   // Player der App: Listen sofort in der ☰-Übersicht
+  }
+  function readMyHeader(text) {
+    var head = text.slice(0, 2000).split(/\r?\n/)[0] || '';
+    var m = /\bx-mylists="(https:\/\/[\w.-]+\/[A-Za-z0-9_-]{24,64})"/.exec(head);
+    myEdit = /\bx-mylists-edit="1"/.test(head);
+    var url = m ? m[1] : '';
+    if (url === myUrl) return;
+    myUrl = url;
+    myData = {};
+    try {
+      var c = JSON.parse(localStorage.getItem('iptv-mylists') || 'null');
+      if (c && c.u === url) myData = c.d || {};
+    } catch (err) { /* egal */ }
+    if (mySrc) mySrc.close();
+    mySrc = null;
+    myStamp = Date.now();
+    if (!url || !window.EventSource) return;
+    mySrc = new EventSource(url + '.json');
+    var on = function (ev) {
+      var msg;
+      try { msg = JSON.parse(ev.data); } catch (err) { return; }
+      if (ev.type === 'patch') Object.keys(msg.data || {}).forEach(function (k) { myApply(msg.path.replace(/\/$/, '') + '/' + k, msg.data[k]); });
+      else myApply(msg.path, msg.data);
+      myChanged();
+    };
+    mySrc.addEventListener('put', on);
+    mySrc.addEventListener('patch', on);
+  }
+  // Listen mit ihren Einträgen (nur Einträge, die es in dieser Playlist gibt), sortiert
+  function myLists(entries) {
+    var l = myData && myData.l ? myData.l : {};
+    var byNorm = new Map();
+    (entries || []).forEach(function (e) { var k = norm(e.url); if (!byNorm.has(k)) byNorm.set(k, e); });
+    return Object.keys(l).filter(function (id) { return l[id] && l[id].n; }).map(function (id) {
+      var x = l[id], items = Array.isArray(x.i) ? x.i : Object.keys(x.i || {}).map(function (k) { return x.i[k]; });
+      return { id: id, name: x.n, o: +x.o || 0, entries: items.map(function (k) { return byNorm.get(k); }).filter(Boolean) };
+    }).sort(function (a, b) { return a.o - b.o || a.name.localeCompare(b.name); });
+  }
+  // Für den Baum der App: eigene Listen als Bereiche ganz oben
+  function myListNodes(entries) {
+    return myLists(entries).filter(function (x) { return x.entries.length; }).map(function (x) {
+      return { n: x.name, c: x.entries.map(function (e) { return nativeLeaf(e); }) };
+    });
+  }
+  // Bearbeiten (Webapp nur mit x-mylists-edit; Stick/Admin schreiben selbst nach Firebase)
+  function myPut(id, list) {
+    if (!myUrl) return Promise.reject(new Error('keine eigenen Listen'));
+    return fetch(myUrl + '/l/' + encodeURIComponent(id) + '.json', { method: 'PUT', body: JSON.stringify(list) })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); });
+  }
+  function myToggle(id, entry) {
+    var x = (myData.l || {})[id];
+    if (!x) return Promise.reject(new Error('Liste fehlt'));
+    var items = (Array.isArray(x.i) ? x.i : []).slice(), k = norm(entry.url), at = items.indexOf(k);
+    if (at >= 0) items.splice(at, 1); else items.push(k);
+    return myPut(id, { n: x.n, o: x.o || 0, i: items }).then(function () { return at < 0; });
+  }
+  function myCreate(name, entry) {
+    var id = 'l' + Date.now().toString(36);
+    var n = Object.keys(myData.l || {}).length;
+    return myPut(id, { n: name, o: n + 1, i: entry ? [norm(entry.url)] : [] });
   }
 
   // Browser (Mac, Fire TV/Silk) zeigen bei HEVC-Streams nur Ton. Gibt es denselben Sender in
@@ -645,6 +727,14 @@
     epgStamp: function () { return epgStamp; },
     nativeTree: function () { return treeProvider ? treeProvider() : null; },   // zum Testen
     nativeLeaf: nativeLeaf,
+    norm: norm,
+    myLists: myLists,
+    myListNodes: myListNodes,
+    myStamp: function () { return myStamp; },
+    myCanEdit: function () { return !!myUrl && myEdit; },
+    myToggle: myToggle,
+    myCreate: myCreate,
+    onMyLists: function (fn) { myWatchers.push(fn); },
     platform: platform,
     iosPlayer: iosPlayer,
     isTv: isTv,

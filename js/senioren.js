@@ -84,14 +84,16 @@
   var treeCache = null;
   IPTV.setTreeProvider(function () {
     if (!IPTV.buildTree) return null;   // alte senioren.html ohne js/tree.js: ältere Übergabe
-    var version = 'sen:' + pageId + ':' + dataVersion + ':' + IPTV.epgStamp() + ':' + Math.floor(Date.now() / 3600000);
+    var version = 'sen:' + pageId + ':' + dataVersion + ':' + IPTV.epgStamp() + ':' + Math.floor(Date.now() / 3600000) +
+      ':' + (IPTV.myStamp ? IPTV.myStamp() : 0);
     if (treeCache && treeCache.version === version) return treeCache;
     var own = !IPTV.hasDeviceList() && seniorEntries.length;
-    var t = IPTV.buildTree(allEntries, own
-      ? { first: [{ n: 'Meine Sender', c: seniorEntries.map(function (e) { return IPTV.nativeLeaf(e); }) }] }
-      : {});
+    // ganz oben: eigene Listen (zentral, z. B. „⚽ Fussball“), dann ggf. „Meine Sender“ aus config.js
+    var mine = IPTV.myListNodes ? IPTV.myListNodes(allEntries) : [];
+    var first = mine.concat(own ? [{ n: 'Meine Sender', c: seniorEntries.map(function (e) { return IPTV.nativeLeaf(e); }) }] : []);
+    var t = IPTV.buildTree(allEntries, { first: first });
     seniorEntries.forEach(function (e, i) {
-      t.paths.set(e, own ? [0, i] : t.paths.get(seniorFound[i].entry));
+      t.paths.set(e, own ? [mine.length, i] : t.paths.get(seniorFound[i].entry));
     });
     treeCache = {
       version: version,

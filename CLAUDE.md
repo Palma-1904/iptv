@@ -270,6 +270,14 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   geheimen Schlüssel je Playlist, sofort auf allen Geräten der Playlist (oben in der Übersicht); Stick mit Freigabe:
   OK lang → „Zu Liste hinzufügen / ＋ Neue Liste“. Webapp zeigt sie als Kategorien, Bearbeiten nur wenn für die
   Playlist freigegeben. Admin-Webapp bearbeitet alle Listen.
+  **Stufe A umgesetzt (Editor 29)**: je Playlist `pl.myListsKey` (32 Zeichen, `ensure_mylists_keys` beim
+  Veröffentlichen/`fb_sync_lists`; `/api/state` behält ihn, falls die Oberfläche einen Stand ohne Schlüssel schickt).
+  M3U-Kopf `x-mylists="https://<db>/<schlüssel>"` (+ `x-mylists-edit="1"` bei `pl.myListsWeb`), `<kanal>/lists/<slug>.my`.
+  Daten `<schlüssel>.json` = `{l: {<id>: {n, o, i: [norm…]}}}` (norm = Adresse ohne Server/Zugangsdaten). Webapp
+  (`m3u.js`: `readMyHeader`, EventSource live, Cache `iptv-mylists`, `myLists/myListNodes/myToggle/myCreate`):
+  Kategorien links (Live-Sender), Baum der App ganz oben (senioren.js/app.js `first`). Admin „📋 Eigene Listen“
+  (`renderMyl`): anlegen, umbenennen, ▲▼, löschen, Sender per Suche hinzufügen/✕. Getestet 15.10. (Test-Schlüssel,
+  danach gelöscht). **Stufe B offen**: Bearbeiten am Stick (OK lang, Freigabe je Gerät) und in der Webapp.
 - **Admin-Webapp** (Thomas 15.10., alle vier gewünscht; alle gebaut, (4) braucht App 71): (1) Links senden – Webapp-Link je Playlist per
   Teilen (WhatsApp/iMessage), QR, Kurzanleitung; (2) Wer schaut womit – Belegung je Zugang, Warnung bei
   Doppelbelegung; (3) Editor aus der Ferne – Veröffentlichen, Sender prüfen **und Pushen** vom Handy (Editor holt

@@ -37,7 +37,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
-VERSION = 28  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 29  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html'}
 
@@ -1018,10 +1018,12 @@ def fb_sync_lists(rev=None):
         return
     old = _fb_lists_sent or {}
     lists = {}
-    for p in load_state().get('playlists', []):
+    for p in ensure_mylists_keys().get('playlists', []):
         slug = slugify(p.get('slug') or p.get('name') or p['id'])
         lists[slug] = {'name': p.get('name') or slug, 'link': f'{st["login"]}/{st["gistId"]}/{slug}',
                        'rev': rev or (old.get(slug) or {}).get('rev') or ''}
+        if p.get('myListsKey'):
+            lists[slug]['my'] = p['myListsKey']             # eigene Listen: <db>/<schlüssel>.json
         # Stand des veröffentlichten Programms (Admin-Seite warnt, wenn älter als ein Tag)
         gen = read_json(os.path.join(OUT, slug + '.epg.json'), {}).get('generated')
         if gen:
@@ -1696,8 +1698,28 @@ def gist_upload(files, settings):
     return settings
 
 
+def ensure_mylists_keys():
+    """Eigene Listen: je Playlist ein geheimer Schlüssel (Firebase-Pfad <schlüssel>, ≥ 24 Zeichen wegen der Regeln).
+    Alle Geräte der Playlist lesen dort ihre Listen; die Admin-Seite bearbeitet sie."""
+    import secrets
+    state = load_state()
+    changed = False
+    for p in state.get('playlists', []):
+        if not p.get('myListsKey'):
+            p['myListsKey'] = secrets.token_urlsafe(24)[:32].replace('-', 'x').replace('_', 'y')
+            changed = True
+    if changed:
+        write_json(STATE_FILE, state)
+    return state
+
+
+def mylists_url(pl):
+    base = fb_base()
+    return f'{base}{pl["myListsKey"]}' if base and pl.get('myListsKey') else ''
+
+
 def publish(ids):
-    state, settings = load_state(), load_settings()
+    state, settings = ensure_mylists_keys(), load_settings()
     results, files = [], {}
     for pl in state['playlists']:
         if ids and pl['id'] not in ids:
@@ -1718,6 +1740,9 @@ def publish(ids):
         if settings.get('gistId') and settings.get('login'):
             xml_url = f'https://gist.githubusercontent.com/{settings["login"]}/{settings["gistId"]}/raw/{slug}.xml'
             lines[0] = f'#EXTM3U url-tvg="{xml_url}" x-tvg-url="{xml_url}"'
+        # Eigene Listen (Firebase): Adresse für alle Geräte; Bearbeiten in der Webapp nur, wenn freigegeben
+        if mylists_url(pl):
+            lines[0] += f' x-mylists="{mylists_url(pl)}"' + (' x-mylists-edit="1"' if pl.get('myListsWeb') else '')
         m3u = '\n'.join(lines) + '\n'
         # Eigene Reihenfolge für den Reiter „Programm“ (sonst wie in der Playlist)
         order = [i for i in pl.get('epgOrder') or [] if i in epg]
@@ -2026,6 +2051,11 @@ class Handler(SimpleHTTPRequestHandler):
                 if not isinstance(state.get('sources'), list) or not isinstance(state.get('playlists'), list):
                     raise UserError('Ungültige Daten.')
                 backup_state()                      # erste Änderung des Tages: alten Stand sichern
+                # Schlüssel der eigenen Listen nie verlieren (Oberfläche kann einen älteren Stand ohne ihn schicken)
+                keys = {p['id']: p.get('myListsKey') for p in load_state().get('playlists', []) if p.get('myListsKey')}
+                for p in state['playlists']:
+                    if isinstance(p, dict) and not p.get('myListsKey') and keys.get(p.get('id')):
+                        p['myListsKey'] = keys[p['id']]
                 write_json(STATE_FILE, state)
                 return self.send_json({'ok': True})
             if method == 'POST' and path == '/api/settings':

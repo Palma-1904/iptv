@@ -118,6 +118,16 @@
   .fold .sched input, .fold .sched select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 0;
     background: var(--panel); color: var(--text); width: auto; margin: 0; }
   .fold .sched .sw { margin: 8px 0 6px; background: var(--accent); color: #fff; }
+  .fold .ml { background: var(--panel2); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; }
+  .fold .ml .mh { display: flex; align-items: center; gap: 6px; }
+  .fold .ml .mh .nm { flex: 1; font-weight: 600; text-align: left; background: none; padding: 8px 4px; min-height: 44px; }
+  .fold .ml button.s { min-height: 40px; padding: 6px 10px; font-size: 15px; background: var(--panel); flex: none; }
+  .fold .ml .it { display: flex; align-items: center; gap: 6px; margin: 4px 0 4px 8px; font-size: 15px; }
+  .fold .ml .it span { flex: 1; overflow-wrap: anywhere; }
+  .fold .ml input { width: 100%; font: inherit; padding: 10px 12px; border-radius: 10px; border: 0; background: var(--panel);
+    color: var(--text); margin: 6px 0; }
+  .fold .ml .hit { display: block; width: 100%; text-align: left; min-height: 44px; padding: 8px 10px; margin-bottom: 4px;
+    background: var(--panel); font-size: 15px; }
   .fold .eb { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
   .fold .eb button { flex: 1 1 45%; min-height: 48px; font-size: 15px; }
   .fold .eb button.hot { flex-basis: 100%; }
@@ -178,6 +188,7 @@
   <input type="search" id="q" placeholder="Sender, Film oder Serie suchen …" hidden>
   <div class="list" id="tree"></div>
 </section>
+<div class="card fold" id="myl" hidden></div>
 <div class="card fold" id="edi" hidden></div>
 <div class="card fold" id="adm" hidden></div>
 <p class="muted" id="foot"></p>
@@ -408,6 +419,7 @@
     renderCfg(d);
     renderConn(ids);
     renderEdi();
+    renderMyl();
     renderAdm();
     renderRems(d);
     renderList();
@@ -766,6 +778,183 @@
           (who.length > 1 ? ' – ⚠️ gleichzeitig, einer bekommt kein Bild' : '') : '<span class="muted">frei</span>') + '</span></div>';
     });
     box.innerHTML = h;
+  }
+
+  // ---------- Eigene Listen (nur Haupt-Link): je Playlist zentral in Firebase <db>/<my>.json ----------
+  // { l: { <id>: { n: Name, o: Reihenfolge, i: [norm, …] } } } – Geräte der Playlist zeigen sie sofort ganz oben.
+  var mylOpen = false, mylSlug = null, mylData = {}, mylSrc = null, mylSrcKey = null, mylOpenId = null, mylQuery = '';
+  function mylUrl(slug, sub) { return 'https://' + cfg.db + '/' + lists[slug].my + (sub || '') + '.json'; }
+  function mylPut(id, x) {
+    return fetch(mylUrl(mylSlug, '/l/' + encodeURIComponent(id)), { method: x ? 'PUT' : 'DELETE', body: x ? JSON.stringify(x) : undefined })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); })
+      .catch(function (e) { toast('Nicht gespeichert: ' + e.message); });
+  }
+  function mylItems(x) { return Array.isArray(x.i) ? x.i.slice() : Object.keys(x.i || {}).map(function (k) { return x.i[k]; }); }
+  function mylSorted() {
+    var l = mylData.l || {};
+    return Object.keys(l).filter(function (id) { return l[id] && l[id].n; })
+      .sort(function (a, b) { return (+l[a].o || 0) - (+l[b].o || 0) || l[a].n.localeCompare(l[b].n); });
+  }
+  // Namen/Logos zu den Kennungen aus dem Baum der Liste (derselbe wie „Alles auf diesem Fernseher“)
+  var mylNames = {};
+  function mylLeaves(slug) {
+    if (mylNames[slug]) return mylNames[slug];
+    mylNames[slug] = loadList(slug).then(function (data) {
+      var out = {}, live = [];
+      (function walk(nodes, isLive) {
+        (nodes || []).forEach(function (n) {
+          if (n.k) { if (!out[n.k]) { out[n.k] = n; if (isLive && n.t === 'live') live.push(n); } }
+          else walk(n.c, isLive || n.n === 'Live TV');
+        });
+      })(data.root, false);
+      return { byK: out, live: live };
+    });
+    mylNames[slug].catch(function () { delete mylNames[slug]; });
+    return mylNames[slug];
+  }
+  function renderMyl() {
+    var box = $('myl');
+    var slugs = lists ? Object.keys(lists).filter(function (s) { return lists[s].my; }) : [];
+    box.hidden = !slugs.length;
+    if (!slugs.length) return;
+    var ae = document.activeElement;
+    if (mylOpen && ae && box.contains(ae) && ae.tagName === 'INPUT') return;   // Suche nicht beim Tippen neu zeichnen
+    if (!mylSlug || slugs.indexOf(mylSlug) < 0) {
+      var d = devices[sel] || {};
+      mylSlug = slugs.indexOf(d.list) >= 0 ? d.list : slugs[0];
+    }
+    if (mylSrcKey !== mylSlug) {
+      if (mylSrc) mylSrc.close();
+      mylSrcKey = mylSlug;
+      mylData = {};
+      mylSrc = live(mylUrl(mylSlug), function (path, data, merge) { mylData = apply(mylData, path, data, merge) || {}; renderMyl(); });
+    }
+    box.innerHTML = '';
+    var head = document.createElement('button');
+    head.className = 'head';
+    head.innerHTML = '<span>' + (mylOpen ? '▾' : '▸') + '</span><span>📋 Eigene Listen (' + esc(lists[mylSlug].name || mylSlug) + ': ' + mylSorted().length + ')</span>';
+    head.onclick = function () { mylOpen = !mylOpen; renderMyl(); };
+    box.appendChild(head);
+    if (!mylOpen) return;
+    var body = document.createElement('div');
+    body.className = 'body';
+    if (slugs.length > 1) {
+      var s = document.createElement('select');
+      slugs.forEach(function (slug) {
+        var o = document.createElement('option');
+        o.value = slug;
+        o.textContent = 'Playlist ' + (lists[slug].name || slug);
+        if (slug === mylSlug) o.selected = true;
+        s.appendChild(o);
+      });
+      s.onchange = function () { mylSlug = s.value; mylOpenId = null; renderMyl(); };
+      body.appendChild(s);
+    }
+    var hint = document.createElement('p');
+    hint.className = 'muted';
+    hint.style.marginTop = '0';
+    hint.textContent = 'Erscheinen sofort ganz oben auf allen Fernsehern und in der Webapp dieser Playlist.';
+    body.appendChild(hint);
+    var l = mylData.l || {}, ids = mylSorted();
+    mylLeaves(mylSlug).then(function (info) {
+      ids.forEach(function (id, idx) {
+        var x = l[id], items = mylItems(x);
+        var card = document.createElement('div');
+        card.className = 'ml';
+        var mh = document.createElement('div');
+        mh.className = 'mh';
+        function small(text, fn, title) {
+          var b = document.createElement('button');
+          b.className = 's';
+          b.textContent = text;
+          if (title) b.title = title;
+          b.onclick = fn;
+          return b;
+        }
+        var nm = document.createElement('button');
+        nm.className = 'nm';
+        nm.textContent = (mylOpenId === id ? '▾ ' : '▸ ') + x.n + ' (' + items.length + ')';
+        nm.onclick = function () { mylOpenId = mylOpenId === id ? null : id; mylQuery = ''; renderMyl(); };
+        mh.appendChild(nm);
+        // Reihenfolge der Listen: Positionen neu durchnummerieren
+        function moveList(dir) {
+          var order = ids.slice(), j = idx + dir;
+          if (j < 0 || j >= order.length) return;
+          order.splice(j, 0, order.splice(idx, 1)[0]);
+          order.forEach(function (oid, n) { if ((+l[oid].o || 0) !== n + 1) mylPut(oid, { n: l[oid].n, o: n + 1, i: mylItems(l[oid]) }); });
+        }
+        mh.appendChild(small('▲', function () { moveList(-1); }, 'nach oben'));
+        mh.appendChild(small('▼', function () { moveList(1); }, 'nach unten'));
+        mh.appendChild(small('✎', function () {
+          var n = prompt('Neuer Name der Liste:', x.n);
+          if (n && n.trim()) mylPut(id, { n: n.trim(), o: x.o || 0, i: items });
+        }, 'umbenennen'));
+        mh.appendChild(small('🗑', function () {
+          if (confirm('Liste „' + x.n + '“ löschen? (Die Sender bleiben in ihren Gruppen.)')) mylPut(id, null);
+        }, 'löschen'));
+        card.appendChild(mh);
+        if (mylOpenId === id) {
+          items.forEach(function (k, i) {
+            var it = document.createElement('div');
+            it.className = 'it';
+            var nmS = document.createElement('span');
+            nmS.textContent = (info.byK[k] && info.byK[k].n) || k;
+            it.appendChild(nmS);
+            it.appendChild(small('▲', function () {
+              if (!i) return;
+              var a = items.slice(); a.splice(i - 1, 0, a.splice(i, 1)[0]);
+              mylPut(id, { n: x.n, o: x.o || 0, i: a });
+            }));
+            it.appendChild(small('✕', function () {
+              var a = items.slice(); a.splice(i, 1);
+              mylPut(id, { n: x.n, o: x.o || 0, i: a });
+            }, 'aus der Liste nehmen'));
+            card.appendChild(it);
+          });
+          var q = document.createElement('input');
+          q.type = 'search';
+          q.placeholder = '＋ Sender suchen und hinzufügen …';
+          q.value = mylQuery;
+          var res = document.createElement('div');
+          function hits() {
+            res.innerHTML = '';
+            var w = mylQuery.trim().toLowerCase();
+            if (w.length < 2) return;
+            info.live.filter(function (n) { return n.n.toLowerCase().indexOf(w) >= 0 && items.indexOf(n.k) < 0; })
+              .slice(0, 15).forEach(function (n) {
+                var b = document.createElement('button');
+                b.className = 'hit';
+                b.textContent = '＋ ' + n.n;
+                b.onclick = function () {
+                  items.push(n.k);
+                  mylQuery = '';
+                  mylPut(id, { n: x.n, o: x.o || 0, i: items }).then(function () { toast('„' + n.n + '“ hinzugefügt'); });
+                };
+                res.appendChild(b);
+              });
+          }
+          q.oninput = function () { mylQuery = q.value; hits(); };
+          card.appendChild(q);
+          card.appendChild(res);
+          hits();
+        }
+        body.appendChild(card);
+      });
+      var add = document.createElement('button');
+      add.className = 'sw';
+      add.innerHTML = '<span>＋ Neue Liste (z. B. „⚽ Fussball“)</span><b></b>';
+      add.onclick = function () {
+        var n = prompt('Name der neuen Liste:', '⚽ Fussball');
+        if (!n || !n.trim()) return;
+        var id = 'l' + Date.now().toString(36);
+        mylOpenId = id;
+        mylPut(id, { n: n.trim(), o: ids.length + 1, i: [] });
+      };
+      body.appendChild(add);
+    }, function () {
+      body.appendChild(Object.assign(document.createElement('p'), { className: 'err', textContent: 'Senderliste konnte nicht geladen werden.' }));
+    });
+    box.appendChild(body);
   }
 
   // ---------- Editor aus der Ferne (nur Haupt-Link): Veröffentlichen, Sender prüfen, Pushen ----------

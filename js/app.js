@@ -263,6 +263,11 @@
     var recent = recentOf(type).slice(0, 12);
     if (type === 'live') {
       if (recent.length) out.push({ name: '🕘 Zuletzt gesehen', count: recent.length, items: recent });
+      // eigene Listen (zentral, z. B. „⚽ Fussball“) – nur ihre Live-Sender
+      IPTV.myLists(all).forEach(function (x) {
+        var live = x.entries.filter(function (e) { return e.type === 'live'; });
+        out.push({ name: x.name, count: live.length, items: live, myId: x.id });
+      });
       groupsOf(byType.live).forEach(function (items, name) { out.push({ name: name, count: items.length, items: items }); });
     } else if (type === 'movie') {
       if (recent.length) {
@@ -290,8 +295,8 @@
         if (favs.series.indexOf(name) >= 0) favSeries.set(name, eps);
       });
       if (recent.length) {
-        var rs = new Map(), all = groupsOf(byType.series);
-        recent.forEach(function (e) { if (!rs.has(e.group) && all.has(e.group)) rs.set(e.group, all.get(e.group)); });
+        var rs = new Map(), allSeries = groupsOf(byType.series);
+        recent.forEach(function (e) { if (!rs.has(e.group) && allSeries.has(e.group)) rs.set(e.group, allSeries.get(e.group)); });
         if (rs.size) out.push({ name: '🕘 Zuletzt gesehen', count: rs.size, series: rs });
       }
       if (favSeries.size) out.push({ name: '★ Meine Favoriten', count: favSeries.size, series: favSeries });
@@ -1162,9 +1167,10 @@
   var dataVersion = 0;
   var tree = null;
   IPTV.setTreeProvider(function () {
-    var version = pageId + ':' + dataVersion + ':' + IPTV.epgStamp() + ':' + Math.floor(Date.now() / 3600000) + ':' + favs.movie.length + ':' + favs.series.length;
+    var version = pageId + ':' + dataVersion + ':' + IPTV.epgStamp() + ':' + Math.floor(Date.now() / 3600000) + ':' + favs.movie.length + ':' + favs.series.length + ':' + IPTV.myStamp();
     if (tree && tree.version === version) return tree;
     var t = IPTV.buildTree(all, {
+      first: IPTV.myListNodes(all),
       favKey: favKey, isFav: isFav, favMovies: favMovies, favSeriesFirst: favSeriesFirst,
       isFavSeries: function (name) { return favs.series.indexOf(name) >= 0; }
     });
@@ -1184,5 +1190,6 @@
   });
 
   IPTV.watch(refresh);
+  IPTV.onMyLists(function () { dataVersion++; if (SPLIT) render(); });   // eigene Listen geändert (Firebase live)
   start();
 })();

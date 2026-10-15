@@ -334,6 +334,11 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 - Jeder Push = neue App-Version (auch bei reinen Editor-/Notiz-Änderungen) → Änderungen gesammelt pushen.
 
 ## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
+- **Zurückgestellt (Thomas 15.10.: „brauchen wir gerade nicht“)**: „intelligente Listen“ im Editor – Regel-Gruppen
+  (Anbieter-Gruppe/Suchwort, füllt sich beim Veröffentlichen; bestehende Gruppen nur auf Wunsch umstellen, eigene
+  Namen/Reihenfolge/„nie aufnehmen“ bleiben), „⚽ Heute live“ aus dem EPG, „🆕 Neu dazugekommen“, „📈 Am meisten
+  geschaut“, automatisch aufräumen (Doppelte → Ersatz-Fassungen). Reihenfolge Senderpflege: Angebot aktualisieren →
+  Sender prüfen → Ersetzen → Doppelte → Veröffentlichen.
 - **Ersatz-Fassungen verbessert (lokal, wird App 81)**: 3 statt 2 je Sender, Stick merkt sich die funktionierende,
   wechselt schneller. Doppelte darf Thomas ruhig entfernen – Ersatz kommt aus dem ganzen Zugangs-Katalog.
   Stand der Listen: ASW 312/366 Sender mit 3 Ersatz, KMH 395/500, TKH 596/903. Am echten Stick ungetestet.

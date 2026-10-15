@@ -29,6 +29,7 @@ async function api(path, body) {
 }
 
 let toastTimer;
+const devOpen = new Set();   // Fernwartung: aufgeklappte Geräte (Start: alle zu; bleibt beim Neuzeichnen)
 function toast(msg, error) {
   const t = $('#toast');
   t.textContent = msg;
@@ -1447,8 +1448,10 @@ async function renderRemote() {
   }
   for (const d of st.devices) {
     const online = d.age < 12 * 60;
-    const box = el('div', 'dev');
+    const open = devOpen.has(d.id);
+    const box = el('div', 'dev' + (open ? '' : ' closed'));
     const head = el('div', 'dev-head');
+    head.appendChild(el('span', 'dev-arrow', open ? '▾' : '▸'));
     head.appendChild(el('span', 'dev-dot' + (online ? ' on' : '')));
     head.appendChild(el('strong', '', d.label || d.name || 'Gerät'));
     if (d.label) head.appendChild(el('span', 'hint', `(${d.name})`));
@@ -1465,6 +1468,19 @@ async function renderRemote() {
     head.appendChild(ed);
     head.appendChild(el('span', 'chip', `Liste „${d.list || '?'}“ · App ${d.ver || '?'}`));
     head.appendChild(el('span', 'hint', (online ? 'online, ' : 'offline? ') + 'zuletzt gemeldet ' + ago(d.age)));
+    const sum = el('span', 'hint dev-sum', (STATE_TEXT[d.state] || d.state || '') + (d.title ? ': ' + d.title : ''));
+    sum.hidden = open;
+    head.appendChild(sum);
+    // Kopfzeile antippen = auf-/zuklappen (sofort, ohne neu zu laden; der ✎-Knopf bleibt eigener Knopf)
+    head.onclick = (ev) => {
+      if (ev.target.closest('button')) return;
+      const now = !devOpen.has(d.id);
+      now ? devOpen.add(d.id) : devOpen.delete(d.id);
+      box.classList.toggle('closed', !now);
+      box.querySelector('.dev-body').hidden = !now;
+      head.querySelector('.dev-arrow').textContent = now ? '▾' : '▸';
+      sum.hidden = now;
+    };
     box.appendChild(head);
     if (d.memo) box.appendChild(el('p', 'dev-memo', '📝 ' + d.memo));
     box.appendChild(el('p', 'dev-now', (STATE_TEXT[d.state] || d.state || '') + (d.title ? ': ' + d.title : '')));
@@ -1575,6 +1591,11 @@ async function renderRemote() {
     inp.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); doSend(); } };
     msg.append(inp, send);
     box.appendChild(msg);
+    // Alles unter der Kopfzeile in einen Bereich, der zugeklappt verborgen ist
+    const inner = el('div', 'dev-body');
+    while (box.children.length > 1) inner.appendChild(box.children[1]);
+    inner.hidden = !open;
+    box.appendChild(inner);
     body.appendChild(box);
   }
   body.appendChild(el('p', 'hint', 'Grün = hat sich in den letzten Minuten gemeldet. Ab App 57 läuft die Fernwartung über Firebase: Befehle kommen sofort an, die Sticks melden sich alle 5 Minuten und bei jeder Änderung, ohne Tageslimit. Ältere Apps nutzen noch ntfy.sh (250 Nachrichten am Tag je Anschluss, Meldung nur alle 3 Stunden bzw. live, solange dieses Fenster offen ist). „Update“ lädt die neue App still im Hintergrund. Mit aktivem Wächter installiert sie sich ganz von selbst; ohne Wächter muss vor Ort einmal „Installieren“ gedrückt werden (Vorgabe von Fire OS). Danach startet die App von selbst wieder. Rückmeldungen erscheinen unter „Letzte Rückmeldung“.'));
@@ -1832,20 +1853,48 @@ function section(icon, title, sub) {
   return sec;
 }
 
+// Karte auf-/zuklappbar machen: Kopfzeile (erstes Kind) antippen; Start zu, Zustand je Schlüssel gemerkt
+const cardOpen = new Set();
+function foldCard(card, key) {
+  const head = card.firstElementChild;
+  const body = el('div', 'lcard-body');
+  while (card.children.length > 1) body.appendChild(card.children[1]);
+  card.appendChild(body);
+  const arrow = el('span', 'dev-arrow', '');
+  head.insertBefore(arrow, head.firstChild);
+  head.classList.add('fold-head');
+  const set = (open) => {
+    body.hidden = !open;
+    arrow.textContent = open ? '▾' : '▸';
+    card.classList.toggle('closed', !open);
+  };
+  set(cardOpen.has(key));
+  head.onclick = (ev) => {
+    if (ev.target.closest('button, a, input')) return;
+    const open = !cardOpen.has(key);
+    open ? cardOpen.add(key) : cardOpen.delete(key);
+    set(open);
+  };
+  return card;
+}
+
 // Oben im Fenster: wo es die Fire-TV-App gibt
 function appCard() {
   const card = el('div', 'lcard appcard');
-  card.appendChild(el('h3', '', '① Fire-TV-App installieren'));
+  const h = el('div', 'lcard-head');
+  h.appendChild(el('h3', '', '① Fire-TV-App installieren'));
+  card.appendChild(h);
   const pages = (settings.pagesUrl || '').trim();
   if (!pages) {
     card.appendChild(el('p', 'hint', 'Adresse der Webapp in den Einstellungen eintragen, dann steht hier der Download-Link.'));
-    return card;
+    return foldCard(card, 'app');
   }
+  card.appendChild(el('p', '', 'Am bequemsten (ohne Downloader): Editor → Geräte → „📺 Neuen Stick einrichten“ – Mac im selben WLAN.'));
   const apk = pages.replace(/^https?:\/\//, '').replace(/\/?$/, '/') + 'app.apk';
   card.appendChild(el('p', '', 'Auf dem Fire-TV-Stick in der App „Downloader“ eingeben (Feld vorher ganz leeren):'));
   card.appendChild(bigValue(apk));
-  card.appendChild(el('p', 'hint', 'Gleicher Link für Updates – die neue Version wird einfach drüber installiert. Vorher einmalig: VLC installieren und bei „Apps unbekannter Herkunft“ Downloader erlauben.'));
-  return card;
+  card.appendChild(el('p', 'hint', 'Gleicher Link für Updates – die neue Version wird einfach drüber installiert. Vorher einmalig: bei „Apps unbekannter Herkunft“ Downloader erlauben.'));
+  return foldCard(card, 'app');
 }
 
 // Links einer Playlist (nach Veröffentlichen oder über "Geräte-Links")
@@ -1856,6 +1905,7 @@ function linksBox(r) {
   head.appendChild(el('span', 'chip', r.entries !== undefined
     ? `${r.entries} Einträge · EPG ${r.epgChannels} Sender · ${r.sizeKb} KB`
     : (r.published ? 'veröffentlicht' : 'noch nicht veröffentlicht')));
+  if (r.warnings && r.warnings.length) head.appendChild(el('span', 'chip warnchip', `⚠️ ${r.warnings.length} Hinweis${r.warnings.length > 1 ? 'e' : ''}`));
   card.appendChild(head);
 
   if (r.setupRef) {
@@ -1915,7 +1965,7 @@ function linksBox(r) {
     r.warnings.forEach((w) => ul.appendChild(el('li', '', w)));
     card.appendChild(ul);
   }
-  return card;
+  return foldCard(card, 'pl:' + (r.slug || r.name));
 }
 
 async function showLinks() {

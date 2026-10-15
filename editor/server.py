@@ -39,7 +39,7 @@ LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per 
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
 ALT_MAX = 3   # Ersatz-Fassungen je Live-Sender (x-alt)
-VERSION = 32  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 33  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html', '/stick.html': 'stick.html'}
 
@@ -748,7 +748,8 @@ def backup_state(tag=None):
 def list_backups():
     out = []
     if os.path.isdir(BACKUP):
-        for f in sorted(os.listdir(BACKUP), reverse=True):
+        # neueste zuerst (nach Zeit – Sicherungen „vor-leeren-…“ stehen sonst unter der Tagessicherung)
+        for f in sorted(os.listdir(BACKUP), key=lambda f: os.path.getmtime(os.path.join(BACKUP, f)), reverse=True):
             if not f.startswith('state-'):
                 continue
             st = read_json(os.path.join(BACKUP, f), {})
@@ -2237,6 +2238,10 @@ class Handler(SimpleHTTPRequestHandler):
                 name = find(load_state()['playlists'], pid, 'Playlist').get('name')
                 return self.send_json(start_job('check', f'Sender prüfen „{name}“',
                                                 lambda: check_playlist(pid, keys, force)))
+            if method == 'POST' and path == '/api/backup':   # Sicherung jetzt (z. B. vor „Alles leeren“)
+                why = re.sub(r'[^\w-]+', '-', str(self.body().get('why') or 'jetzt'))[:40].strip('-') or 'jetzt'
+                backup_state(datetime.now().strftime('%Y-%m-%d-%H%M') + '-' + why)
+                return self.send_json({'ok': True})
             if method == 'GET' and path == '/api/backups':
                 return self.send_json(list_backups())
             if method == 'POST' and path == '/api/restore':

@@ -448,3 +448,10 @@ button.primary.clicked { box-shadow: 0 0 0 3px rgba(52, 199, 89, .7); }
 .bk-row { display: grid; grid-template-columns: 170px 1fr auto; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--border); }
 .dev-memo { margin: 4px 0; font-size: 14px; color: var(--muted); }
 button.mini { height: 24px; padding: 0 6px; font-size: 13px; }
+
+/* Größen-Ampel der Playlist */
+.sizechip { margin-left: 10px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line, #ccc); background: transparent;
+  font: inherit; font-size: 0.9em; cursor: pointer; }
+.sizechip.g { border-color: #2e9d55; }
+.sizechip.y { border-color: #d9a400; }
+.sizechip.r { border-color: #d64545; color: #d64545; font-weight: 600; }

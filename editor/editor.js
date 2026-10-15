@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 32; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 33; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -737,6 +737,49 @@ function addToPlaylist(items, fallbackGroup) {
   toast(added ? `${added} zur Playlist „${pl.name}“ hinzugefügt` : 'Schon alles in der Playlist');
 }
 
+// ---------- Größen-Ampel: wie flüssig die Liste am Fire-TV-Stick läuft ----------
+// Gezählt wie auf dem Gerät: Live-Sender, Film-Fassungen (jede Sprache eine Zeile), Serien (Folgen kommen beim Öffnen).
+// Erfahrung: ein paar hundert Sender + wenige Film-Kategorien laufen flüssig; TKH mit 24 500 Einträgen war zäh.
+const SIZE_GREEN = 3000, SIZE_YELLOW = 8000;
+function playlistSize(pl) {
+  const c = { live: 0, movie: 0, series: 0 };
+  const groups = [];
+  pl.groups.forEach((g) => {
+    let n = 0;
+    g.items.forEach((it) => {
+      const type = (it.variants && it.variants[0] ? it.variants[0].key : it.key).split(':')[1];
+      const k = type === 'live' ? 'live' : type === 'series' ? 'series' : 'movie';
+      // wie beim Veröffentlichen: „Nur deutsche Fassungen“ lässt die anderen Sprachen weg (ohne deutsche: alle)
+      let vs = it.variants || [];
+      if (pl.germanOnly && vs.length) {
+        const de = vs.filter((v) => ['DE', 'AT', 'CH', 'MULTI'].includes((v.lang || '').split(' ')[0]));
+        if (de.length) vs = de;
+      }
+      const add = k === 'movie' ? Math.max(1, vs.length) : 1;
+      c[k] += add;
+      n += add;
+    });
+    groups.push([g.name, n]);
+  });
+  c.total = c.live + c.movie + c.series;
+  c.top = groups.sort((a, b) => b[1] - a[1]).slice(0, 6);
+  return c;
+}
+function sizeChip(pl) {
+  const c = playlistSize(pl);
+  const level = c.total <= SIZE_GREEN ? 'g' : c.total <= SIZE_YELLOW ? 'y' : 'r';
+  const label = { g: '🟢 läuft flüssig', y: '🟡 geht noch', r: '🔴 am Stick langsam' }[level];
+  const fmt = (n) => n.toLocaleString('de-DE');
+  const b = el('button', 'sizechip ' + level, `${label} · ${fmt(c.live)} Sender · ${fmt(c.movie)} Filme · ${fmt(c.series)} Serien`);
+  b.type = 'button';
+  b.title = 'Größte Gruppen:\n' + c.top.map(([n, k]) => `${fmt(k)}  ${n}`).join('\n');
+  b.onclick = () => alert(`Größe der Playlist „${pl.name}“: ${fmt(c.total)} Einträge\n`
+    + `(flüssig bis ${fmt(SIZE_GREEN)}, langsam ab ${fmt(SIZE_YELLOW)})\n\nGrößte Gruppen:\n`
+    + c.top.map(([n, k]) => `• ${n}: ${fmt(k)}`).join('\n')
+    + '\n\nTipp: große Sammel-Gruppen (z. B. „Filme 1990–2023“) entfernen oder verkleinern – das macht die Sticks am schnellsten.');
+  return b;
+}
+
 function renderPlaylist() {
   const box = $('#pl-groups');
   box.textContent = '';
@@ -748,6 +791,7 @@ function renderPlaylist() {
   }
   const total = pl.groups.reduce((n, g) => n + g.items.length, 0);
   $('#pl-summary').textContent = `${pl.groups.length} Gruppen · ${total} Einträge`;
+  $('#pl-summary').appendChild(sizeChip(pl));
   renderSelBar(pl);
   if (!pl.groups.length) box.appendChild(el('div', 'empty-msg', 'Sender links auswählen und „Zur Playlist →“ oder hierher ziehen.'));
 
@@ -1712,11 +1756,35 @@ function isDead(pid, key) {
 async function checkPlaylist() {
   const pl = playlist();
   if (!pl) return toast('Bitte eine Playlist wählen.', true);
-  const n = pl.groups.reduce((a, g) => a + g.items.filter((i) => !i.variants && i.key.split(':')[1] === 'live').length, 0);
-  if (!n) return toast('In dieser Playlist gibt es keine Live-Sender.', true);
-  if (!confirm(`${n} Live-Sender kurz anspielen – dauert etwa ${Math.max(1, Math.round(n * 1.2 / 60))} Minuten .\n\n`
-    + 'Geprüft wird über den Zugang dieser Playlist (nur 1 Verbindung): währenddessen bitte nicht mit diesem Zugang fernsehen.')) return;
-  runCheck(pl, null, null);
+  const keys = [...new Set(pl.groups.flatMap((g) => g.items.filter((i) => !i.variants && i.key.split(':')[1] === 'live').map((i) => i.key)))];
+  if (!keys.length) return toast('In dieser Playlist gibt es keine Live-Sender.', true);
+  if (!checks[pl.id]) await loadCheck(pl.id);
+  const last = checks[pl.id] || {};
+  const res = last.results || {};
+  // Schnell: nur Sender, die noch nie geprüft wurden (neu/ersetzt), zuletzt belegt waren oder kein Bild hatten
+  const todo = keys.filter((k) => !res[k] || res[k].busy || (!res[k].ok && !res[k].event));
+  const mins = (n) => Math.max(1, Math.round(n * 1.2 / 60));
+  const dlg = $('#dlg-publish');
+  const body = $('#publish-body');
+  $('#publish-title').textContent = `Sender prüfen „${pl.name}“`;
+  body.textContent = '';
+  body.appendChild(el('p', '', last.t
+    ? `Letzte Prüfung: ${new Date(last.t * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} · ${keys.length} Live-Sender in der Playlist.`
+    : `Diese Playlist wurde noch nie geprüft · ${keys.length} Live-Sender.`));
+  const quick = el('button', 'primary', todo.length && last.t
+    ? `Nur neue und gestörte prüfen (${todo.length} Sender, ca. ${mins(todo.length)} Min.)`
+    : 'Nichts Neues zu prüfen');
+  quick.type = 'button';
+  quick.disabled = !todo.length || !last.t;
+  quick.onclick = () => runCheck(pl, todo, null);
+  const full = el('button', '', `Alle prüfen (${keys.length} Sender, ca. ${mins(keys.length)} Min.)`);
+  full.type = 'button';
+  full.onclick = () => runCheck(pl, null, null);
+  const row = el('div', 'actions');
+  row.append(quick, full);
+  body.appendChild(row);
+  body.appendChild(el('p', 'hint', 'Geprüft wird über den Zugang dieser Playlist (nur 1 Verbindung): währenddessen bitte nicht mit diesem Zugang fernsehen. „Nur neue und gestörte“ behält die übrigen Ergebnisse der letzten Prüfung.'));
+  if (!dlg.open) dlg.showModal();
 }
 
 // Prüfen (ganze Playlist oder nur keys), danach Ergebnis zeigen bzw. then() aufrufen
@@ -2537,6 +2605,31 @@ function bind() {
     save();
     renderAll();
   };
+  // Rechte Seite einmal komplett leeren (z. B. um eine Liste klein neu aufzubauen); Zugang, Name, Einstellungen bleiben.
+  // Rückweg: ⋯ → „Frühere Fassung wiederherstellen“ (tägliche Sicherung) – erst nach dem nächsten Veröffentlichen
+  // sehen die Geräte die leere Liste.
+  $('#pl-clear').onclick = async () => {
+    const pl = playlist();
+    if (!pl) return toast('Bitte eine Playlist wählen.', true);
+    const n = pl.groups.reduce((a, g) => a + g.items.length, 0);
+    if (!n && !pl.groups.length) return toast('Die Playlist ist schon leer.');
+    if (!confirm(`Playlist „${pl.name}“ komplett leeren?\n\n${pl.groups.length} Gruppen mit ${n.toLocaleString('de-DE')} Einträgen werden entfernt, `
+      + 'auch „★ Meine Sender“. Zugang, Name und Einstellungen bleiben.\n\n'
+      + 'Die Geräte merken davon erst etwas beim nächsten Veröffentlichen. '
+      + 'Vorher wird eine Sicherung angelegt; zurück geht es über ⋯ → „Frühere Fassung wiederherstellen“.')) return;
+    try { await api('/api/backup', { why: 'vor-leeren-' + pl.name }); } catch (e) {
+      if (!confirm('Die Sicherung hat nicht geklappt (' + e.message + '). Trotzdem leeren?')) return;
+    }
+    pl.groups = [];
+    pl.myChannels = [];
+    ui.targetGroupId = null;
+    ui.plSel && ui.plSel.clear && ui.plSel.clear();
+    save();
+    renderPlaylist();
+    renderChannels();
+    toast(`Playlist „${pl.name}“ ist jetzt leer – links neu zusammenstellen`);
+  };
+
   $('#group-add').onclick = () => {
     const pl = playlist();
     if (!pl) return toast('Zuerst eine Playlist anlegen.', true);

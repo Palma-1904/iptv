@@ -1,7 +1,8 @@
 #!/bin/bash
 # Doppelklick: richtet einen Fire-TV-Stick für „Fernsehen“ ein – einmalig vor Ort, Mac im selben WLAN.
-# Installiert bzw. aktualisiert die App, setzt die Rechte (Autostart, Updates, Wächter), schaltet den
-# Wächter ein und überträgt auf Wunsch Einrichtungs-Link und Ansicht.
+# Installiert bzw. aktualisiert die App (kein Downloader nötig), setzt die Rechte (Autostart, Updates, Wächter),
+# Gerätename, Liste, Wächter, Zeitplan/Schlaf-Timer/eigene Listen/Lautstärke und zeigt am Ende einen Bericht
+# mit QR-Code der Handy-Fernbedienung. Die App kennt nur noch die Seniorenansicht.
 # Am Stick vorher: Einstellungen → Mein Fire TV → Entwickleroptionen → ADB-Debugging AN.
 # Für Tests: ./Stick-einrichten.command pfad/zur/app.apk  (diese Datei statt der veröffentlichten App)
 cd "$(dirname "$0")" || exit 1
@@ -60,6 +61,18 @@ SDK=$(sh_ getprop ro.build.version.sdk)
 # Fire OS 6 (Android 7) und älter: Amazon lässt dort keinen Wächter zu
 OLD_FIREOS=""
 [ "${SDK:-0}" -lt 28 ] && OLD_FIREOS=1
+
+# ---------- Gerätename (erscheint so in der Admin-Fernbedienung) ----------
+echo
+CURNAME=$(sh_ settings get global device_name)
+read -r -p "   Gerätename [Enter = „$CURNAME“ lassen, z. B. Schlafzimmer]: " NAME
+NAME=$(echo "$NAME" | tr -cd "[:alnum:] äöüÄÖÜß.-")
+RENAMED=""
+if [ -n "$NAME" ] && [ "$NAME" != "$CURNAME" ]; then
+  sh_ settings put global device_name "\"$NAME\"" >/dev/null
+  RENAMED=1
+  ok "Gerätename: $NAME"
+fi
 
 # ---------- 2) App ----------
 installed() { sh_ dumpsys package $PKG | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1; }
@@ -130,19 +143,59 @@ sh_ settings put secure accessibility_enabled 1
 ok "Wächter eingeschaltet"
 fi
 
-# ---------- 5) Liste und Ansicht ----------
+# ---------- 5) Liste und Einstellungen ----------
 echo
-echo "5) Liste und Ansicht"
-echo "   Einrichtungs-Link aus dem Editor einfügen (Enter = Liste so lassen):"
-read -r -p "   Link: " LINK
+echo "5) Liste"
+# Listen aus dem Editor: Nummer wählen (Link BENUTZER/GIST/name wird daraus gebaut)
+LISTS=$(python3 -I - "$ROOT/editor" <<'PY' 2>/dev/null
+import json, os, re, sys
+d = sys.argv[1]
+st = json.load(open(os.path.join(d, 'data', 'state.json')))
+se = json.load(open(os.path.join(d, 'data', 'settings.json')))
+def slug(s):   # wie slugify() im Editor
+    s = (s or '').lower().translate(str.maketrans({'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss'}))
+    return re.sub(r'[^a-z0-9]+', '-', s).strip('-') or 'liste'
+for p in st.get('playlists', []):
+    if se.get('login') and se.get('gistId'):
+        print(f"{p.get('name')}|{se['login']}/{se['gistId']}/{slug(p.get('slug') or p.get('name') or p['id'])}")
+PY
+)
+LINK=""
+if [ -n "$LISTS" ]; then
+  i=0
+  while IFS='|' read -r n l; do i=$((i+1)); echo "   $i = $n"; done <<< "$LISTS"
+  read -r -p "   Liste wählen (Nummer, l = Link einfügen, Enter = so lassen): " NR
+  if [ "$NR" = l ] || [ "$NR" = L ]; then
+    read -r -p "   Link: " LINK
+  elif [ -n "$NR" ]; then
+    LINK=$(sed -n "${NR}p" <<< "$LISTS" | cut -d'|' -f2)
+    [ -n "$LINK" ] || warn "Keine Liste $NR – Liste bleibt"
+  fi
+else
+  echo "   Einrichtungs-Link aus dem Editor einfügen (Enter = Liste so lassen):"
+  read -r -p "   Link: " LINK
+fi
 LINK=$(echo "$LINK" | tr -d " '\"")
-read -r -p "   Ansicht – s = Senioren, k = Komplett (Enter = so lassen): " V
-case "$V" in s|S) VIEW=senioren ;; k|K) VIEW=komplett ;; *) VIEW="" ;; esac
+
+echo
+echo "   Einstellungen (Enter = Vorschlag in [ ]; später jederzeit in der Admin-Fernbedienung ⚙️ änderbar)"
+read -r -p "   Zeitplan: täglich AUS um (HH:MM) [kein]: " SOFF
+read -r -p "   Zeitplan: täglich AN um (HH:MM) [kein]: " SON
+read -r -p "   Schlaf-Timer: Stunden ohne Taste bis Stopp (0 = aus) [3]: " SLP
+read -r -p "   Eigene Listen am Stick bearbeiten (OK lang)? j/n [n]: " OWN
+read -r -p "   Gleichmäßige Lautstärke? j/n [j]: " NV
+valid_time() { [[ "$1" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; }
+valid_time "$SOFF" || { [ -n "$SOFF" ] && warn "Zeit „$SOFF“ ungültig – kein Aus"; SOFF=""; }
+valid_time "$SON" || { [ -n "$SON" ] && warn "Zeit „$SON“ ungültig – kein An"; SON=""; }
+[[ "$SLP" =~ ^[0-9]{1,2}$ ]] || SLP=3
+
 EXTRAS=""
 if [ "$KIOSK" = 0 ]; then EXTRAS=" --es autostart 0 --es home 0 --es waechter 0"; else EXTRAS=" --es autostart 1 --es waechter 1"; fi
-if [ -n "$LINK$VIEW" ] || [ -n "$EXTRAS" ]; then
+EXTRAS="$EXTRAS --es ansicht senioren --es schedOff '$SOFF' --es schedOn '$SON' --es sleepH $SLP"
+case "$OWN" in j|J) EXTRAS="$EXTRAS --es ownlists 1" ;; *) EXTRAS="$EXTRAS --es ownlists 0" ;; esac
+case "$NV" in n|N) EXTRAS="$EXTRAS --es normvol 0" ;; *) EXTRAS="$EXTRAS --es normvol 1" ;; esac
+if true; then
   [ -n "$LINK" ] && EXTRAS="$EXTRAS --es link '$LINK'"
-  [ -n "$VIEW" ] && EXTRAS="$EXTRAS --es ansicht $VIEW"
   if sh_ "am broadcast -f 32 -n $PKG/.SetupReceiver$EXTRAS" | grep -q vorgemerkt; then
     ok "Einrichtung übertragen"
   else
@@ -155,6 +208,7 @@ fi
 # ---------- 6) Start und Kontrolle ----------
 echo
 echo "6) App starten"
+[ -n "$RENAMED" ] && sh_ am force-stop $PKG >/dev/null   # neuer Gerätename gilt ab dem nächsten App-Start
 sh_ am start -n $PKG/.MainActivity >/dev/null
 sleep 5
 # Android 9+: „services:{Service[label=Fernsehen …“, älter: „Bound services:{…}“
@@ -168,14 +222,52 @@ elif [ -n "$OLD_FIREOS" ]; then
 else
   warn "Wächter läuft noch nicht – in einer Minute in der App prüfen (☰ 3 s → Weitere Einstellungen)."
 fi
+# ---------- 7) Bericht ----------
+echo
+echo "7) Bericht"
+REP=""
+for _ in $(seq 1 10); do   # Handy-Link braucht die Fernwartung (Liste geladen) – bis ~30 s warten
+  REP=$(sh_ "am broadcast -f 32 -n $PKG/.SetupReceiver --es report 1" | sed -n 's/.*data="\(.*\)"$/\1/p')
+  case "$REP" in *'"phone":"https'*) break ;; esac
+  sleep 3
+done
+if [ -z "$REP" ] || [ "$REP" = "{}" ]; then
+  warn "Kein Bericht (ältere App ohne Bericht?) – Stand in der Admin-Fernbedienung ansehen."
+else
+  python3 -I - "$REP" "$DATA" "${NAME:-$CURNAME}" <<'PY'
+import json, sys, os, html
+r, data, name = json.loads(sys.argv[1]), sys.argv[2], sys.argv[3]
+def yn(b): return '✅' if b else '❌'
+s = r.get('sched') or {}
+print(f"   App-Version {r.get('ver')}")
+print(f"   {yn(r.get('overlay'))} Autostart-Erlaubnis   {yn(r.get('install'))} Updates erlaubt   {yn(r.get('waechter'))} Wächter läuft")
+print(f"   Autostart {'an' if r.get('autostart') else 'aus'} · Home-Taste {'an' if r.get('home') else 'aus'} · "
+      f"Lautstärke {'gleichmäßig' if r.get('normvol') else 'normal'} · eigene Listen {'erlaubt' if r.get('ownlists') else 'aus'}")
+print(f"   Zeitplan: aus {s.get('off') or '–'}, an {s.get('on') or '–'} · Schlaf-Timer {s.get('sleepH', 3) or 'aus'} h")
+link = r.get('phone') or ''
+if not link:
+    print('   📱 Handy-Link noch nicht bereit (Fernwartung lädt) – später in der Admin-Fernbedienung ⚙️')
+    sys.exit()
+# QR-Code als kleine Seite auf der SSD (editor/data ist nicht im Repo) und im Browser öffnen
+page = os.path.join(data, 'handy-qr.html')
+open(page, 'w').write(f"""<!doctype html><meta charset="utf-8"><title>Handy-Fernbedienung {html.escape(name)}</title>
+<body style="font:18px -apple-system,sans-serif;text-align:center;padding:30px">
+<h2>📱 Handy-Fernbedienung „{html.escape(name)}“</h2><div id="q"></div>
+<p>Mit der Handy-Kamera scannen, Link öffnen, „Zum Home-Bildschirm“.</p>
+<p style="font-size:13px;word-break:break-all;color:#666">{html.escape(link)}</p>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>var q=qrcode(0,'M');q.addData({json.dumps(link)});q.make();document.getElementById('q').innerHTML=q.createSvgTag({{cellSize:7,margin:2}});</script>""")
+print('   📱 QR-Code der Handy-Fernbedienung öffnet sich im Browser')
+os.system(f'open "{page}"')
+PY
+fi
 adb disconnect "$DEV" >/dev/null 2>&1
 
 echo
 echo "Fertig! Bitte kurz testen:"
-echo " • Home-Taste drücken → „Fernsehen“ bleibt bzw. kommt sofort zurück"
-echo "   (wenn „Home-Taste holt die App zurück“ an ist – in der Seniorenansicht automatisch)"
+echo " • Home-Taste drücken → „Fernsehen“ bleibt bzw. kommt sofort zurück (wenn „Home-Taste holt die App zurück“ an ist)"
 echo " • Stecker ziehen und wieder einstecken → „Fernsehen“ startet von selbst"
-echo " • Editor → Fernwartung: Gerät erscheint mit „Wächter: AN“"
+echo " • Admin-Fernbedienung: Gerät erscheint in der Auswahlliste (⚙️: Wächter, Zeitplan …)"
 echo "ADB-Debugging kann am Stick an bleiben (nur bestätigte Computer kommen hinein)."
 echo
 read -r -p "Enter drücken zum Schließen …" _ || true

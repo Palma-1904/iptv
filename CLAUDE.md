@@ -227,6 +227,12 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   `editor/data/adb/.android`, gilt an jedem Mac), installiert app.apk (oder Datei-Argument), setzt appops
   SYSTEM_ALERT_WINDOW + REQUEST_INSTALL_PACKAGES, `pm grant … WRITE_SECURE_SETTINGS`, trägt den Wächter ein,
   überträgt Einrichtungs-Link/Ansicht per `am broadcast -n de.iptv.firetv/.SetupReceiver` (nur ADB darf senden).
+  **Ab 15.10.** (SetupReceiver-Extras ab App 73): fragt den **Gerätenamen** (`settings put global device_name`,
+  danach App neu starten), **Liste per Nummer** (aus editor/data/state.json + settings: `login/gistId/slug`, `l` =
+  Link einfügen), keine Ansicht-Frage mehr (immer senioren), **Zeitplan aus/an, Schlaf-Timer, eigene Listen,
+  Lautstärke** (Extras schedOff/schedOn/sleepH/ownlists/normvol), am Ende **Bericht** (`--es report 1` → JSON:
+  Version, Erlaubnisse, Wächter, Einstellungen, Handy-Link; wartet bis 30 s auf den Link) und öffnet
+  `editor/data/adb/handy-qr.html` mit dem QR-Code der Handy-Fernbedienung. Kein Downloader nötig (APK per adb).
 - **Neue Geräte**: nur Fire TV Stick 4K Plus/4K Max/Cube (Fire OS). Stick HD (2026), 4K Select und der neue
   Fire TV Stick 4K (2026) laufen mit Vega OS → keine APKs, App läuft dort nicht.
 

@@ -350,7 +350,7 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   (Fire OS 6) nach 36 s (Webapp rechnet 31 s). Baum wurde 3× übergeben (EPG-Stempel = Date.now, eigene Listen).
   Übersicht im Wohnzimmer 5,2 s (findLeaf durchsuchte für jeden Lieblingssender/Zuletzt alles, `Memory.norm` übersetzte
   das Muster jedes Mal neu). Andere Ebenen 0,01 s, Umschalten 1–2,6 s (Anbieter).
-- **Behoben**: Webapp-Version = Fingerabdruck (`quickHash` der Liste, EPG-`generated`, eigene Listen, 6-h-Takt) →
+- **Behoben**: Webapp-Version = Fingerabdruck (`quickHash` der Liste, EPG-`generated`, eigene Listen, 12-h-Takt; Vorschau 24 Sendungen, Automatik `MAX_AGE` 12 h) →
   gleiche Liste = kein Neubau/keine Übergabe; Baum wird erst gebaut, wenn nötig (senioren.js `ensure`); App speichert den
   Baum (`TreeCache`, files/tree.json) und startet beim Kaltstart sofort damit den letzten Sender (`startFromCache`);
   Webapp sagt dann nur `IPTVNative.playUrl` (läuft schon → nichts tun), `playPath` startet nicht neu, wenn derselbe

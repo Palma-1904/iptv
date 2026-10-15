@@ -380,8 +380,10 @@
 
   // Fürs Gerät: 12 Sendungen, Inhaltstext nur bei den ersten 4 (der Baum geht stündlich an die App,
   // der Text würde ihn sonst um ein Vielfaches vergrößern)
+  // Programmvorschau für die App: 24 Sendungen (reicht auch bei kurzen Sendungen ~15 h, Auffrischen alle 12 h),
+  // Inhaltstexte nur bei den ersten 4
   function nativeEpg(id) {
-    return programmes(id).slice(0, 12).map(function (p, i) { return i < 4 ? p : p.slice(0, 3); });
+    return programmes(id).slice(0, 24).map(function (p, i) { return i < 4 ? p : p.slice(0, 3); });
   }
 
   function epgText(id) {

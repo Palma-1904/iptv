@@ -82,14 +82,14 @@
   var seniorFound = [];
   var dataVersion = 0;
   var treeCache = null;
-  // Version = Fingerabdruck von Liste, Programm, eigenen Listen (+ 6-Stunden-Takt für die Programmvorschau, die etwa
-  // 8–12 h reicht; stündlich kostete den alten Stick jedes Mal ~30 s Rechenzeit): gleich auch nach
+  // Version = Fingerabdruck von Liste, Programm, eigenen Listen (+ 12-Stunden-Takt für die Programmvorschau, die mit
+  // 24 Sendungen ~15 h reicht; stündlich kostete den alten Stick jedes Mal ~30 s Rechenzeit): gleich auch nach
   // einem Neustart der App – dann behält die App ihre gespeicherte Senderliste, und hier wird gar nichts gebaut.
   IPTV.setTreeProvider(function () {
     if (!IPTV.buildTree) return null;   // alte senioren.html ohne js/tree.js: ältere Übergabe
     var own = !IPTV.hasDeviceList() && seniorEntries.length;
     var version = 'sen2:' + (IPTV.dataSig ? IPTV.dataSig() : pageId + ':' + dataVersion) + ':' + IPTV.epgStamp() + ':' +
-      Math.floor(Date.now() / 21600000) + ':' + (IPTV.myStamp ? IPTV.myStamp() : 0) + ':' + (own ? 'o' + seniorEntries.length : '');
+      Math.floor(Date.now() / 43200000) + ':' + (IPTV.myStamp ? IPTV.myStamp() : 0) + ':' + (own ? 'o' + seniorEntries.length : '');
     if (treeCache && treeCache.version === version) return treeCache;
     var t = null;
     function ensure() {   // Baum erst bauen, wenn er wirklich gebraucht wird (Übergabe an die App, Pfad)

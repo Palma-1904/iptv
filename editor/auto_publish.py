@@ -12,7 +12,8 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MAX_AGE = 6 * 3600          # Programm reicht 36 h voraus – alle 6 h auffrischen hält es immer ≥ 30 h aktuell
+MAX_AGE = 12 * 3600         # Programm reicht 36 h voraus – alle 12 h auffrischen hält es immer ≥ 24 h aktuell
+                            # (jedes neue Programm lässt jeden Stick die Senderliste neu rechnen – Fire OS 6 ~30 s)
 LOCK = os.path.join(HERE, 'data', 'auto_publish.lock')
 EDITOR = 'http://127.0.0.1:8790'
 

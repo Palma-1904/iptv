@@ -9,20 +9,24 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   `?v=<run_number>` an alle js/css/config.js-Verweise in den HTML-Dateien (nur in `_site`), damit nach dem Neuladen alles zusammenpasst.
   - Uhr oben: 5× tippen → Code `1904` = Hauptansicht, `04` = Seniorenansicht (`config.js` → `codes`).
   - Geräteerkennung in `js/m3u.js` (ios → Outplayer, mac → IINA `iina://weblink?url=` (iina.io; VLC-mac spielt vlc://-Links nicht),
-    tv/web → `player.html`, app → eingebauter Player).
+    tv/web → `player.html`, app → eingebauter Player). Mac: erst `player.html` (Anbieter hat kein https → Browser sperrt,
+    Seite erklärt: „In IINA öffnen“ / „IINA laden“ / „Immer in IINA öffnen“ / „Adresse kopieren“); nach „Immer …“
+    (`iptv-iina-ok`) direkt `iina://` – automatisch erkennen geht nicht sicher (Safari-Meldung „Adresse ungültig“).
   - Einrichtungs-Link `#liste=BENUTZER/GIST/name` bzw. `#m3u=…` + `&ansicht=komplett|senioren`, wird im localStorage gespeichert.
   - Reiter Live/Filme/Serien/Programm (EPG aus `<liste>.epg.json`), Sprachfassungen über `x-work`/`x-lang`,
     HEVC → automatisch HD-Fassung im Browser-Player.
   - **Browser (iPad/iPhone/Mac, `SPLIT` = nicht TV und nicht App)**: links Kategorien (Gruppen; Filme/Serien mit
     „★ Meine Favoriten“), rechts Inhalt: Live = Zeilen mit jetzt/danach/Fortschritt, Filme = Kacheln (200 je Seite,
-    „Weitere anzeigen“), Serien = Kacheln → Staffeln/Folgen mit Sprachleiste. iPhone (≤ 700 px): Kategorien als
-    waagerechte Leiste. Gewählte Kategorie in `iptv-cat`. Serien-Kategorie aus `x-cat` (Editor: Gruppe der Playlist).
+    „Weitere anzeigen“), Serien = Kacheln → Staffeln/Folgen mit Sprachleiste. iPhone (≤ 700 px): Kategorien hinter
+    Knopf „☰ Kategorie · Anzahl ▾“ (`.catmenu`, klappt `.cats.open` auf; daneben tippen/Escape schließt). Gewählte Kategorie in `iptv-cat`. Serien-Kategorie aus `x-cat` (Editor: Gruppe der Playlist).
     Fire TV/App: unverändert aufklappbare Gruppen (Thomas: Stick-App nicht ändern).
     **Outplayer bequemer** (kein automatischer Rücksprung möglich – Outplayer hat kein x-callback): Schnell-Leiste
     oben „Zuletzt: X  ◀ · ▶ nochmal · ▶▶ / nächste Folge ✕“ (`iptv-lastplay`, 12 h), Kategorie „🕘 Zuletzt gesehen“
     je Reiter (`iptv-recent`, 36), Hinweis „oben links ◀“ die ersten 5 Male (iOS). Gewählte Kategorie bleibt.
     Outplayer fehlt? Nach dem Tippen 4 s warten: bleibt die Seite sichtbar → Dialog mit App-Store-Link (id1449923287);
     einmal erfolgreich geöffnet (Seite ging in den Hintergrund) → `iptv-outplayer-ok`, nie wieder prüfen.
+    Link neben der Uhr (`#getapp`, `updateAppLink`): „⬇ Outplayer laden“ (iOS, App Store) bzw. „⬇ IINA laden“ (Mac,
+    iina.io), bis `iptv-outplayer-ok`/`iptv-iina-ok` auf diesem Gerät gesetzt ist (je Gerät, localStorage).
     **Im Browser keine Seniorenansicht und kein Reiter „Programm“** (Thomas 10.10.): `mode.js` leitet senioren.html
     im Browser auf index.html (ansicht=komplett) um, Code „04“ wirkt dort wie die Hauptansicht; Editor zeigt fürs
     iPhone/iPad nur noch einen QR-Code. App (UA „IPTVApp“) und Fire-TV-Browser behalten Senioren und „Programm“.

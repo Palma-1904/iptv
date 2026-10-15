@@ -381,9 +381,17 @@
     return 'intent://' + m[2] + '#Intent;scheme=' + m[1].toLowerCase() + ';type=video/*;' + pkg + 'end';
   }
 
+  // Mac: erst in den Browser-Player (erklärt, bietet IINA an) – direkt nach IINA erst, wenn IINA auf diesem
+  // Mac einmal aufging bzw. bestätigt wurde. Sonst meldet Safari „Adresse ungültig“.
+  function iinaOk() {
+    try { return !!localStorage.getItem('iptv-iina-ok'); } catch (err) { return false; }
+  }
+
   function playerTemplate() {
     var p = CFG.player || '{url}';
-    return typeof p === 'string' ? p : (p[platform] || p.web || '{url}');
+    if (typeof p === 'string') return p;
+    if (platform === 'mac' && !iinaOk()) return p.web || '{url}';
+    return p[platform] || p.web || '{url}';
   }
 
   // Spielt dieses Gerät im eingebauten Browser-Player (player.html) ab?

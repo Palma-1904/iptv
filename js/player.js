@@ -50,12 +50,26 @@
   // daher Übergabe an IINA (Mac-Player, iina.io) und „Adresse kopieren“ (für VLC: Ablage → Netzwerk öffnen).
   var isMac = /Macintosh/.test(navigator.userAgent) && !(navigator.maxTouchPoints > 1);
   var macIina = document.getElementById('mac-iina');
+  var iinaGet = document.getElementById('iina-get');
+  var iinaHave = document.getElementById('iina-have');
   var copy = document.getElementById('copy');
+  // „Immer in IINA öffnen“: ab dann führt die Liste auf diesem Mac direkt nach IINA (m3u.js). Automatisch
+  // erkennen geht nicht sicher – auch Safaris Meldung „Adresse ungültig“ kann dem Fenster den Fokus nehmen.
+  function iinaOk() {
+    try { localStorage.setItem('iptv-iina-ok', '1'); } catch (err) { /* privat-Modus */ }
+  }
   function showMacButtons() {
     if (!isMac || !/^https?:\/\//i.test(url)) return;
     macIina.href = 'iina://weblink?url=' + encodeURIComponent(url);
     macIina.hidden = copy.hidden = false;
+    var known = false;
+    try { known = !!localStorage.getItem('iptv-iina-ok'); } catch (err) { /* egal */ }
+    iinaGet.hidden = iinaHave.hidden = known;
   }
+  iinaHave.addEventListener('click', function () {
+    iinaOk();
+    location.href = macIina.href;
+  });
   copy.addEventListener('click', function () {
     navigator.clipboard.writeText(url).then(function () {
       showOverlay('Adresse kopiert – in VLC: Ablage → Netzwerk öffnen → einfügen.', true);
@@ -75,9 +89,9 @@
   function fail(text) {
     if (isMac) {
       showMacButtons();
-      text = (mixed ? 'Der Browser darf diesen Sender auf dieser Seite nicht abspielen (unverschlüsselte Adresse). '
-        : text + ' ') + 'Bitte „In IINA öffnen“ wählen (kostenlos: iina.io). Für VLC: „Adresse kopieren“, '
-        + 'dann in VLC Ablage → Netzwerk öffnen → einfügen.';
+      text = (mixed ? 'Der Browser darf diesen Sender nicht abspielen (der Anbieter sendet unverschlüsselt). '
+        : text + ' ') + 'Am Mac läuft er in der kostenlosen App IINA: „In IINA öffnen“. Noch nicht installiert? '
+        + '„IINA laden“. Mit „Immer in IINA öffnen“ geht es ab dann ohne diese Seite.';
       showOverlay(text, true);
       return;
     }

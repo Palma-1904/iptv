@@ -399,11 +399,34 @@
     close.addEventListener('click', shut);
     have.addEventListener('click', function () {
       try { localStorage.setItem('iptv-outplayer-ok', '1'); } catch (err) { /* egal */ }
+      updateAppLink();
       shut();
     });
     ov.addEventListener('click', function (ev) { if (ev.target === ov) shut(); });
     document.body.appendChild(ov);
   }
+  // Link neben der Uhr zur nötigen Player-App – bis sie auf DIESEM Gerät einmal lief bzw. bestätigt wurde
+  // (Merkzeichen im localStorage, also je iPhone/iPad/Mac einzeln)
+  var IINA_SITE = 'https://iina.io';
+  function updateAppLink() {
+    var a = document.getElementById('getapp');
+    if (!a) return;
+    var app = IPTV.platform === 'ios' ? ['Outplayer', OUTPLAYER_STORE, 'iptv-outplayer-ok', 'im App Store']
+      : IPTV.platform === 'mac' ? ['IINA', IINA_SITE, 'iptv-iina-ok', 'auf iina.io'] : null;
+    var done = true;
+    try { done = !app || !!localStorage.getItem(app[2]); } catch (err) { /* privat-Modus: nicht zeigen */ }
+    a.hidden = !SPLIT || done;
+    if (a.hidden) return;
+    a.href = app[1];
+    a.title = 'Zum Abspielen nötig: ' + app[0] + ' (kostenlos) ' + app[3];
+    a.textContent = '⬇ ' + app[0];
+    var s = document.createElement('span');
+    s.className = 'long';
+    s.textContent = ' laden';
+    a.appendChild(s);
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) updateAppLink(); });
+
   // Leiste oben: „Zuletzt: ARD  ◀ · ▶ nochmal · ▶“ – mit einem Tipp weiterzappen
   function quickBar() {
     var last = readJson(localStorage, LAST_KEY, null);
@@ -470,6 +493,24 @@
     wrap.className = 'splitwrap';
     var side = document.createElement('nav');
     side.className = 'cats';
+    // iPhone: Kategorien hinter einem Knopf, der die Liste aufklappt (breitere Bildschirme: Spalte, Knopf versteckt)
+    var menu = document.createElement('button');
+    menu.type = 'button';
+    menu.className = 'catmenu';
+    menu.setAttribute('aria-expanded', 'false');
+    ['☰', cur.name, cur.count, '▾'].forEach(function (s, i) {
+      var sp = document.createElement('span');
+      sp.className = ['mi', 'cname', 'ccount', 'mi'][i];
+      sp.textContent = s;
+      menu.appendChild(sp);
+    });
+    menu.addEventListener('click', function () {
+      var open = side.classList.toggle('open');
+      menu.setAttribute('aria-expanded', String(open));
+      var s = side.querySelector('.cat.sel');
+      if (open && s && s.offsetTop + s.offsetHeight > side.clientHeight) s.scrollIntoView({ block: 'nearest' });
+    });
+    side.appendChild(menu);
     cats.forEach(function (c) {
       var b = document.createElement('button');
       b.type = 'button';
@@ -505,9 +546,18 @@
     wrap.appendChild(side);
     wrap.appendChild(pane);
     content.appendChild(wrap);
-    // gewählte Kategorie in der (waagerechten) Leiste sichtbar machen
-    var sel = side.querySelector('.sel');
-    if (sel && sel.scrollIntoView && side.scrollWidth > side.clientWidth) sel.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
+  // offenes Kategorien-Menü (iPhone): Tippen daneben oder Escape klappt es zu
+  function closeCatMenu(ev) {
+    var o = document.querySelector('.cats.open');
+    if (!o || (ev.type === 'click' && o.contains(ev.target)) || (ev.type === 'keydown' && ev.key !== 'Escape')) return;
+    o.classList.remove('open');
+    var m = o.querySelector('.catmenu');
+    if (m) m.setAttribute('aria-expanded', 'false');
+  }
+  if (SPLIT) {
+    document.addEventListener('click', closeCatMenu);
+    document.addEventListener('keydown', closeCatMenu);
   }
 
   // Sender mit „jetzt“, „danach“ und Fortschritt
@@ -672,6 +722,7 @@
     else if (activeType === 'epg') renderEpg();
     else if (SPLIT) renderSplit(activeType);
     else renderType(activeType);
+    updateAppLink();
   }
 
   // ---------- Programmübersicht (EPG) ----------

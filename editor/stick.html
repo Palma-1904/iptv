@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neuen Stick einrichten</title>
+  <style>
+    :root {
+      --bg: #f5f5f7; --pane: #fff; --surface: #f2f2f5; --border: rgba(0, 0, 0, .1); --text: #1d1d1f;
+      --muted: #6e6e73; --accent: #0071e3; --accent-soft: #e1efff; --danger: #d70015; --ok: #1f9d55;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000; --pane: #1c1c1e; --surface: #2c2c2e; --border: rgba(255, 255, 255, .1); --text: #f5f5f7;
+        --muted: #98989d; --accent: #0a84ff; --accent-soft: #0a2a4a; --danger: #ff453a; --ok: #30d158;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 20px; }
+    h1 { grid-column: 1 / -1; margin: 0; font-size: 22px; }
+    h1 small { display: block; font-size: 14px; font-weight: 400; color: var(--muted); margin-top: 4px; }
+    ol.steps { list-style: none; margin: 0; padding: 0; position: sticky; top: 16px; align-self: start; }
+    ol.steps li { display: flex; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 10px; color: var(--muted); }
+    ol.steps li .n { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center; font-size: 13px; flex: none; }
+    ol.steps li.done { color: var(--text); cursor: pointer; }
+    ol.steps li.done .n { background: var(--ok); border-color: var(--ok); color: #fff; }
+    ol.steps li.cur { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+    ol.steps li.cur .n { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .card { background: var(--pane); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
+    .card h2 { margin: 0 0 6px; font-size: 19px; }
+    .card p { margin: 6px 0; }
+    .muted { color: var(--muted); }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0; }
+    label.f { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+    input[type=text], input[type=time], select { font: inherit; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-width: 180px; }
+    button { font: inherit; padding: 9px 16px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    button:disabled { opacity: .5; cursor: default; }
+    .chips button { padding: 6px 12px; }
+    ul.todo { margin: 10px 0; padding-left: 20px; }
+    ul.todo li { margin: 6px 0; }
+    .msg { margin: 12px 0; padding: 10px 12px; border-radius: 10px; background: var(--surface); }
+    .msg.err { background: color-mix(in srgb, var(--danger) 12%, var(--pane)); color: var(--danger); }
+    .msg.ok { background: color-mix(in srgb, var(--ok) 12%, var(--pane)); }
+    .msg.wait::before { content: '⏳ '; }
+    table.kv { border-collapse: collapse; margin: 10px 0; }
+    table.kv td { padding: 4px 14px 4px 0; vertical-align: top; }
+    .opt { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--border); border-radius: 12px; margin: 8px 0; cursor: pointer; }
+    .opt input { margin-top: 4px; }
+    .opt.sel { border-color: var(--accent); background: var(--accent-soft); }
+    #qr { background: #fff; display: inline-block; padding: 10px; border-radius: 10px; }
+    #qr svg { width: 220px; height: 220px; display: block; }
+    .link { font-size: 12px; color: var(--muted); word-break: break-all; }
+    @media (max-width: 720px) { .wrap { grid-template-columns: 1fr; } ol.steps { position: static; display: flex; flex-wrap: wrap; gap: 4px; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📺 Neuen Fire TV Stick einrichten
+      <small>Der Mac muss im selben WLAN sein wie der Stick. Nichts davon ändert Ihre Playlists – es wird nur der Stick eingerichtet.</small>
+    </h1>
+    <ol class="steps" id="steps"></ol>
+    <main class="card" id="card"></main>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var STEPS = ['Vorbereitung', 'Verbinden', 'Gerätename', 'App', 'Erlaubnisse', 'Wächter', 'Liste & Einstellungen', 'Fertig'];
+    var S = { step: 0, reached: 0, ip: '', info: null, renamed: false, kiosk: true, lists: [], cfg: null };
+    var card = document.getElementById('card'), stepsEl = document.getElementById('steps');
+
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function api(step, body) {
+      return fetch('/api/stick/' + step, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ ip: S.ip }, body || {})) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d && d.error) throw new Error(d.error); return d; });
+    }
+    function go(i) { S.step = i; S.reached = Math.max(S.reached, i); render(); }
+    function msg(text, cls) {
+      var el = card.querySelector('.msg.live') || card.appendChild(Object.assign(document.createElement('div'), { className: 'msg live' }));
+      el.className = 'msg live ' + (cls || '');
+      el.textContent = text;
+    }
+    function busy(btn, on) { if (btn) btn.disabled = on; }
+    function nav(nextLabel, onNext, back) {
+      var row = '<div class="row">' + (back !== false && S.step > 0 ? '<button id="back">← Zurück</button>' : '') +
+        (nextLabel ? '<button class="primary" id="next">' + esc(nextLabel) + '</button>' : '') + '</div>';
+      card.insertAdjacentHTML('beforeend', row);
+      if (document.getElementById('back')) document.getElementById('back').onclick = function () { go(S.step - 1); };
+      if (nextLabel) document.getElementById('next').onclick = onNext;
+    }
+    function yes(b) { return b ? '✅' : '❌'; }
+
+    function render() {
+      stepsEl.innerHTML = STEPS.map(function (t, i) {
+        return '<li class="' + (i === S.step ? 'cur' : i <= S.reached ? 'done' : '') + '" data-i="' + i + '"><span class="n">' + (i + 1) + '</span>' + esc(t) + '</li>';
+      }).join('');
+      stepsEl.querySelectorAll('li.done').forEach(function (li) { li.onclick = function () { go(+li.dataset.i); }; });
+      card.innerHTML = '';
+      [prep, conn, name, app, perms, guard, settings, done][S.step]();
+    }
+
+    // 1 – am Fernseher
+    function prep() {
+      card.innerHTML = '<h2>Vorbereitung am Fernseher</h2><p class="muted">Diese Schritte gehen nur am Fernseher selbst (Fire OS erlaubt es nicht anders):</p>' +
+        '<ul class="todo"><li><b>Fire TV einrichten</b>: Sprache, WLAN, Amazon-Anmeldung (wie beim Auspacken).</li>' +
+        '<li><b>ADB-Debugging einschalten</b>: Einstellungen → Mein Fire TV → <b>Info</b> → 7× OK auf den Gerätenamen drücken ' +
+        '(„Sie sind jetzt Entwickler“) → zurück → <b>Entwickleroptionen</b> → <b>ADB-Debugging: AN</b>.</li>' +
+        '<li><b>IP-Adresse</b> ablesen: Einstellungen → Mein Fire TV → Info → Netzwerk (z. B. 192.168.6.47). ' +
+        'Oder im nächsten Schritt „Im WLAN suchen“.</li></ul>' +
+        '<p class="muted">Ein Downloader ist nicht nötig – die App kommt direkt vom Mac auf den Stick.</p>';
+      nav('Erledigt – weiter', function () { go(1); });
+    }
+
+    // 2 – verbinden
+    function conn() {
+      card.innerHTML = '<h2>Mit dem Stick verbinden</h2>' +
+        '<div class="row"><label class="f">IP-Adresse des Sticks<input type="text" id="ip" placeholder="192.168.6.47" value="' + esc(S.ip) + '"></label>' +
+        '<button id="scan">🔍 Im WLAN suchen</button></div><div class="row chips" id="found"></div>' +
+        '<div class="row"><button class="primary" id="cbtn">Verbinden</button></div>';
+      var ip = document.getElementById('ip');
+      document.getElementById('scan').onclick = function () {
+        var b = this; busy(b, true); msg('Suche Fire-TV-Geräte mit ADB-Debugging im WLAN …', 'wait');
+        api('scan').then(function (d) {
+          busy(b, false);
+          var all = d.found.slice();
+          if (d.last && all.indexOf(d.last) < 0) all.push(d.last);
+          document.getElementById('found').innerHTML = all.length
+            ? all.map(function (x) { return '<button data-ip="' + esc(x) + '">' + esc(x) + (x === d.last ? ' (zuletzt)' : '') + '</button>'; }).join('')
+            : '';
+          document.querySelectorAll('#found button').forEach(function (fb) { fb.onclick = function () { ip.value = fb.dataset.ip; }; });
+          msg(d.found.length ? d.found.length + ' Gerät(e) gefunden – antippen und „Verbinden“.' : 'Nichts gefunden. Ist ADB-Debugging an? IP lieber am Stick ablesen.', d.found.length ? 'ok' : 'err');
+        }, function (e) { busy(b, false); msg(e.message, 'err'); });
+      };
+      if (!S.ip) api('scan').then(function (d) { if (d.last && !ip.value) ip.value = d.last; }).catch(function () {});
+      document.getElementById('cbtn').onclick = function () {
+        var b = this; S.ip = ip.value.trim(); busy(b, true);
+        var tries = 0;
+        (function attempt() {
+          api('connect').then(function (d) {
+            if (d.state === 'device') {
+              S.info = d; busy(b, false);
+              msg('Verbunden: ' + d.model + ' · ' + d.fireos + ' · „' + d.name + '“', 'ok');
+              nav('Weiter', function () { go(2); }, false);
+              return;
+            }
+            if (++tries > 45) { busy(b, false); return msg('Keine Verbindung. ADB-Debugging an? Gleiches WLAN? IP richtig?', 'err'); }
+            msg(d.state === 'unauthorized'
+              ? '👉 Am Fernseher erscheint eine Frage: Haken bei „Von diesem Computer immer zulassen“, dann OK drücken.'
+              : 'Verbinde mit ' + S.ip + ' …', 'wait');
+            setTimeout(attempt, 2000);
+          }, function (e) { busy(b, false); msg(e.message, 'err'); });
+        })();
+      };
+    }
+
+    // 3 – Name
+    function name() {
+      card.innerHTML = '<h2>Gerätename</h2><p class="muted">So heißt der Stick in der Admin-Fernbedienung und im Editor (z. B. „Schlafzimmer“ oder „Oma Anita“).</p>' +
+        '<div class="row"><label class="f">Name<input type="text" id="nm" value="' + esc(S.info && S.info.name) + '"></label></div>';
+      nav('Übernehmen und weiter', function () {
+        var v = document.getElementById('nm').value.trim(), b = this;
+        if (!v || (S.info && v === S.info.name)) return go(3);
+        busy(b, true);
+        api('rename', { name: v }).then(function (d) { S.info.name = d.name; S.renamed = true; go(3); }, function (e) { busy(b, false); msg(e.message, 'err'); });
+      });
+    }
+
+    // 4 – App
+    function app() {
+      var i = S.info || {};
+      card.innerHTML = '<h2>App „Fernsehen“</h2><table class="kv"><tr><td>Auf dem Stick</td><td><b>' + (i.installed ? 'Version ' + i.installed : 'nicht installiert') + '</b></td></tr>' +
+        '<tr><td>Neueste</td><td><b>' + (i.online ? 'Version ' + i.online : '?') + '</b></td></tr></table>';
+      var current = i.installed && i.online && i.installed >= i.online;
+      if (current) { msg('App ist aktuell ✓', 'ok'); nav('Weiter', function () { go(4); }); return; }
+      nav(i.installed ? 'App aktualisieren' : 'App installieren', function () {
+        var b = this; busy(b, true); msg('Lade die App (~45 MB) und installiere sie auf dem Stick – das dauert etwa eine Minute …', 'wait');
+        api('install').then(function (d) {
+          return api('info').then(function (inf) { S.info = Object.assign(S.info || {}, inf); msg(d.msg, 'ok'); b.textContent = 'Weiter'; busy(b, false); b.onclick = function () { go(4); }; });
+        }, function (e) { busy(b, false); msg(e.message, 'err'); });
+      });
+    }
+
+    // 5 – Erlaubnisse
+    function perms() {
+      var i = S.info || {};
+      card.innerHTML = '<h2>Erlaubnisse</h2><p class="muted">Diese drei kann nur der Mac setzen (oder jemand vor Ort) – danach geht alles aus der Ferne.</p>' +
+        '<table class="kv" id="pt"><tr><td>' + yes(i.overlay) + '</td><td>Autostart (über anderen Apps einblenden)</td></tr>' +
+        '<tr><td>' + yes(i.install) + '</td><td>Updates installieren</td></tr>' +
+        '<tr><td>' + yes(i.secure) + '</td><td>Wächter selbst ein-/ausschalten</td></tr></table>';
+      if (i.overlay && i.install && i.secure) { msg('Alle Erlaubnisse da ✓', 'ok'); nav('Weiter', function () { go(5); }); return; }
+      nav('Erlaubnisse setzen', function () {
+        var b = this; busy(b, true);
+        api('grant').then(function (d) {
+          S.info = Object.assign(S.info || {}, d);
+          var bad = d.steps.filter(function (x) { return !x.ok; });
+          go(4);
+          if (bad.length) msg('Nicht gesetzt: ' + bad.map(function (x) { return x.text + ' (' + x.out + ')'; }).join('; '), 'err');
+        }, function (e) { busy(b, false); msg(e.message, 'err'); });
+      });
+    }
+
+    // 6 – Wächter
+    function guard() {
+      var i = S.info || {};
+      card.innerHTML = '<h2>Wächter und Autostart</h2>' +
+        '<label class="opt' + (S.kiosk ? ' sel' : '') + '"><input type="radio" name="k" value="1"' + (S.kiosk ? ' checked' : '') + '><span><b>Für Senioren</b> – Fernsehen startet von selbst, Home-Taste führt zurück, Updates ohne Klick, Ausschalten aus der Ferne.</span></label>' +
+        '<label class="opt' + (!S.kiosk ? ' sel' : '') + '"><input type="radio" name="k" value="0"' + (!S.kiosk ? ' checked' : '') + '><span><b>Selbst bedienen</b> – alles aus, der Stick verhält sich wie ein normaler Fire TV.</span></label>' +
+        (i.waechterPossible ? '' : '<p class="msg">Älterer Stick (Fire OS 6): Amazon lässt hier keinen Wächter zu. Autostart geht trotzdem; Updates brauchen einen Klick am Fernseher.</p>') +
+        '<p class="muted">Lässt sich später jederzeit in der Admin-Fernbedienung (⚙️) umstellen.</p>';
+      card.querySelectorAll('input[name=k]').forEach(function (r) { r.onchange = function () { S.kiosk = r.value === '1'; guard(); }; });
+      nav('Weiter', function () {
+        var b = this; busy(b, true);
+        var want = S.kiosk && i.waechterPossible;
+        api('waechter', { on: want }).then(function (d) { S.info = Object.assign(S.info || {}, d); go(6); }, function (e) { busy(b, false); msg(e.message, 'err'); });
+      });
+    }
+
+    // 7 – Liste und Einstellungen
+    function settings() {
+      card.innerHTML = '<h2>Liste und Einstellungen</h2><p class="muted">Alles hier lässt sich später in der Admin-Fernbedienung (⚙️) ändern.</p>' +
+        '<div class="row"><label class="f">Liste (Zugang)<select id="lst"><option value="">so lassen</option></select></label></div>' +
+        '<div class="row"><label class="f">Täglich AUS um<input type="time" id="soff"></label><label class="f">Täglich AN um<input type="time" id="son"></label>' +
+        '<label class="f">Schlaf-Timer<select id="slp"><option value="0">aus</option><option value="1">1 Std.</option><option value="2">2 Std.</option><option value="3" selected>3 Std.</option><option value="4">4 Std.</option><option value="6">6 Std.</option></select></label></div>' +
+        '<label class="opt"><input type="checkbox" id="own"><span><b>Eigene Listen am Stick bearbeiten</b> (OK lang auf einem Sender) – für Jüngere; für Senioren besser aus.</span></label>' +
+        '<label class="opt"><input type="checkbox" id="nv" checked><span><b>Gleichmäßige Lautstärke</b> – laute Werbung/Sender werden angeglichen.</span></label>';
+      api('lists').then(function (d) {
+        var sel = document.getElementById('lst');
+        d.lists.forEach(function (l) { sel.insertAdjacentHTML('beforeend', '<option value="' + esc(l.link) + '">' + esc(l.name) + '</option>'); });
+      }).catch(function () {});
+      nav('Übertragen und App starten', function () {
+        var b = this; busy(b, true); msg('Übertrage …', 'wait');
+        S.cfg = {
+          link: document.getElementById('lst').value, kiosk: S.kiosk,
+          schedOff: document.getElementById('soff').value, schedOn: document.getElementById('son').value,
+          sleepH: +document.getElementById('slp').value, ownlists: document.getElementById('own').checked,
+          normvol: document.getElementById('nv').checked, restart: S.renamed
+        };
+        api('configure', S.cfg).then(function () { go(7); }, function (e) { busy(b, false); msg(e.message, 'err'); });
+      });
+    }
+
+    // 8 – Bericht
+    function done() {
+      card.innerHTML = '<h2>Fertig – Bericht</h2><div id="rep"></div>';
+      msg('Die App startet am Fernseher. Warte auf den Bericht (bis 30 s) …', 'wait');
+      var n = 0;
+      (function poll() {
+        api('report').then(function (r) {
+          if (!r.phone && ++n < 10) return setTimeout(poll, 3000);
+          var s = r.sched || {};
+          document.getElementById('rep').innerHTML = '<table class="kv">' +
+            '<tr><td>Name</td><td><b>' + esc(r.name) + '</b></td></tr>' +
+            '<tr><td>App</td><td>Version ' + esc(r.ver || r.installed) + '</td></tr>' +
+            '<tr><td>Erlaubnisse</td><td>' + yes(r.overlay) + ' Autostart  ' + yes(r.install) + ' Updates  ' + yes(r.waechter) + ' Wächter läuft</td></tr>' +
+            (r.ver ? '<tr><td>Einstellungen</td><td>Autostart ' + (r.autostart ? 'an' : 'aus') + ' · Home ' + (r.home ? 'an' : 'aus') +
+              ' · Lautstärke ' + (r.normvol ? 'gleichmäßig' : 'normal') + ' · eigene Listen ' + (r.ownlists ? 'erlaubt' : 'aus') +
+              '<br>Zeitplan: aus ' + esc(s.off || '–') + ', an ' + esc(s.on || '–') + ' · Schlaf-Timer ' + (s.sleepH ? s.sleepH + ' Std.' : 'aus') + '</td></tr>' : '') +
+            '</table>' +
+            (r.phone ? '<h2>📱 Handy-Fernbedienung</h2><p class="muted">Mit der Handy-Kamera scannen, Link öffnen, „Zum Home-Bildschirm“.</p><div id="qr"></div><p class="link">' + esc(r.phone) + '</p>'
+              : '<p class="muted">Handy-Link noch nicht bereit (die App lädt gerade ihre Liste) – später in der Admin-Fernbedienung ⚙️.</p>') +
+            '<p class="muted">Kurz testen: Home-Taste → „Fernsehen“ kommt zurück · Stecker ziehen/einstecken → startet von selbst.</p>';
+          if (r.phone && window.qrcode) {
+            var q = window.qrcode(0, 'M'); q.addData(r.phone); q.make();
+            document.getElementById('qr').innerHTML = q.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+          }
+          msg(r.overlay && r.install ? 'Stick ist eingerichtet ✓' : 'Eingerichtet – aber eine Erlaubnis fehlt (siehe ❌).', r.overlay && r.install ? 'ok' : 'err');
+          card.insertAdjacentHTML('beforeend', '<div class="row"><button id="again">↻ Bericht neu laden</button><button class="primary" id="fin">Verbindung trennen und fertig</button></div>');
+          document.getElementById('again').onclick = function () { done(); };
+          document.getElementById('fin').onclick = function () {
+            api('disconnect').then(function () {
+              msg('Getrennt. Sie können das Fenster schließen oder den nächsten Stick einrichten.', 'ok');
+              card.insertAdjacentHTML('beforeend', '<div class="row"><button class="primary" id="next1">📺 Nächsten Stick einrichten</button></div>');
+              document.getElementById('next1').onclick = function () { S = { step: 0, reached: 0, ip: '', info: null, renamed: false, kiosk: true, lists: [], cfg: null }; render(); };
+            });
+          };
+        }, function (e) { msg(e.message, 'err'); });
+      })();
+    }
+
+    render();
+  })();
+  </script>
+</body>
+</html>

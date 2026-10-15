@@ -39,7 +39,7 @@ WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
 VERSION = 29  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
-          '/watch.html': 'watch.html'}
+          '/watch.html': 'watch.html', '/stick.html': 'stick.html'}
 
 UA = 'Mozilla/5.0 (Macintosh) IPTV-Playlist-Editor'
 EPG_TTL = 6 * 3600          # EPG-Download höchstens alle 6 Stunden
@@ -2149,6 +2149,18 @@ class Handler(SimpleHTTPRequestHandler):
             if method == 'POST' and path == '/api/remote/note':
                 b = self.body()
                 return self.send_json(device_note(b.get('id') or '', b.get('label'), b.get('note')))
+            if method == 'POST' and path.startswith('/api/stick/'):   # Assistent „Neuen Stick einrichten“
+                if HERE not in sys.path:
+                    sys.path.insert(0, HERE)
+                import stick_setup
+                st, se = load_state(), load_settings()
+                pls = [{'name': p.get('name') or p['id'],
+                        'link': f'{se["login"]}/{se["gistId"]}/{slugify(p.get("slug") or p.get("name") or p["id"])}'}
+                       for p in st.get('playlists', []) if se.get('login') and se.get('gistId')]
+                try:
+                    return self.send_json(stick_setup.api(path[len('/api/stick/'):], self.body(), lan_ip(), pls))
+                except stick_setup.StickError as e:
+                    raise UserError(str(e))
             if method == 'POST' and path == '/api/git-push':
                 return self.send_json(git_push(bool(self.body().get('updateDevices'))))
             if method == 'POST' and path == '/api/update-all':

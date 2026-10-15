@@ -233,6 +233,14 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Lautstärke** (Extras schedOff/schedOn/sleepH/ownlists/normvol), am Ende **Bericht** (`--es report 1` → JSON:
   Version, Erlaubnisse, Wächter, Einstellungen, Handy-Link; wartet bis 30 s auf den Link) und öffnet
   `editor/data/adb/handy-qr.html` mit dem QR-Code der Handy-Fernbedienung. Kein Downloader nötig (APK per adb).
+- **Assistent „📺 Neuen Stick einrichten“ im Editor** (Menü Geräte ▾, öffnet `editor/stick.html`; Programmteil
+  `editor/stick_setup.py`, nur Standardbibliothek; Server-Route `/api/stick/<schritt>`, sonst nichts am Editor geändert):
+  8 Schritte – Vorbereitung am TV (Ersteinrichtung, ADB-Debugging, IP) · Verbinden (IP oder „🔍 Im WLAN suchen“ =
+  Port 5555 im /24, wartet auf „Immer zulassen“) · Gerätename · App installieren/aktualisieren (app.apk von
+  GitHub Pages) · Erlaubnisse (appops + WRITE_SECURE_SETTINGS) · Wächter Senioren/selbst bedienen · Liste + Zeitplan/
+  Schlaf-Timer/eigene Listen/Lautstärke (SetupReceiver, App startet) · Bericht mit QR der Handy-Fernbedienung,
+  „Verbindung trennen“ (Fire OS: nur eine ADB-Verbindung). Gleiche Schritte wie `Stick-einrichten.command` (bleibt).
+  Getestet 15.10.: Suche, Listen, Fehlerfälle echt; Durchklicken mit gespielten Antworten; am echten Stick offen.
 - **Neue Geräte**: nur Fire TV Stick 4K Plus/4K Max/Cube (Fire OS). Stick HD (2026), 4K Select und der neue
   Fire TV Stick 4K (2026) laufen mit Vega OS → keine APKs, App läuft dort nicht.
 

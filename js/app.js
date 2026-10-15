@@ -335,7 +335,7 @@
   if (SPLIT) {
     document.addEventListener('click', function (ev) {
       var a = ev.target.closest ? ev.target.closest('a') : null;
-      if (!a || !a._play || ev.target.closest('.fav, .info')) return;
+      if (!a || !a._play || ev.target.closest('.fav, .info, .addl')) return;
       remember(a._play.entry, a._play.list);
       checkPlayerApp(a.getAttribute('href'));
       setTimeout(render, 500);   // beim Zurückkommen ist die Leiste schon da
@@ -613,6 +613,7 @@
         text.appendChild(progressEl(e.tvgId));
         if (nn && nn.now[3]) a.appendChild(infoBtn(text, nn.now));
       }
+      if (IPTV.myCanEdit()) a.appendChild(addListBtn(e));
       box.appendChild(a);
     });
     return box;
@@ -640,6 +641,71 @@
       b.setAttribute('aria-expanded', String(!!text.querySelector('.desc')));
     });
     return b;
+  }
+
+  // ＋: Sender in eigene Listen aufnehmen/entfernen (nur wenn im Editor für die Webapp freigegeben)
+  function addListBtn(e) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'addl';
+    b.textContent = '＋';
+    b.title = 'In eigene Liste aufnehmen';
+    b.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      listDialog(e);
+    });
+    return b;
+  }
+  function listDialog(e) {
+    var old = document.querySelector('.lang-overlay.mylist');
+    if (old) old.remove();
+    var ov = document.createElement('div');
+    ov.className = 'lang-overlay mylist';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    var box = document.createElement('div');
+    box.className = 'lang-box';
+    var h = document.createElement('h2');
+    h.textContent = e.name;
+    box.appendChild(h);
+    function shut() { ov.remove(); }
+    var k = IPTV.norm(e.url);
+    IPTV.myLists(all).forEach(function (x) {
+      var inIt = x.entries.some(function (y) { return IPTV.norm(y.url) === k; });
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lang-btn';
+      b.textContent = (inIt ? '☑ ' : '☐ ') + x.name;
+      b.addEventListener('click', function () {
+        IPTV.myToggle(x.id, e).then(function (added) {
+          toast(added ? 'Zu „' + x.name + '“ hinzugefügt' : 'Aus „' + x.name + '“ entfernt');
+        }, function (err) { toast('Nicht gespeichert: ' + err.message); });
+        shut();
+      });
+      box.appendChild(b);
+    });
+    var nb = document.createElement('button');
+    nb.type = 'button';
+    nb.className = 'lang-cancel';
+    nb.textContent = '＋ Neue Liste …';
+    nb.addEventListener('click', function () {
+      var n = prompt('Name der neuen Liste (z. B. „⚽ Fussball“):');
+      if (!n || !n.trim()) return;
+      IPTV.myCreate(n.trim(), e).then(function () { toast('Liste „' + n.trim() + '“ angelegt'); },
+        function (err) { toast('Nicht gespeichert: ' + err.message); });
+      shut();
+    });
+    box.appendChild(nb);
+    var c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'lang-cancel';
+    c.textContent = 'Schließen';
+    c.addEventListener('click', shut);
+    box.appendChild(c);
+    ov.appendChild(box);
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) shut(); });
+    document.body.appendChild(ov);
   }
 
   // Programm älter als ein Tag (Liste lange nicht veröffentlicht): Hinweis über den Live-Sendern

@@ -1593,9 +1593,15 @@ public class PlayerActivity extends Activity implements Remote.Target {
             if (n.item != null) jumpTo(n);
             else open(n);
         });
-        // OK lange drücken: Film bzw. Serie als Favorit markieren oder entfernen
+        // OK lange drücken: Film bzw. Serie als Favorit markieren oder entfernen; bei Sendern mit Freigabe
+        // „eigene Listen“ stattdessen ein Menü (Lieblingssender, Listen an/aus, neue Liste)
         list.setOnItemLongClickListener((parent, view, position, id) -> {
-            toggleFav(browse.children.get(position));
+            Node n = browse.children.get(position);
+            if (n.item != null && n.item.live() && MyLists.allowed(this)) {
+                MyLists.menu(this, n.item.url, n.name, () -> toggleFav(n));
+            } else {
+                toggleFav(n);
+            }
             return true;
         });
         list.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {

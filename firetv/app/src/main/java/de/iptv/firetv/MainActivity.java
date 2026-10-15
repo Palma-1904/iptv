@@ -214,6 +214,12 @@ public class MainActivity extends Activity implements Remote.Target {
             }
         }
 
+        /** Eigene Listen: Firebase-Adresse aus dem Kopf der Playlist (x-mylists), leer = keine. */
+        @JavascriptInterface
+        public void setMyLists(String url) {
+            MyLists.url = url != null && url.matches("https://[\\w.-]+/[A-Za-z0-9_-]{24,64}") ? url : null;
+        }
+
         /** Fernwartung: welche Playlist und Ansicht dieses Gerät nutzt. */
         @JavascriptInterface
         public void hello(String json) {
@@ -639,6 +645,9 @@ public class MainActivity extends Activity implements Remote.Target {
                 } else if ("normvol".equals(key)) {
                     prefs.edit().putBoolean("normvol", on).apply();
                     Remote.report("Gleichmäßige Lautstärke " + (on ? "an" : "aus") + " (ab dem nächsten Senderstart)");
+                } else if ("ownlists".equals(key)) {
+                    prefs.edit().putBoolean("ownLists", on).apply();
+                    Remote.report("Eigene Listen bearbeiten " + (on ? "erlaubt (OK lang in der Senderliste)" : "aus"));
                 } else if ("waechter".equals(key)) {
                     Remote.report(Waechter.set(this, on) ? "Wächter " + (on ? "an" : "aus")
                             : "Wächter: Recht fehlt – einmalig vor Ort mit „Stick-einrichten“ einrichten");

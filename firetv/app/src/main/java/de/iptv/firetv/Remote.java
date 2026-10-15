@@ -430,7 +430,8 @@ final class Remote {
                         .put("waechterOld", !Waechter.supported())
                         .put("pause", (Waechter.pausedFor(app) + 59999) / 60000)
                         .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true))
-                        .put("sched", Schedule.json(app)))
+                        .put("sched", Schedule.json(app))
+                        .put("ownlists", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("ownLists", false)))
                 .put("diag", Diag.json(app))
                 .put("norm", nowNorm).put("epg", nowEpg).put("rem", Reminders.upcoming(app))
                 .put("screen", screenOn());

@@ -687,6 +687,7 @@
     sw('autostart', 'Autostart beim Einschalten', c.autostart);
     sw('home', 'Home-Taste: App kommt zurück', c.home);
     if (c.normvol !== undefined) sw('normvol', 'Gleichmäßige Lautstärke', c.normvol);
+    if (c.ownlists !== undefined) sw('ownlists', 'Darf eigene Listen bearbeiten (OK lang am Sender)', c.ownlists);
     if (c.waechterOld) {
       chk(false, '', 'Wächter: auf diesem älteren Stick (Fire OS 6) nicht möglich – Updates brauchen einen Klick vor Ort');
     } else if (c.waechterSwitch) {

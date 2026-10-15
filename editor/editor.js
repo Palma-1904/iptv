@@ -138,6 +138,7 @@ function renderPlSource() {
   const src = pl && state.sources.find((x) => x.id === pl.source);
   chip.textContent = 'Zugang: ' + (src ? src.name : '–') + (pl && pl.germanOnly ? ' · nur DE' : '');
   $('#pl-german').textContent = '🇩🇪 Nur deutsche Fassungen: ' + (pl && pl.germanOnly ? 'AN' : 'AUS');
+  $('#pl-myweb').textContent = '📋 Eigene Listen in der Webapp bearbeiten: ' + (pl && pl.myListsWeb ? 'AN' : 'AUS');
   const allClosed = pl && pl.groups.length && pl.groups.every((g) => ui.collapsed.has(g.id));
   $('#collapse-all').textContent = allClosed ? '▾ Alle auf' : '▸ Alle zu';
   renderMine();
@@ -2391,6 +2392,15 @@ function bind() {
     renderPlSource();
     toast(pl.germanOnly ? 'Ab dem nächsten Veröffentlichen nur deutsche Fassungen (Filme/Serien ohne deutsche Fassung bleiben ganz drin).'
       : 'Ab dem nächsten Veröffentlichen wieder alle Sprachfassungen.');
+  };
+  $('#pl-myweb').onclick = () => {
+    const pl = playlist();
+    if (!pl) return;
+    pl.myListsWeb = !pl.myListsWeb;
+    save();
+    renderPlSource();
+    toast(pl.myListsWeb ? 'Ab dem nächsten Veröffentlichen: In der Webapp dieser Playlist kann jeder eigene Listen bearbeiten (＋ am Sender). Am Fire TV Stick gilt die Freigabe je Gerät (Admin-Fernbedienung ⚙️).'
+      : 'Ab dem nächsten Veröffentlichen: eigene Listen in der Webapp nur anzeigen.');
   };
   $('#collapse-all').onclick = () => {
     const pl = playlist();

@@ -117,6 +117,8 @@
     var m = /\bx-mylists="(https:\/\/[\w.-]+\/[A-Za-z0-9_-]{24,64})"/.exec(head);
     myEdit = /\bx-mylists-edit="1"/.test(head);
     var url = m ? m[1] : '';
+    // Fire-TV-App: Adresse für „OK lang“ → eigene Listen bearbeiten (nur mit Freigabe am Gerät)
+    if (window.IPTVNative && typeof window.IPTVNative.setMyLists === 'function') window.IPTVNative.setMyLists(url);
     if (url === myUrl) return;
     myUrl = url;
     myData = {};

@@ -277,7 +277,12 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   (`m3u.js`: `readMyHeader`, EventSource live, Cache `iptv-mylists`, `myLists/myListNodes/myToggle/myCreate`):
   Kategorien links (Live-Sender), Baum der App ganz oben (senioren.js/app.js `first`). Admin „📋 Eigene Listen“
   (`renderMyl`): anlegen, umbenennen, ▲▼, löschen, Sender per Suche hinzufügen/✕. Getestet 15.10. (Test-Schlüssel,
-  danach gelöscht). **Stufe B offen**: Bearbeiten am Stick (OK lang, Freigabe je Gerät) und in der Webapp.
+  danach gelöscht). **Stufe B umgesetzt** (App 71): Freigabe je Stick per Fernwartung `setting ownlists`
+  (Prefs `ownLists`, Status `cfg.ownlists`, Admin ⚙️ „Darf eigene Listen bearbeiten“, Standard aus). Mit Freigabe
+  öffnet OK lang auf einem Sender in der ☰-Liste `MyLists.menu` (★ Lieblingssender · ☐/☑ Listen · ＋ Neue Liste mit
+  Tastatur), schreibt per PUT nach Firebase; Adresse kommt von der Webapp (`IPTVNative.setMyLists`). Ohne Freigabe
+  OK lang wie bisher (★). Webapp: „＋“ an jedem Live-Sender nur mit `x-mylists-edit` (Editor-Menü der Playlist
+  „📋 Eigene Listen in der Webapp bearbeiten“, `pl.myListsWeb`). Webapp getestet 15.10.; Stick-Menü ungetestet.
 - **Admin-Webapp** (Thomas 15.10., alle vier gewünscht; alle gebaut, (4) braucht App 71): (1) Links senden – Webapp-Link je Playlist per
   Teilen (WhatsApp/iMessage), QR, Kurzanleitung; (2) Wer schaut womit – Belegung je Zugang, Warnung bei
   Doppelbelegung; (3) Editor aus der Ferne – Veröffentlichen, Sender prüfen **und Pushen** vom Handy (Editor holt

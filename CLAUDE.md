@@ -218,7 +218,11 @@ TKH bis 26.10.2027, ASW bis 04.10.2027, KMH bis 04.10.2027 (player_api für KMH/
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
 ## Stand / nächste Schritte (15.10.2026)
-- **Online App 69**, alles gepusht (letzter Commit 10.10.). Zugänge je Playlist geprüft: ASW→ASW, KMH→KMH, TKH→TKH.
+- **15.10. mittags**: Online **App 70** (Webansicht: Mac-Player-Seite mit IINA, iPhone-Kategorien-Menü, App-Link
+  neben der Uhr, VLC wählbar). Token im Editor hat jetzt Scopes gist+repo+workflow → „Jetzt pushen“ im Editor geht.
+  Lokal committet, **noch nicht gepusht**: EPG-Ausbau (Editor 27, App-Info mit Inhaltstext) → wird App 71.
+  → Thomas: Editor neu starten, „Veröffentlichen → Alle“ (KMH-Programm war seit 10.10. veraltet!), pushen.
+- Zugänge je Playlist geprüft: ASW→ASW, KMH→KMH, TKH→TKH.
 - **Geräte** (Schnappschuss 15.10. aus Firebase `<kanal>/status` – aktueller Stand immer dort bzw. Editor → Fernwartung;
   ein Stick im Standby meldet nichts, ein paar Stunden Stille sind normal):
   | Stick | Modell / Fire OS | IP | Liste | App | Wächter | Bemerkung |
@@ -239,7 +243,24 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 - Auto-Update ohne Klick bestätigt (Küche, mit Wächter); Fire OS 6 fragt immer nach.
 - Jeder Push = neue App-Version (auch bei reinen Editor-/Notiz-Änderungen) → Änderungen gesammelt pushen.
 
+## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
+Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt**, App 70) · 3 Admin-Webapp ·
+4 EPG (**gebaut**: mehr Sender + Inhaltstexte; automatischer GitHub-Auftrag alle 6 h vorerst NICHT gewünscht).
+- **Mini-Erklärung** in der Webapp (iPhone/iPad/Mac): kurz, wie man sie benutzt (Kategorien, Abspielen mit
+  Outplayer/VLC/IINA, zurückkommen, Favoriten, Suche).
+- **Eigene Listen** (z. B. „⚽ Fussball“) in App, Webapp und Admin – **zentral, auf allen Geräten gleich**
+  (Thomas 15.10.). Idee: „★ Meine Sender“ (`pl.myChannels`) zu mehreren benannten Listen je Playlist ausbauen,
+  beim Veröffentlichen als Gruppen oben. Noch offen: nur im Editor bearbeiten oder auch vom Admin-Handy/Gerät aus;
+  nur Live-Sender oder auch Filme/Serien.
+- Bereich 1 (App) und 3 (Admin-Webapp): Wünsche von Thomas noch nicht genannt.
+- ProSieben (TKH) am 15.10. gestört (HD schwarz ohne Ton, FHD nur Ton) → Editor „Sender prüfen“ → Ersetzen.
+- Ungetestet: VLC auf iPhone/iPad (Rücksprung per x-success, evtl. neuer Safari-Tab), App 71 Inhaltstext am Stick.
+
 ## Arbeitsweise über mehrere Macs (MacBook Neo, Büro-Mac, …)
+- **Feste Regel (Thomas 15.10.): Nach jedem fertigen Schritt committen UND diese CLAUDE.md aktualisieren**
+  (Abschnitt „Stand / nächste Schritte“ + „Offene Aufgaben“), damit Thomas mit der SSD an jedem Mac sofort
+  weitermachen kann – auch in einer neuen Claude-Sitzung ohne Vorwissen. Claudes eigene Notizen (memory) liegen
+  auf dem jeweiligen Mac, nicht auf der SSD → alles Wichtige gehört hierher. Nichts Fertiges uncommittet lassen.
 - **Die SSD ist die einzige Arbeitskopie.** Projekt, `.git`, `editor/data/` liegen darauf; GitHub dient nur zum
   Veröffentlichen (Pages + App-Bau), nicht zum Abgleich zwischen Macs. Kein Pull nötig, solange niemand auf github.com ändert.
 - Neuer Mac: `Einrichten-neuer-Mac.command` (Command Line Tools, safe.directory, GitHub Desktop, VLC-Check).

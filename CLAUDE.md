@@ -248,11 +248,16 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
 4 EPG (**gebaut**: mehr Sender + Inhaltstexte; automatischer GitHub-Auftrag alle 6 h vorerst NICHT gewünscht).
 - **Mini-Erklärung** in der Webapp (iPhone/iPad/Mac): kurz, wie man sie benutzt (Kategorien, Abspielen mit
   Outplayer/VLC/IINA, zurückkommen, Favoriten, Suche).
-- **Eigene Listen** (z. B. „⚽ Fussball“) in App, Webapp und Admin – **zentral, auf allen Geräten gleich**
-  (Thomas 15.10.). Idee: „★ Meine Sender“ (`pl.myChannels`) zu mehreren benannten Listen je Playlist ausbauen,
-  beim Veröffentlichen als Gruppen oben. Noch offen: nur im Editor bearbeiten oder auch vom Admin-Handy/Gerät aus;
-  nur Live-Sender oder auch Filme/Serien.
-- Bereich 1 (App) und 3 (Admin-Webapp): Wünsche von Thomas noch nicht genannt.
+- **Eigene Listen** (z. B. „⚽ Fussball“) – Entscheidung Thomas 15.10.: **Stick-App nur noch Seniorenansicht**
+  (Wahl Komplett/Senioren in der Einrichtung entfällt). **Freigabe je Gerät** im Editor/Admin (⚙️ „Darf eigene
+  Listen bearbeiten“, Standard aus – Schwiegermutter nein, Jüngere ja). Listen **zentral in Firebase** unter eigenem
+  geheimen Schlüssel je Playlist, sofort auf allen Geräten der Playlist (oben in der Übersicht); Stick mit Freigabe:
+  OK lang → „Zu Liste hinzufügen / ＋ Neue Liste“. Webapp zeigt sie als Kategorien, Bearbeiten nur wenn für die
+  Playlist freigegeben. Admin-Webapp bearbeitet alle Listen.
+- **Admin-Webapp** (Thomas 15.10., alle vier gewünscht): (1) Links senden – Webapp-Link je Playlist per
+  Teilen (WhatsApp/iMessage), QR, Kurzanleitung; (2) Wer schaut womit – Belegung je Zugang, Warnung bei
+  Doppelbelegung; (3) Editor aus der Ferne – Veröffentlichen, Sender prüfen **und Pushen** vom Handy (Editor holt
+  Aufträge über Firebase ab, nur solange er auf einem Mac läuft); (4) Zeitpläne je Stick (aus/an, Schlaf-Timer).
 - ProSieben (TKH) am 15.10. gestört (HD schwarz ohne Ton, FHD nur Ton) → Editor „Sender prüfen“ → Ersetzen.
 - Ungetestet: VLC auf iPhone/iPad (Rücksprung per x-success, evtl. neuer Safari-Tab), App 71 Inhaltstext am Stick.
 
@@ -265,8 +270,9 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   Veröffentlichen (Pages + App-Bau), nicht zum Abgleich zwischen Macs. Kein Pull nötig, solange niemand auf github.com ändert.
 - Neuer Mac: `Einrichten-neuer-Mac.command` (Command Line Tools, safe.directory, GitHub Desktop, VLC-Check).
 - Git-Identität steht im Repo (`.git/config`): „Max Mustermann <mieten.riffe3y@icloud.com>“ – nicht ändern.
-- **Claude committet lokal** (mit Co-Authored-By), **Thomas pusht** in GitHub Desktop („Push origin“) oder im
-  Editor (App-Anzeige ▾ → „Jetzt pushen“, `/api/git-push`: Token aus settings.json, braucht Scopes **repo + workflow**;
+- **Claude committet lokal** (mit Co-Authored-By), **Thomas pusht** (bestätigt 15.10.: immer selbst, über den
+  Editor bzw. künftig die Admin-Webapp; Claude erinnert am Ende eines Arbeitspakets) – früher auch GitHub Desktop
+  („Push origin“) – oder im Editor (App-Anzeige ▾ → „Jetzt pushen“, `/api/git-push`: Token aus settings.json, braucht Scopes **repo + workflow**;
   pusht `HEAD:main` per https mit Token, setzt danach `refs/remotes/origin/main`; Fehlertext ohne Token).
   „Pushen und danach alle Geräte aktualisieren“ wartet auf den Bau (`update_after_build`) und schickt `update` an alle.
   Claude hat keine GitHub-Zugangsdaten auf der Kommandozeile.

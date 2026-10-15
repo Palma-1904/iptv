@@ -233,6 +233,11 @@ TKH bis 26.10.2027, ASW bis 04.10.2027, KMH bis 04.10.2027 (player_api für KMH/
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
 ## Stand / nächste Schritte (15.10.2026)
+- **15.10. abends**: Lokal committet, **noch nicht gepusht** (wird App 71): EPG-Ausbau, Admin (Wer schaut, Links
+  senden, Editor aus der Ferne, Zeitpläne), eigene Listen (Stufe A+B), Stick nur Senioren, Mini-Erklärung.
+  Editor jetzt **VERSION 29**. → Thomas: Editor neu starten (Start-Editor.command), „Veröffentlichen → Alle“
+  (erzeugt die Listen-Schlüssel, KMH-Programm frisch), dann pushen. Ungetestet am echten Stick: Inhaltstext in der
+  Info, Zeitplan, OK-lang-Menü für eigene Listen; VLC auf iPhone.
 - **15.10. mittags**: Online **App 70** (Webansicht: Mac-Player-Seite mit IINA, iPhone-Kategorien-Menü, App-Link
   neben der Uhr, VLC wählbar). Token im Editor hat jetzt Scopes gist+repo+workflow → „Jetzt pushen“ im Editor geht.
   Lokal committet, **noch nicht gepusht**: EPG-Ausbau (Editor 27, App-Info mit Inhaltstext) → wird App 71.
@@ -261,8 +266,9 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 ## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
 Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt**, App 70) · 3 Admin-Webapp ·
 4 EPG (**gebaut**: mehr Sender + Inhaltstexte; automatischer GitHub-Auftrag alle 6 h vorerst NICHT gewünscht).
-- **Mini-Erklärung** in der Webapp (iPhone/iPad/Mac): kurz, wie man sie benutzt (Kategorien, Abspielen mit
-  Outplayer/VLC/IINA, zurückkommen, Favoriten, Suche).
+- **Mini-Erklärung** in der Webapp (iPhone/iPad/Mac) – **umgesetzt**: „?“ neben der Uhr (`#help`, `showHelp`), beim
+  ersten Besuch einmal von selbst (`iptv-help-seen`); Text passend zu iOS (Outplayer/VLC) bzw. Mac (IINA), ＋-Hinweis
+  nur mit Freigabe.
 - **Eigene Listen** (z. B. „⚽ Fussball“) – Entscheidung Thomas 15.10.: **Stick-App nur noch Seniorenansicht**
   (**umgesetzt**: `mode.js` leitet in der App (UA IPTVApp) immer auf senioren.html; Einrichtung am Stick nur noch
   „Übernehmen“, `applySetup` erzwingt senioren; Admin ⚙️ ohne Komplett/Senioren-Wahl). **Freigabe je Gerät** im Editor/Admin (⚙️ „Darf eigene

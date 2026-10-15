@@ -425,6 +425,80 @@
     ov.addEventListener('click', function (ev) { if (ev.target === ov) shut(); });
     document.body.appendChild(ov);
   }
+  // ---------- Mini-Erklärung (Browser: iPhone, iPad, Mac): „?“ oben, beim ersten Besuch einmal von selbst ----------
+  var HELP_KEY = 'iptv-help-seen';
+  function showHelp() {
+    var old = document.querySelector('.lang-overlay.help');
+    if (old) old.remove();
+    var mac = IPTV.platform === 'mac', ios = IPTV.platform === 'ios';
+    var app = ios ? (IPTV.iosPlayer() === 'vlc' ? 'VLC' : 'Outplayer') : mac ? 'IINA' : '';
+    var phone = window.matchMedia && window.matchMedia('(max-width: 700px)').matches;
+    var tips = [
+      ['📺', 'Sender wählen', phone ? 'Oben auf „☰ Kategorie ▾“ tippen und eine Gruppe wählen, dann den Sender antippen.'
+        : 'Links eine Gruppe wählen, rechts den Sender antippen.'],
+      ['▶️', 'Abspielen', app ? 'Das Bild läuft in der kostenlosen App „' + app + '“' +
+        (ios ? ' (beim ersten Mal aus dem App Store laden – Link oben neben der Uhr). Statt Outplayer geht auch VLC: in der Leiste „Zuletzt“ auf „mit …“ tippen.'
+          : ' (iina.io). Einmal „Immer in IINA öffnen“ wählen, dann geht es mit einem Klick.')
+        : 'Der Sender öffnet in einem eigenen Player.'],
+      ['↩️', 'Zurück zur Liste', ios ? (app === 'VLC' ? 'VLC schließen – die Liste kommt von selbst wieder.'
+        : 'In Outplayer oben links auf „◀ Safari“ tippen. Die Liste bleibt, wo sie war.')
+        : mac ? 'IINA schließen oder zurück zu Safari wechseln.' : 'Mit „Zurück“.'],
+      ['⏭️', 'Weiterschalten', 'Oben in der Leiste „Zuletzt“: ◀ / ▶▶ für den vorigen/nächsten Sender, „nochmal“ startet ihn erneut.'],
+      ['ⓘ', 'Worum geht es?', 'Das ⓘ neben einem Sender zeigt den Inhalt der laufenden Sendung.'],
+      ['🎬', 'Filme und Serien', 'Oben umschalten. Mit ☆ merken – die stehen dann unter „★ Meine Favoriten“.'],
+      ['🔍', 'Suchen', 'Ins Suchfeld oben tippen: findet Sender, Filme und Serien.']
+    ];
+    if (IPTV.myCanEdit()) tips.push(['＋', 'Eigene Listen', 'Mit ＋ am Sender in eine eigene Liste (z. B. „⚽ Fussball“) aufnehmen – sie steht dann links ganz oben, auch auf den Fernsehern.']);
+    if (ios) tips.push(['📲', 'Wie eine App', 'In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen.']);
+    var ov = document.createElement('div');
+    ov.className = 'lang-overlay help';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    var box = document.createElement('div');
+    box.className = 'lang-box';
+    var h = document.createElement('h2');
+    h.textContent = 'So geht’s';
+    box.appendChild(h);
+    tips.forEach(function (x) {
+      var p = document.createElement('div');
+      p.className = 'tip';
+      var i = document.createElement('span');
+      i.className = 'ti';
+      i.textContent = x[0];
+      var tx = document.createElement('span');
+      var b = document.createElement('b');
+      b.textContent = x[1];
+      tx.appendChild(b);
+      tx.appendChild(document.createTextNode(' – ' + x[2]));
+      p.appendChild(i);
+      p.appendChild(tx);
+      box.appendChild(p);
+    });
+    var ok = document.createElement('button');
+    ok.type = 'button';
+    ok.className = 'lang-btn';
+    ok.textContent = 'Alles klar';
+    function shut() { ov.remove(); }
+    ok.addEventListener('click', shut);
+    box.appendChild(ok);
+    ov.appendChild(box);
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) shut(); });
+    document.body.appendChild(ov);
+    try { localStorage.setItem(HELP_KEY, '1'); } catch (err) { /* egal */ }
+  }
+  if (SPLIT) {
+    var hb = document.getElementById('help');
+    if (hb) { hb.hidden = false; hb.addEventListener('click', showHelp); }
+  }
+  var helpShown = false;
+  function firstHelp() {   // einmal nach dem ersten Laden der Liste
+    if (helpShown || !SPLIT) return;
+    helpShown = true;
+    var seen = true;
+    try { seen = !!localStorage.getItem(HELP_KEY); } catch (err) { /* privat-Modus: nicht aufdrängen */ }
+    if (!seen) setTimeout(showHelp, 600);
+  }
+
   // Link neben der Uhr zur nötigen Player-App – bis sie auf DIESEM Gerät einmal lief bzw. bestätigt wurde
   // (Merkzeichen im localStorage, also je iPhone/iPad/Mac einzeln)
   var IINA_SITE = 'https://iina.io';
@@ -860,6 +934,7 @@
     else if (SPLIT) renderSplit(activeType);
     else renderType(activeType);
     updateAppLink();
+    if (all.length) firstHelp();
   }
 
   // ---------- Programmübersicht (EPG) ----------

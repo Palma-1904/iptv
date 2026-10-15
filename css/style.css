@@ -44,6 +44,13 @@ h1 { font-size: 24px; margin: 0; letter-spacing: .02em; }
   font-size: 15px; font-weight: 600; text-decoration: none; white-space: nowrap;
 }
 .getapp[hidden] { display: none; }
+.helpbtn {
+  flex: none; width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface);
+  color: var(--muted); font: inherit; font-size: 18px; font-weight: 700; cursor: pointer;
+}
+.helpbtn[hidden] { display: none; }
+.help .tip { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; line-height: 1.4; }
+.help .tip .ti { flex: none; width: 26px; text-align: center; font-size: 18px; }
 .getapp .long { margin-left: .3em; }   /* Leerzeichen am Anfang schluckt inline-flex */
 @media (max-width: 480px) { .getapp .long { display: none; } }
 

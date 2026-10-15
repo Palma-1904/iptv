@@ -216,6 +216,10 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
 - **Länderfilter Filme/Serien**: Deutsch (DE/AT/CH) + MULTI vorausgewählt, andere Kürzel nur nach Antippen (`src.vodShown`),
   `hiddenCountries` gilt weiter für alle Reiter (`ccHidden`/`toggleCc`, nur Anzeige links; `variantsOf` unverändert).
   Neue Gruppen in der Playlist kommen zugeklappt an; zugeklappte Gruppen im localStorage `editor-collapsed`.
+  Länder-Kürzel: zusätzlich „alle ausblenden“ / „alle einblenden“ (neben „alle umkehren“). Über den Gruppen
+  „＋ Alle sichtbaren übernehmen“ (`addAllVisible`): alle links sichtbaren Gruppen des Reiters auf einmal, jede als
+  eigene Gruppe (nicht in die Ziel-Gruppe), nur Zugang der Playlist, Vorhandenes übersprungen (Test: 178 Gruppen/
+  13 294 Sender DE+UK+US in Sekunden).
 - **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.
 - **Wächter** (`Waechter.java`, Bedienungshilfe/AccessibilityService, `res/xml/waechter.xml`): fängt Home/Einstellungen/
   Alle-Apps-Taste ab und holt die App sofort zurück, wenn ein fremder Bildschirm (Activity/Startseite) erscheint –

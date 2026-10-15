@@ -456,14 +456,20 @@ function renderCountries() {
     box.appendChild(b);
   });
   if (counts.size > 1) {
-    const all = el('button', 'chip', 'alle umkehren');
-    all.type = 'button';
-    all.onclick = () => {
-      [...counts.keys()].forEach((k) => toggleCc(src, k, ui.type));
-      save();
-      renderAll();
+    // Schnell filtern: alle aus, dann z. B. nur DE antippen – oder alle ein / umkehren
+    const bulk = (label, fn) => {
+      const b = el('button', 'chip bulk', label);
+      b.type = 'button';
+      b.onclick = () => {
+        [...counts.keys()].forEach((k) => { if (fn(ccHidden(src, k, ui.type))) toggleCc(src, k, ui.type); });
+        save();
+        renderAll();
+      };
+      box.appendChild(b);
     };
-    box.appendChild(all);
+    bulk('alle ausblenden', (hidden) => !hidden);
+    bulk('alle einblenden', (hidden) => hidden);
+    bulk('alle umkehren', () => true);
   }
 }
 
@@ -627,6 +633,48 @@ async function newPlaylist(sourceId) {
   save();
   await selectSource(src.id);
   renderAll();
+}
+
+// „＋ Alle sichtbaren übernehmen“: alle Gruppen, die links gerade zu sehen sind (Länderfilter, aktueller Reiter),
+// auf einmal in die Playlist – jede in eine Gruppe gleichen Namens (nicht in die Ziel-Gruppe), Vorhandenes bleibt.
+function addAllVisible() {
+  const pl = playlist();
+  if (!pl) return alert('Zuerst eine Playlist wählen oder anlegen.');
+  let items = visibleItems();
+  if (pl.source) items = items.filter((it) => it.key.split(':', 1)[0] === pl.source);   // nie Zugänge mischen
+  const byGroup = new Map();
+  items.forEach((it) => { if (!byGroup.has(it.group)) byGroup.set(it.group, []); byGroup.get(it.group).push(it); });
+  const order = [...byGroup.keys()].sort((a, b) => langRank(countryOf(a)) - langRank(countryOf(b)));
+  const existing = playlistKeys();
+  const todo = order.map((g) => [g, uniqueWorks(byGroup.get(g)).filter((it) => !existing.has(it.key))]).filter((x) => x[1].length);
+  const n = todo.reduce((s, x) => s + x[1].length, 0);
+  if (!n) return toast('Schon alles Sichtbare in der Playlist');
+  const what = ui.type === 'live' ? 'Sender' : ui.type === 'movie' ? 'Filme' : 'Serien';
+  if (!confirm(`${todo.length} Gruppen mit ${n} ${what} in die Playlist „${pl.name}“ übernehmen?\n\n` +
+      'Jede Gruppe kommt als eigene Gruppe (zugeklappt) ans Ende. Was schon drin ist, wird übersprungen.')) return;
+  let added = 0;
+  todo.forEach(([name, list]) => {
+    let g = pl.groups.find((x) => x.name === name);
+    if (!g) {
+      g = { id: 'g' + uid(), name, items: [] };
+      pl.groups.push(g);
+      ui.collapsed.add(g.id);
+    }
+    list.forEach((it) => {
+      const item = toPlaylistItem(it);
+      if (!item || existing.has(item.key)) return;
+      g.items.push(item);
+      existing.add(item.key);
+      (item.variants || []).forEach((v) => existing.add(v.key));
+      added++;
+    });
+  });
+  saveCollapsed();
+  save();
+  ui.selected.clear();
+  renderChannels();
+  renderPlaylist();
+  toast(`${added} ${what} in ${todo.length} Gruppen übernommen`);
 }
 
 // Fügt Sender in die Ziel-Gruppe ein; ohne Ziel in eine Gruppe mit dem Namen der Quell-Gruppe.
@@ -2462,6 +2510,7 @@ function bind() {
     channelList().slice(0, MAX_ROWS).forEach((it) => (ui.selected.has(it.key) ? ui.selected.delete(it.key) : ui.selected.add(it.key)));
     renderChannels();
   };
+  $('#add-visible').onclick = addAllVisible;
   $('#add-selected').onclick = () => {
     const items = catalogEntries([...ui.selected]);
     if (!items.length) return toast('Keine Sender ausgewählt.', true);

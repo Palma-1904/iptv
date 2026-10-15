@@ -258,6 +258,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   „＋ Alle sichtbaren übernehmen“ (`addAllVisible`): alle links sichtbaren Gruppen des Reiters auf einmal, jede als
   eigene Gruppe (nicht in die Ziel-Gruppe), nur Zugang der Playlist, Vorhandenes übersprungen (Test: 178 Gruppen/
   13 294 Sender DE+UK+US in Sekunden).
+- **Größen-Ampel** (Editor 33, `sizeChip`/`playlistSize`): Live + Film-Fassungen (bei `germanOnly` nur deutsche) + Serien;
+  🟢 ≤ 3000, 🟡 ≤ 8000, 🔴 darüber; Klick zeigt die größten Gruppen. **Sender prüfen** fragt jetzt: „Nur neue und
+  gestörte“ (noch nie geprüft, belegt oder kein Bild – Ergebnis wird zusammengeführt) oder „Alle“.
+  **🗑 Alles leeren** (rechts neben „＋ Gruppe“): leert Gruppen + Meine Sender der Playlist, vorher `POST /api/backup`
+  (`state-JJJJ-MM-TT-HHMM-vor-leeren-<Name>.json`); Sicherungen jetzt nach Zeit sortiert.
 - **Favoriten** (Filme = Werk, Serien = Gruppe) im localStorage `iptv-fav`; TV: OK lange drücken, sonst ☆ antippen.
 - **Wächter** (`Waechter.java`, Bedienungshilfe/AccessibilityService, `res/xml/waechter.xml`): fängt Home/Einstellungen/
   Alle-Apps-Taste ab und holt die App sofort zurück, wenn ein fremder Bildschirm (Activity/Startseite) erscheint –

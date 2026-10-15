@@ -179,7 +179,7 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   dem Standby), neu gestellt beim Hochfahren, App-/Dienst-Start und nach jedem Auslösen. Aus = Player stoppen +
   Wächter-Standby (`Remote.scheduledOff`, ohne Wächter nur Stopp), An = `Remote.wake()`. Schlaf-Timer 0/1/2/3/4/6 h
   (0 = aus, Standard 3; früher fest `SLEEP_MS`). Am echten Stick noch ungetestet.
-  **Ab App 71 außerdem** (Admin ⚙️): Stick-Auswahl als Auswahlliste `#devsel` (Zustand · Name · Liste) statt Reiter;
+  **Ab App 72** (Admin ⚙️): Stick-Auswahl als Auswahlliste `#devsel` (Zustand · Name · Liste) statt Reiter;
   „📱 Handy-Fernbedienung für diesen Fernseher“ (Status `cfg.phone` = Geräte-Link, nur im Haupt-Kanal) mit Teilen/
   Kopieren/QR und „♻ Neuer Code“ (Befehl `newcode` → `Remote.newHandyKey`); „⧉ Einstellungen übertragen“ auf alle /
   alle derselben Liste / einen Stick (setting autostart/home/normvol/ownlists + schedule; Wächter bleibt je Stick);
@@ -241,11 +241,11 @@ TKH bis 26.10.2027, ASW bis 04.10.2027, KMH bis 04.10.2027 (player_api für KMH/
 Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nicht (DNS NXDOMAIN).
 
 ## Stand / nächste Schritte (15.10.2026)
-- **15.10. abends**: Lokal committet, **noch nicht gepusht** (wird App 71): EPG-Ausbau, Admin (Wer schaut, Links
-  senden, Editor aus der Ferne, Zeitpläne), eigene Listen (Stufe A+B), Stick nur Senioren, Mini-Erklärung.
-  Editor jetzt **VERSION 29**. → Thomas: Editor neu starten (Start-Editor.command), „Veröffentlichen → Alle“
-  (erzeugt die Listen-Schlüssel, KMH-Programm frisch), dann pushen. Ungetestet am echten Stick: Inhaltstext in der
-  Info, Zeitplan, OK-lang-Menü für eigene Listen; VLC auf iPhone.
+- **15.10. ~11 Uhr**: Thomas hat gepusht → **App 71** (EPG-Ausbau, Admin: Wer schaut/Links/Editor aus der Ferne/
+  Zeitpläne, eigene Listen A+B, Stick nur Senioren, Mini-Erklärung). Editor **VERSION 29** läuft (10:52 neu
+  gestartet, Listen-Schlüssel angelegt). Lokal, noch nicht gepusht → **App 72**: Admin-Auswahlliste, Handy-Code je
+  Stick, Einstellungen übertragen, Erlaubnisse über den Wächter. Offen: „Veröffentlichen → Alle“ (KMH-Programm
+  noch vom 8.10.!). Ungetestet am echten Stick: Inhaltstext in der Info, Zeitplan, OK-lang-Menü; VLC auf iPhone.
 - **15.10. mittags**: Online **App 70** (Webansicht: Mac-Player-Seite mit IINA, iPhone-Kategorien-Menü, App-Link
   neben der Uhr, VLC wählbar). Token im Editor hat jetzt Scopes gist+repo+workflow → „Jetzt pushen“ im Editor geht.
   Lokal committet, **noch nicht gepusht**: EPG-Ausbau (Editor 27, App-Info mit Inhaltstext) → wird App 71.

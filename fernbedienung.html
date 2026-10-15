@@ -736,8 +736,8 @@
     }
     chk(c.overlay, 'Autostart erlaubt', 'Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)');
     chk(c.install, 'Updates erlaubt', 'Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)');
-    // Fehlende Erlaubnisse: Notlösung über den Wächter (ab App 71: „grant“)
-    if ((!c.overlay || !c.install) && d.ver >= 71) {
+    // Fehlende Erlaubnisse: Notlösung über den Wächter (ab App 72: „grant“)
+    if ((!c.overlay || !c.install) && d.ver >= 72) {
       var gb = document.createElement('button');
       gb.className = 'sw';
       gb.innerHTML = '<span>🔧 Fehlende Erlaubnisse über den Wächter setzen (Versuch)</span><b></b>';

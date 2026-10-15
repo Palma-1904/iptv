@@ -358,8 +358,11 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   5,4–6,5 s, Übersicht 0,007 s. Rest-Kosten: jede neue Liste ≈ 30 s Rechenzeit am Fire OS 6 (im Hintergrund).
 
 ## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
-- **Gewünscht (Thomas)**: Senderauswahl einer Playlist auf andere Zugänge/Playlists übernehmen (gleicher Sender im
-  eigenen Zugang, Gruppen/Reihenfolge/Namen; fehlende auflisten). Später evtl.: Nutzer löschen Sender in App/Webapp.
+- **📋 Senderauswahl übernehmen** (gebaut 15.10., Editor ⋯-Menü, `copySelection`): Gruppen/Reihenfolge/eigene Namen/
+  „★ Meine Sender“ einer anderen Playlist für Fernsehsender/Filme/Serien (ankreuzbar) – Schlüssel über
+  `/api/switch-source` auf den Zugang DIESER Playlist (gleiche Stream-Nummer, sonst Name), Fehlende werden aufgelistet;
+  ersetzt nur die gewählten Bereiche, vorher Sicherung. Test: ASW → TKH 625/625, alle mit TKH-Schlüssel.
+  Später evtl.: Nutzer löschen Sender in App/Webapp.
 - **15.10. abends – Kategorien nachladen versucht, verworfen**: Filme/Serien je Kategorie in `<liste>.g<k>.m3u`
   (Startdatei TKH 6,8 → 0,74 MB, Baum 5 → 1 MB) – im Browser gut, am Wohnzimmer-Stick (Fire OS 6) aber gefühlt nicht
   schneller und die Suche viel langsamer (lud alle 61 Kategorien einzeln). Code liegt im git stash. **Thomas'

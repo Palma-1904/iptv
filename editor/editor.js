@@ -199,6 +199,109 @@ async function switchPlSource(target) {
     + '. Jetzt „Veröffentlichen“.', !!res.missing.length);
 }
 
+// ---------- Senderauswahl einer anderen Playlist übernehmen ----------
+// Gruppen, Reihenfolge, eigene Namen und „★ Meine Sender“ einer anderen Playlist hierher – jeder Eintrag mit der
+// Adresse des Zugangs DIESER Playlist (gleiche Stream-Nummer beim selben Anbieter, sonst gleicher Name;
+// /api/switch-source). Zugänge werden nie vermischt: was es im eigenen Zugang nicht gibt, wird nur aufgelistet.
+const itemType = (i) => ((i.variants && i.variants[0] ? i.variants[0].key : i.key).split(':')[1] === 'live' ? 'live'
+  : (i.variants && i.variants[0] ? i.variants[0].key : i.key).split(':')[1] === 'series' ? 'series' : 'movie');
+
+function copySelection() {
+  const pl = playlist();
+  if (!pl) return toast('Bitte eine Playlist wählen.', true);
+  if (!pl.source) return toast('Diese Playlist hat noch keinen Zugang.', true);
+  const others = state.playlists.filter((p) => p.id !== pl.id && p.groups.length);
+  if (!others.length) return toast('Es gibt keine andere Playlist mit Inhalt.', true);
+  const dlg = $('#dlg-publish');
+  const body = $('#publish-body');
+  $('#publish-title').textContent = `Senderauswahl nach „${pl.name}“ übernehmen`;
+  body.textContent = '';
+  body.appendChild(el('p', '', 'Von welcher Playlist?'));
+  const sel = el('select', '');
+  others.forEach((p) => {
+    const c = playlistSize(p);
+    const o = el('option', '', `${p.name} – ${c.live} Sender · ${c.movie} Filme · ${c.series} Serien`);
+    o.value = p.id;
+    sel.appendChild(o);
+  });
+  body.appendChild(sel);
+  body.appendChild(el('p', '', 'Was übernehmen?'));
+  const box = el('div', 'actions');
+  const cb = {};
+  [['live', 'Fernsehsender', true], ['movie', 'Filme', false], ['series', 'Serien', false]].forEach(([k, label, on]) => {
+    const l = el('label', '');
+    const c = el('input', '');
+    c.type = 'checkbox';
+    c.checked = on;
+    cb[k] = c;
+    l.append(c, document.createTextNode(' ' + label));
+    box.appendChild(l);
+  });
+  body.appendChild(box);
+  body.appendChild(el('p', 'hint', `Die gewählten Bereiche in „${pl.name}“ werden ersetzt (Gruppen, Reihenfolge und eigene Namen wie in der anderen Playlist); `
+    + 'alles andere bleibt. Vorher wird eine Sicherung angelegt. Die Sender kommen aus dem Zugang dieser Playlist – '
+    + 'was es dort nicht gibt, wird danach aufgelistet. Die Geräte sehen es erst nach „Veröffentlichen“.'));
+  const go = el('button', 'primary', 'Übernehmen');
+  go.type = 'button';
+  go.onclick = async () => {
+    const src = state.playlists.find((p) => p.id === sel.value);
+    const types = Object.keys(cb).filter((k) => cb[k].checked);
+    if (!src || !types.length) return toast('Bitte eine Playlist und mindestens einen Bereich wählen.', true);
+    const items = src.groups.flatMap((g) => g.items).filter((i) => types.includes(itemType(i)));
+    const keys = [];
+    items.forEach((i) => { keys.push(i.key); (i.variants || []).forEach((v) => keys.push(v.key)); });
+    let res;
+    try {
+      res = await busy(() => api('/api/switch-source', { source: pl.source, keys }));
+      await api('/api/backup', { why: 'vor-uebernehmen-' + pl.name });
+    } catch (e) { return toast(e.message, true); }
+    const own = (k) => (k.startsWith(pl.source + ':') ? k : res.mapping[k] || null);   // gleicher Zugang: bleibt
+    const missing = [];
+    const name = (i) => i.name || i.label || i.key;
+    const newGroups = [];
+    src.groups.forEach((g) => {
+      const out = [];
+      g.items.filter((i) => types.includes(itemType(i))).forEach((i) => {
+        const copy = JSON.parse(JSON.stringify(i));
+        if (copy.variants && copy.variants.length) {
+          copy.variants = copy.variants.map((v) => ({ ...v, key: own(v.key) })).filter((v) => v.key);
+          if (!copy.variants.length) { missing.push(name(i)); return; }
+          copy.key = own(copy.key) || copy.variants[0].key;
+        } else {
+          copy.key = own(i.key);
+          if (!copy.key) { missing.push(name(i)); return; }
+        }
+        out.push(copy);
+      });
+      if (out.length) newGroups.push({ id: 'g' + uid(), name: g.name, items: out });
+    });
+    // bisherige Einträge dieser Bereiche entfernen, leere Gruppen weg; übernommene Gruppen kommen nach oben
+    pl.groups.forEach((g) => { g.items = g.items.filter((i) => !types.includes(itemType(i))); });
+    pl.groups = newGroups.concat(pl.groups.filter((g) => g.items.length));
+    newGroups.forEach((g) => ui.collapsed.add(g.id));
+    saveCollapsed();
+    if (types.includes('live')) {
+      pl.myChannels = (src.myChannels || []).map(own).filter(Boolean);
+    }
+    ui.targetGroupId = null;
+    save();
+    renderPlaylist();
+    renderChannels();
+    const n = newGroups.reduce((a, g) => a + g.items.length, 0);
+    body.textContent = '';
+    body.appendChild(el('p', '', `✓ ${n.toLocaleString('de-DE')} Einträge in ${newGroups.length} Gruppen aus „${src.name}“ übernommen.`));
+    if (missing.length) {
+      body.appendChild(el('p', 'warn', `${missing.length} gibt es im Zugang von „${pl.name}“ nicht und wurden weggelassen:`));
+      body.appendChild(el('p', 'hint', missing.slice(0, 60).join(' · ') + (missing.length > 60 ? ` … und ${missing.length - 60} weitere` : '')));
+    }
+    body.appendChild(el('p', 'hint', 'Zurück geht es über ⋯ → „Frühere Fassung wiederherstellen“. Zum Übernehmen auf die Geräte: „Veröffentlichen“.'));
+  };
+  const row = el('div', 'actions');
+  row.appendChild(go);
+  body.appendChild(row);
+  if (!dlg.open) dlg.showModal();
+}
+
 // Alle Schlüssel einer Quelle, die in Playlists vorkommen (auch Sprachfassungen)
 function sourceKeys(sid) {
   const keys = [];
@@ -2611,6 +2714,7 @@ function bind() {
   // Rechte Seite einmal komplett leeren (z. B. um eine Liste klein neu aufzubauen); Zugang, Name, Einstellungen bleiben.
   // Rückweg: ⋯ → „Frühere Fassung wiederherstellen“ (tägliche Sicherung) – erst nach dem nächsten Veröffentlichen
   // sehen die Geräte die leere Liste.
+  $('#pl-copysel').onclick = () => copySelection();
   $('#pl-clear').onclick = async () => {
     const pl = playlist();
     if (!pl) return toast('Bitte eine Playlist wählen.', true);

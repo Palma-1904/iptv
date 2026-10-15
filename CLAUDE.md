@@ -373,7 +373,9 @@ Thomas' vier Bereiche: 1 App (Stick) · 2 Webansicht iPhone/iPad/Mac (**erledigt
   Kurzlebig → blockiert das Auswerfen der SSD nicht. macOS fragt evtl. einmal nach Zugriff auf Wechseldatenträger.
   Getestet 15.10.: Probelauf echte Daten, Veröffentlichen in Test-Kopie, Übergabe an (Schein-)Editor frei/beschäftigt.
 
-## Warnungen aufs iPhone (Web-Push, ab 15.10.; Editor 31)
+## Warnungen aufs iPhone (Web-Push, ab 15.10.; Editor 31) – **getestet 15.10.: Banner + rote 1 kommen an**
+- Thomas' iPhone (iOS 18.7) ist angemeldet. Automatik läuft auf dem MacBook mit Festplattenvollzugriff für Python
+  (seit 15.10. 14:52). Offene Warnung: Anita offline (seit 10.10.).
 - Nur die **Admin-Fernbedienung** (Haupt-Link) als Home-Bildschirm-App (iOS 16.4+): Karte „🔔 Benachrichtigungen“
   → Einschalten (Service Worker `sw-admin.js`, Scope `./fernbedienung`, kein fetch-Handler; Manifest
   `fernbedienung.webmanifest`; beides in deploy.yml mitkopiert). Anmeldung `<kanal>/push/subs/<id>` = {endpoint}.

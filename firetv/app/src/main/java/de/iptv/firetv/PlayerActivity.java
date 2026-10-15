@@ -93,6 +93,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         String heading;   // Titel in der Info (z. B. „Film (Deutsch 4K)“), sonst name
         String[] alts = new String[0];   // Ersatz-Fassungen desselben Senders (vom Editor)
         int altIdx;                      // 0 = Hauptadresse, sonst alts[altIdx-1]
+        int altTried;                    // seit dem Einschalten schon gewechselt (jede Fassung nur einmal)
 
         String playUrl() {
             return altIdx > 0 && altIdx <= alts.length ? alts[altIdx - 1] : url;
@@ -303,6 +304,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 lastProgress = System.currentTimeMillis();
                 retries = 0;
                 failed = false;
+                rememberAlt();
                 reportPlaying();
                 spinner.setVisibility(View.GONE);
                 status.setVisibility(View.GONE);
@@ -455,6 +457,10 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 ctxItems.clear();
                 for (Node c : ctx.children) if (c.item != null) ctxItems.add(c.item);
                 index = Math.max(0, ctxItems.indexOf(leaf.item));
+                if (playing != leaf.item && playing.live()) {   // laufende Fassung im neuen Baum weiterführen
+                    leaf.item.altIdx = altIndex(leaf.item, Memory.norm(playing.playUrl()));
+                    leaf.item.altTried = playing.altTried;
+                }
             }
             if (idle()) browseStart = rootNode;
             if (listOpen()) {
@@ -705,6 +711,10 @@ public class PlayerActivity extends Activity implements Remote.Target {
         pendingSeek = -1;
         sleeping = false;
         mem.addRecent(it.url);
+        if (it.live()) {                  // zuletzt funktionierende Fassung zuerst (spart den Umweg über die gestörte)
+            it.altIdx = altIndex(it, mem.goodAlt(it.url));
+            it.altTried = 0;
+        }
         for (Node a = ctx; a != null; a = a.parent) {
             if (a.lazyIds != null) { mem.setSeriesOf(it.url, TextUtils.join(",", a.lazyIds)); break; }
         }
@@ -1041,9 +1051,26 @@ public class PlayerActivity extends Activity implements Remote.Target {
         }
     }
 
+    /** Position einer Adresse in den Fassungen eines Eintrags (0 = Hauptadresse oder unbekannt). */
+    private static int altIndex(Item it, String norm) {
+        if (norm == null) return 0;
+        for (int i = 0; i < it.alts.length; i++) if (norm.equals(Memory.norm(it.alts[i]))) return i + 1;
+        return 0;
+    }
+
+    /** Läuft: merken, welche Fassung dieses Senders funktioniert (nächstes Mal gleich diese). */
+    private void rememberAlt() {
+        if (idle() || pendingIndex >= 0) return;
+        Item it = items().get(index);
+        if (!it.live() || it.alts.length == 0) return;
+        mem.setGoodAlt(it.url, it.altIdx > 0 && it.altIdx <= it.alts.length ? it.alts[it.altIdx - 1] : null);
+    }
+
     private void onError() {
         Item it = items().get(index);
-        if (retries < 2) {
+        // Gibt es noch eine andere Fassung, nur einmal neu versuchen und dann wechseln (schneller wieder Bild)
+        boolean moreAlts = it.live() && it.altTried < it.alts.length;
+        if (retries < (moreAlts ? 1 : 2)) {
             retries++;
             showStatus("Verbindung wird erneut aufgebaut …");
             spinner.setVisibility(View.VISIBLE);
@@ -1057,8 +1084,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
             }, 2500);
             return;
         }
-        if (it.live() && it.altIdx < it.alts.length) {
-            it.altIdx++;                          // Sender gestört: andere Fassung desselben Senders
+        if (moreAlts) {
+            it.altTried++;                        // Sender gestört: nächste Fassung desselben Senders (reihum)
+            it.altIdx = (it.altIdx + 1) % (it.alts.length + 1);
             retries = 0;
             Diag.altSwitch();
             showStatus("„" + it.name + "“ ist gestört – es wird eine andere Fassung versucht …");

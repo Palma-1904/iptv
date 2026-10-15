@@ -38,6 +38,7 @@ WEBAPP = os.path.dirname(HERE)                 # Webapp-Ordner (eine Ebene über
 LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per .gitignore ausgeschlossen)
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
+ALT_MAX = 3   # Ersatz-Fassungen je Live-Sender (x-alt)
 VERSION = 32  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html', '/stick.html': 'stick.html'}
@@ -1368,6 +1369,7 @@ def build_playlist(pl, state, warnings):
         lines.append(f'http://series.invalid/{sid_}')   # Platzhalter (wird nie abgespielt)
         return 1
     # Ersatz-Fassungen für Live-Sender (x-alt, nur derselbe Zugang): die App wechselt bei einem Fehler darauf.
+    # Bis zu ALT_MAX je Sender; der Stick merkt sich, welche zuletzt lief, und startet gleich mit ihr.
     # Bei der letzten Prüfung als defekt erkannte Fassungen nicht nehmen, gefundenen Ersatz zuerst.
     checked = read_json(os.path.join(DATA, f'check_{pl.get("id")}.json'), {}).get('results', {})
     dead = {k for k, v in checked.items() if not v.get('ok') and not v.get('busy')}
@@ -1379,7 +1381,7 @@ def build_playlist(pl, state, warnings):
         found = (checked.get(item['key']) or {}).get('alt') or {}
         alts = [a for a in find_alternatives(ch, indexes[sid], set()) if a['key'] not in dead]
         alts.sort(key=lambda a: a['key'] != found.get('key'))
-        return [a['url'] for a in alts[:2] if a.get('url') and a['url'] != ch['url']]
+        return [a['url'] for a in alts if a.get('url') and a['url'] != ch['url']][:ALT_MAX]
 
     lines = ['#EXTM3U']
     epg_ids = {}  # source_id -> set(tvgId)

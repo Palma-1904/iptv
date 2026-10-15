@@ -159,6 +159,35 @@ final class Memory {
         }
     }
 
+    // ---------- Funktionierende Fassung je Live-Sender (Ersatz-Fassungen x-alt) ----------
+    private JSONObject goodAlt;
+
+    /** Zuletzt funktionierende Ersatz-Fassung eines Senders (norm-Adresse) oder null = Hauptadresse. */
+    String goodAlt(String url) {
+        if (goodAlt == null) {
+            try {
+                goodAlt = new JSONObject(prefs.getString("goodAlt", "{}"));
+            } catch (Exception e) {
+                goodAlt = new JSONObject();
+            }
+        }
+        String s = goodAlt.optString(norm(url), "");
+        return s.isEmpty() ? null : s;
+    }
+
+    void setGoodAlt(String url, String alt) {
+        String now = goodAlt(url), want = alt == null ? null : norm(alt);
+        if (now == null ? want == null : now.equals(want)) return;   // nur bei Änderung schreiben
+        try {
+            if (want == null) goodAlt.remove(norm(url));
+            else goodAlt.put(norm(url), want);
+            if (goodAlt.length() > 300) goodAlt = new JSONObject();   // klein halten (wird von selbst neu gelernt)
+            prefs.edit().putString("goodAlt", goodAlt.toString()).apply();
+        } catch (Exception ignored) {
+            // egal
+        }
+    }
+
     // ---------- Zuletzt gesehen ----------
 
     List<String> recent() {

@@ -117,7 +117,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
 - **Schnellstart** (`js/m3u.js`): letzte Liste + EPG in IndexedDB (`iptv-schnellstart`, ein Eintrag je eingerichteter
   Adresse); Start sofort daraus, nach 1,5 s `nativeRefresh` (neue Liste im Hintergrund, Baum an die App).
 - **Weitere App-Funktionen (App 57)**: Hänger-Wächter (15 s ohne Fortschritt → Sender neu, 3× in 3 min → wie Fehler),
-  Ersatz-Fassungen `x-alt` (Editor schreibt bis zu 2 Adressen je Live-Sender; App wechselt bei Fehler), gleichmäßige
+  Ersatz-Fassungen `x-alt` (Editor schreibt bis zu `ALT_MAX` = 3 Adressen je Live-Sender, ab App 81; gesucht im
+  GANZEN Katalog des eigenen Zugangs per `find_alternatives` – auch Gruppen, die nicht in der Playlist sind, z. B.
+  „DE| SKY GO SPORT“, „WORLD LIVE SPORTS“; bei der Prüfung tote Fassungen nicht. App wechselt bei Fehler reihum,
+  ab App 81 mit nur 1 statt 2 Neuversuchen, solange noch eine Fassung übrig ist, und merkt sich die zuletzt
+  laufende Fassung je Sender (`Memory.goodAlt`, Prefs `goodAlt`) → nächstes Einschalten gleich damit), gleichmäßige
   Lautstärke (`normvol`, Einstellung/Fernwartung), Erinnerungen (⏯ in der Liste auf einem Sender = an nächste Sendung;
   `Reminders.java`), Zustandsbericht (`Diag.java`: WLAN-RSSI, Hänger/Fehler/Ersatz heute → `diag` im Status),
   nächtliches Auffrischen 3–5 Uhr (Webapp neu laden + Updates, nicht wenn jemand schaut; `quietUntil` verhindert
@@ -313,6 +317,9 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 - Jeder Push = neue App-Version (auch bei reinen Editor-/Notiz-Änderungen) → Änderungen gesammelt pushen.
 
 ## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
+- **Ersatz-Fassungen verbessert (lokal, wird App 81)**: 3 statt 2 je Sender, Stick merkt sich die funktionierende,
+  wechselt schneller. Doppelte darf Thomas ruhig entfernen – Ersatz kommt aus dem ganzen Zugangs-Katalog.
+  Stand der Listen: ASW 312/366 Sender mit 3 Ersatz, KMH 395/500, TKH 596/903. Am echten Stick ungetestet.
 - **15.10. abends – TKH zu groß**: Thomas hat per „Alle sichtbaren übernehmen“ (nur Deutsch + MULTI) Filme und
   Serien in TKH übernommen → Test-Veröffentlichen: 52 MB M3U, 160 275 Einträge (Serien 46,8 MB = 141 423 Folgen
   aus 5 194 Serien; |DE| SERIEN allein 15,7 MB). Zu groß für Gist-Upload und Sticks. Entscheidung offen:

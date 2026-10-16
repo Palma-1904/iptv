@@ -400,6 +400,22 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   KOMPAKT/KOMPLETT“. Schalter in Admin ⚙️ (+ „Einstellungen übertragen“) und Editor-Fernwartung; SetupReceiver-Extras
   `kompakt`/`kompaktSelbst`. Standard bei allen Sticks: komplett (bis Thomas umstellt). Am Stick ungetestet.
 
+## Stand 16.10. nachmittags – hier weitermachen
+- **Online App 94, alles gepusht**, Editor 36 läuft. Thomas hat um ~14:15 „Veröffentlichen → Alle“ gemacht: Webseite
+  zeigt aufgeräumte Namen, Live TV 329 → 261 (68 Event-Sender ohne Spiel weg, DAZN PPV 99 → 32), „Nur TV“ = nur Live.
+- **Offen, wartet auf Thomas' OK**:
+  1. **Live-Gruppen neu ordnen (Vorschlag A)** für ASW/TKH/ERO (gleiche Gruppen; KMH anders, nur auf Wunsch):
+     Allgemein = DE| ALLGEMEIN · Unterhaltung = UNTERHALTUNG + WOW ENTERTAINMENT · Kinder · Sport = SPORTS + WOW SPORT +
+     DAZN EXCLUSIVE + SKY GO SPORT · Bundesliga · Live-Events = DAZN PPV + DYN NETWORK + RTL+ SPORT PPV (ganz unten).
+     Filme/Serien unverändert. Vorher `POST /api/backup`, Thomas lädt den Editor-Tab danach neu (sonst überschreibt
+     der offene Tab beim nächsten Speichern). Claude bietet an, es selbst zu machen.
+  2. **„★ Meine Sender“ füllen** (überall noch leer) – Vorschlag: Das Erste, ZDF, RTL, SAT.1, ProSieben, VOX, kabel eins,
+     RTLZWEI, n-tv, WDR, NDR, 3sat, arte, ZDFneo, tagesschau24. Senioren-Stick startet darin, ▲▼ nur durch diese.
+  3. **Idee: Gruppen für „kompakt“ wählen** (Häkchen je Gruppe „in kompakt“, z. B. nur Meine Sender/Allgemein/Kinder/
+     Unterhaltung ≈ 130 statt 261) – noch nicht gebaut, Thomas fragen.
+  4. Sticks auf App 94 bringen, dann Anita/Max in Admin ⚙️ „Kompakt“ an (Standard überall noch komplett).
+- Neue Playlist „deutsch“ in data/out (12:32) – Herkunft/Zweck bei Thomas erfragen.
+
 ## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
 - **📋 Senderauswahl übernehmen** (gebaut 15.10., Editor ⋯-Menü, `copySelection`): Gruppen/Reihenfolge/eigene Namen/
   „★ Meine Sender“ einer anderen Playlist für Fernsehsender/Filme/Serien (ankreuzbar) – Schlüssel über

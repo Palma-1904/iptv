@@ -408,13 +408,13 @@ def source_info(src):
     }
 
 
-def measure_stream(url, seconds=4.0, max_bytes=6 * 1024 * 1024):
+def measure_stream(url, seconds=4.0, max_bytes=6 * 1024 * 1024, timeout=15):
     """Startzeit (bis zu den ersten Videodaten) und Datenrate eines Streams messen."""
     t0 = time.time()
     try:
         if url.split('?')[0].lower().endswith('.m3u8'):
             def get_playlist(u):
-                with http(u, timeout=15) as r:
+                with http(u, timeout=timeout) as r:
                     return r.read().decode('utf-8', 'replace'), r.geturl()
             text, final = get_playlist(url)
             uris = [l.strip() for l in text.splitlines() if l.strip() and not l.startswith('#')]
@@ -425,7 +425,7 @@ def measure_stream(url, seconds=4.0, max_bytes=6 * 1024 * 1024):
                 return {'ok': False, 'error': 'leere Playlist'}
             seg = urllib.parse.urljoin(final, uris[-1])
             t1 = time.time()
-            with http(seg, timeout=15) as r:
+            with http(seg, timeout=timeout) as r:
                 first = r.read(64 * 1024)
                 start_ms = int((time.time() - t0) * 1000)
                 got = len(first)
@@ -436,7 +436,7 @@ def measure_stream(url, seconds=4.0, max_bytes=6 * 1024 * 1024):
                     got += len(chunk)
             dur = max(time.time() - t1, 0.05)
         else:
-            with http(url, timeout=15) as r:                   # MPEG-TS: läuft in Echtzeit
+            with http(url, timeout=timeout) as r:              # MPEG-TS: läuft in Echtzeit
                 first = r.read(64 * 1024)
                 start_ms = int((time.time() - t0) * 1000)
                 t1, got = time.time(), len(first)
@@ -694,14 +694,17 @@ def check_playlist(pl_id, keys=None, force=False, use=None):
     names = {a: srcs[a].get('name') or a for a in accounts}
 
     def test(url, label, foreign):
-        r = measure_stream(url, seconds=0.5, max_bytes=16 * 1024)
+        # Wartezeit: ein laufender Sender liefert in ~1 s Daten; Event-/PPV-Sender ohne Event antworten oft gar nicht
+        # (vorher jedes Mal 15 s) → Events 5 s, sonst 8 s
+        tmo = 5 if EVENT_NAME.search(label or '') else 8
+        r = measure_stream(url, seconds=0.5, max_bytes=16 * 1024, timeout=tmo)
         tries = 0
         # Verbindungslimit: der Anbieter gibt die letzte Verbindung erst nach ein paar Sekunden frei
         # (fremder Zugang: nur einmal warten – bleibt er „belegt“, schaut dort jemand)
         while not r.get('ok') and busy.search(r.get('error') or '') and tries < (1 if foreign else 6) and not JOB.get('cancel'):
             tries += 1
             time.sleep(3)
-            r = measure_stream(url, seconds=0.5, max_bytes=16 * 1024)
+            r = measure_stream(url, seconds=0.5, max_bytes=16 * 1024, timeout=tmo)
         time.sleep(0.2)
         return r
 

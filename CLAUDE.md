@@ -80,7 +80,9 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   Zugänge nutzen“ mit Häkchen je Zugang (gemerkt `editor-check-use`). Gewählt = `/api/check {accounts}` →
   `check_playlist(use=…)`: Sticks, die auf diesen Zugängen spielen, bekommen `stop` (danach `reload`, Ergebnis
   `paused`), kein automatisches Freigeben, „belegt“ wird wie beim eigenen Zugang abgewartet. Getestet 16.10. im
-  Test-Editor (gespielte Streams): 3 Zugänge, Test-Stick angehalten und wieder gestartet, 329/329. Nachts (Einstellung
+  Test-Editor (gespielte Streams): 3 Zugänge, Test-Stick angehalten und wieder gestartet, 329/329.
+  Wartezeit je Sender beim Prüfen: Event-/PPV-Sender 5 s, sonst 8 s (vorher immer 15 s – DAZN-PPV „NO EVENT
+  STREAMING“ antworten gar nicht und bremsten die Prüfung auf ~11 s je Sender). Nachts (Einstellung
   „automatisch“): erst alle Playlists prüfen, dann veröffentlichen.
 - **Player-Umschalten** (`PlayerActivity`): libVLC `stop()` blockiert, wenn der Anbieter die Verbindung nicht sauber
   schließt → früher ANR. Jetzt: jeder Start bekommt einen frischen `MediaPlayer` (`newPlayer`), der alte wird im

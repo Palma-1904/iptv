@@ -66,8 +66,13 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   bietet „Ersetzen“ / „Alle ersetzen“ an (Platz, Gruppe, eigener Name bleiben). „Doppelte“ zeigt ✓/✕ der letzten
   Prüfung, behält die beste funktionierende Fassung und kann nur die doppelten Sender prüfen (`/api/check` mit `keys`,
   Ergebnis wird zusammengeführt). Test: Test-Editor mit Kopie der Daten (DATA/STATE_FILE umbiegen), nie echte state.json.
-  Schnell: nur 16 KB anspielen, bei „belegt“ 3 s warten (max. 6×). **Nur über den eigenen Zugang der Playlist**
-  (Thomas: Zugänge TKH/ASW/KMH nie vermischen; Playlist X nutzt nur Zugang X). Nachts (Einstellung
+  Schnell: nur 16 KB anspielen, bei „belegt“ 3 s warten (max. 6×). Playlists nutzen nur ihren eigenen Zugang
+  (Thomas: Zugänge TKH/ASW/KMH nie vermischen; Playlist X nutzt nur Zugang X). **Ausnahme Prüfen (Thomas 16.10.,
+  Editor 34)**: alle gerade freien Zugänge helfen mit (gemeinsame Warteschlange, gleicher Sender = gleiche Stream-
+  Nummer + gleicher Name im anderen Katalog; Ergebnis gilt für die eigenen Adressen, Ersatz nur auf demselben Zugang).
+  Schaut auf einem Zugang jemand (Stick meldet playing/paused für eine Liste dieses Zugangs, `watched`, alle 8 s
+  aus Firebase; fremder Zugang bleibt nach 1× Warten „belegt“), wird er sofort freigegeben (`released`), der Sender
+  geht an einen anderen Zugang. Test 16.10. mit gespielten Antworten: 80 Sender → je 20 auf TKH/ASW/KMH/ERO. Nachts (Einstellung
   „automatisch“): erst alle Playlists prüfen, dann veröffentlichen.
 - **Player-Umschalten** (`PlayerActivity`): libVLC `stop()` blockiert, wenn der Anbieter die Verbindung nicht sauber
   schließt → früher ANR. Jetzt: jeder Start bekommt einen frischen `MediaPlayer` (`newPlayer`), der alte wird im

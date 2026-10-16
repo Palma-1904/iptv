@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 33; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 34; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -1952,6 +1952,10 @@ function showCheckResult(pl, res, body) {
   const dead = Object.entries(c.results || {}).filter(([k, v]) => !v.ok && !v.event && !v.busy && inPl.has(k));
   const busyN = Object.entries(c.results || {}).filter(([k, v]) => v.busy && inPl.has(k)).length;
   if (busyN) body.appendChild(el('p', 'hint', `${busyN} Sender waren nicht prüfbar (Verbindung belegt) – sie gelten nicht als defekt.`));
+  if (res.accounts > 1) body.appendChild(el('p', 'hint', `Geprüft über ${res.accounts} Zugänge gleichzeitig (freie Zugänge helfen nur beim Prüfen mit, die Playlists bleiben getrennt).`
+    + (res.released && res.released.length ? ` Freigegeben, weil dort jemand eingeschaltet hat: ${res.released.join(', ')}.` : '')));
+  else if (res.released && res.released.length) body.appendChild(el('p', 'hint', `Freigegeben, weil dort jemand eingeschaltet hat: ${res.released.join(', ')}.`));
+  if (res.checked < res.total && !res.cancelled) body.appendChild(el('p', 'hint', 'Nicht alle Sender konnten geprüft werden (Zugang belegt) – später „Sender prüfen → Nur neue und gestörte“.'));
   body.appendChild(el('p', '', `${res.checked} von ${res.total} Sendern geprüft${res.cancelled ? ' (abgebrochen)' : ''}: `
     + (dead.length ? `${dead.length} ohne Bild` + (res.withAlt ? `, für ${res.withAlt} gibt es eine funktionierende andere Fassung.` : '.') : 'alle laufen.')
     + (res.events ? ` ${res.events} Event-/PPV-Kanäle senden gerade nichts (normal außerhalb von Events).` : '')));

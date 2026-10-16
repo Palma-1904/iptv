@@ -39,7 +39,7 @@ LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per 
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
 ALT_MAX = 3   # Ersatz-Fassungen je Live-Sender (x-alt)
-VERSION = 33  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 34  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html', '/stick.html': 'stick.html'}
 
@@ -597,21 +597,43 @@ def check_playlist(pl_id, keys=None, force=False):
     if not items:
         raise UserError('In dieser Playlist gibt es keine Live-Sender zum Prüfen.')
 
-    # Nur der eigene Zugang der Playlist (Zugänge werden nicht vermischt); ist er belegt, wird nicht geprüft
+    # Prüfen über den eigenen Zugang UND alle gerade freien anderen Zugänge (Thomas 16.10.: nur fürs Prüfen – die
+    # Playlists bleiben getrennt, Ergebnisse gelten für die eigenen Adressen). Ein fremder Zugang wird sofort
+    # freigegeben, sobald dort jemand schaut (vor jedem Sender nachgefragt, „belegt“ = sofort aufhören).
     own = {x[3] for x in items}
-    accounts = []
-    for src in state['sources']:
-        if src['id'] not in own or src.get('type') != 'xtream':
-            continue
+    srcs = {src['id']: src for src in state['sources'] if src.get('type') == 'xtream'}
+
+    def is_free(acc):
         try:
-            info = source_info(src)
+            info = source_info(srcs[acc])
         except Exception:
-            continue
-        mx, act = info.get('maxConnections') or 1, info.get('activeConnections') or 0
-        if act < mx:
-            accounts.append(src['id'])
+            return False
+        return (info.get('activeConnections') or 0) < (info.get('maxConnections') or 1)
+
+    # Wer schaut gerade? Sticks melden über die Fernwartung sofort, wenn sie abspielen (Liste → Zugang der Playlist).
+    # Das ist zuverlässiger als die Verbindungszahl des Anbieters, die eine eben beendete Prüf-Verbindung noch ein
+    # paar Sekunden mitzählt. Geräte ohne Meldung (Webseite am iPhone) erkennt die Prüfung am „belegt“ des Anbieters.
+    list_src = {slugify(p.get('slug') or p.get('name') or p['id']): p.get('source') for p in state['playlists']}
+    seen = {'t': 0, 'busy': set()}
+
+    def watched(acc):
+        topic = load_settings().get('remoteTopic')
+        if not topic:
+            return False
+        if time.time() - seen['t'] > 8:
+            seen['t'] = time.time()
+            try:
+                now = time.time()
+                seen['busy'] = {list_src.get(d.get('list')) for d in fb_devices(topic).values()
+                                if d.get('state') in ('playing', 'paused') and d.get('screen') is not False
+                                and now - (d.get('t') or 0) < 900}
+            except Exception:
+                pass
+        return acc in seen['busy']
+
+    accounts = [acc for acc in sorted(srcs, key=lambda a: a not in own) if not watched(acc) and is_free(acc)]
     stopped = False
-    if not accounts and force:
+    if not any(a in own for a in accounts) and force:
         # Erzwungen: Geräte mit dieser Liste per Fernwartung anhalten, bis der Zugang frei ist (max. 40 s)
         slug = slugify(pl.get('slug') or pl.get('name') or pl['id'])
         try:
@@ -622,16 +644,9 @@ def check_playlist(pl_id, keys=None, force=False):
         for _ in range(20):
             job_progress('Geräte werden angehalten, warte auf freien Zugang …')
             time.sleep(2)
-            try:
-                src = next(x for x in state['sources'] if x['id'] in own)
-                info = source_info(src)
-                if (info.get('activeConnections') or 0) < (info.get('maxConnections') or 1):
-                    break
-            except Exception:
+            if is_free(next(iter(own))):
                 break
-        accounts = [x for x in own]
-    if not accounts:
-        raise UserError('BELEGT: Der Zugang dieser Playlist ist gerade belegt (es wird ferngesehen).')
+        accounts = list(own) + [a for a in accounts if a not in own]
 
     def url_on(acc, ch):
         """Gleicher Sender über einen anderen Zugang (gleiche Nummer, gleicher Name) – sonst None."""
@@ -642,43 +657,67 @@ def check_playlist(pl_id, keys=None, force=False):
             return other['url']
         return None
 
-    # Aufteilen: jeder Sender auf den Zugang mit der kürzesten Warteschlange, der ihn hat
-    queues = {acc: [] for acc in accounts}
-    for x in items:
-        cands = [acc for acc in accounts if url_on(acc, x[2])]
-        if not cands:
-            continue                                   # eigener Zugang belegt und sonst nirgends vorhanden
-        acc = min(cands, key=lambda c: (len(queues[c]), c not in own))
-        queues[acc].append(x)
-    todo = sum(len(q) for q in queues.values())
+    # Nur Zugänge, die überhaupt Sender dieser Playlist haben; jeder Sender kommt in eine gemeinsame Warteschlange,
+    # aus der sich jeder Zugang den nächsten nimmt, den er abspielen kann
+    accounts = [a for a in accounts if a in own or any(url_on(a, x[2]) for x in items[:200])]
+    pending = [x for x in items if any(url_on(a, x[2]) for a in accounts)]
+    todo = len(pending)
     if not todo:
-        raise UserError('Der Zugang dieser Playlist ist gerade belegt (es wird ferngesehen). Bitte später prüfen.')
+        raise UserError('BELEGT: Der Zugang dieser Playlist ist gerade belegt (es wird ferngesehen).')
     busy = re.compile(r'HTTP (403|429|458|503|509)\b')
     results, lock = {}, threading.Lock()
     progress = {'n': 0}
+    active = set(accounts)                     # Zugänge, die gerade mitprüfen
+    released = []                              # fremde Zugänge, die wegen Fernsehen freigegeben wurden
+    names = {a: srcs[a].get('name') or a for a in accounts}
 
-    def test(url, label):
+    def test(url, label, foreign):
         r = measure_stream(url, seconds=0.5, max_bytes=16 * 1024)
         tries = 0
         # Verbindungslimit: der Anbieter gibt die letzte Verbindung erst nach ein paar Sekunden frei
-        while not r.get('ok') and busy.search(r.get('error') or '') and tries < 6 and not JOB.get('cancel'):
+        # (fremder Zugang: nur einmal warten – bleibt er „belegt“, schaut dort jemand)
+        while not r.get('ok') and busy.search(r.get('error') or '') and tries < (1 if foreign else 6) and not JOB.get('cancel'):
             tries += 1
             time.sleep(3)
             r = measure_stream(url, seconds=0.5, max_bytes=16 * 1024)
         time.sleep(0.2)
         return r
 
+    def take(acc):
+        with lock:
+            for i, x in enumerate(pending):
+                if url_on(acc, x[2]):
+                    return pending.pop(i)
+        return None
+
+    def release(acc, x):
+        with lock:
+            if x is not None:
+                pending.insert(0, x)           # Sender bleibt für die anderen Zugänge
+            active.discard(acc)
+            released.append(names[acc])
+
     def worker(acc):
-        for key, name, ch, sid in queues[acc]:
-            if JOB.get('cancel'):
+        foreign = acc not in own
+        while not JOB.get('cancel'):
+            x = take(acc)
+            if x is None:
+                return
+            key, name, ch, sid = x
+            if watched(acc):                   # dort hat gerade jemand eingeschaltet → sofort freigeben
+                release(acc, x)
                 return
             with lock:
-                job_progress(f'Prüfe {name}' + (f' ({len(accounts)} Zugänge parallel)' if len(accounts) > 1 else ''),
-                             progress['n'], todo)
-            r = test(url_on(acc, ch), name)
+                job_progress(f'Prüfe {name}' + (f' ({len(active)} Zugänge parallel: '
+                                                 + ', '.join(names[a] for a in accounts if a in active) + ')'
+                                                 if len(active) > 1 else ''), progress['n'], todo)
+            r = test(url_on(acc, ch), name, foreign)
             res = {'ok': bool(r.get('ok')), 'err': (r.get('error') or '')[:120],
                    'event': bool(EVENT_NAME.search(name)), 'name': name}
             if not res['ok'] and busy.search(res['err']):
+                if foreign:                    # fremder Zugang belegt → freigeben, Sender prüft ein anderer
+                    release(acc, x)
+                    return
                 res['busy'] = True                   # Verbindung belegt: nicht prüfbar, nicht „defekt“
             if not res['ok'] and not res['event'] and not res.get('busy'):
                 # Ersatz: andere Fassungen desselben Senders, bis zu 4 anspielen, die erste mit Bild nehmen
@@ -686,9 +725,13 @@ def check_playlist(pl_id, keys=None, force=False):
                 for alt in find_alternatives(ch, index_of(sid), used)[:4]:
                     if JOB.get('cancel'):
                         break
-                    u = url_on(acc, alt) or alt['url']
+                    u = url_on(acc, alt)
+                    if not u:                  # gibt es auf diesem Zugang nicht (nie über einen anderen ausweichen)
+                        continue
+                    if watched(acc):
+                        break
                     tried += 1
-                    ra = test(u, alt['name'])
+                    ra = test(u, alt['name'], foreign)
                     if ra.get('ok'):
                         res['alt'] = {'key': alt['key'], 'name': alt['name'], 'mbit': ra.get('mbit'),
                                       'inPlaylist': alt['key'] in used}
@@ -698,11 +741,12 @@ def check_playlist(pl_id, keys=None, force=False):
                 results[key] = res
                 progress['n'] += 1
 
-    threads = [threading.Thread(target=worker, args=(acc,), daemon=True) for acc in accounts if queues[acc]]
+    threads = [threading.Thread(target=worker, args=(acc,), daemon=True) for acc in accounts]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
+    # Fremde Zugänge wurden freigegeben und der eigene ist belegt: Rest bleibt ungeprüft (nächstes Mal „nur neue“)
 
     path = os.path.join(DATA, f'check_{pl_id}.json')
     if keys is not None:                       # Teilprüfung: bisherige Ergebnisse behalten
@@ -721,7 +765,7 @@ def check_playlist(pl_id, keys=None, force=False):
             pass
     bad = [v for v in results.values() if not v['ok'] and not v['event'] and not v.get('busy')]
     return {'checked': len(results), 'total': len(items), 'bad': len(bad), 'cancelled': out['cancelled'],
-            'withAlt': sum(1 for v in bad if v.get('alt')), 'accounts': len(threads),
+            'withAlt': sum(1 for v in bad if v.get('alt')), 'accounts': len(threads), 'released': released,
             'events': sum(1 for v in results.values() if not v['ok'] and v['event'])}
 
 

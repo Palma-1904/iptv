@@ -858,20 +858,17 @@
       if (e.tvgId) {
         var nn = IPTV.nowNext(e.tvgId);
         var text = a.querySelector('.text');
-        if (nn && nn.next) {
+        // die nächsten zwei Sendungen mit Startzeit (Thomas: kein langer Inhaltstext, der steht nur hinter ⓘ)
+        var progs = IPTV.programmes(e.tvgId), t0 = Date.now() / 1000;
+        var si = progs[0] && progs[0][0] <= t0 ? 1 : 0;
+        progs.slice(si, si + 2).forEach(function (p) {
           var nx = document.createElement('span');
           nx.className = 'meta next';
-          nx.textContent = 'danach ' + IPTV.hhmm(nn.next[0]) + '  ' + nn.next[2];
+          nx.textContent = IPTV.hhmm(p[0]) + '  ' + p[2];
           text.appendChild(nx);
-        }
+        });
         text.appendChild(progressEl(e.tvgId));
-        if (nn && nn.now[3]) {
-          var pk = document.createElement('span');   // iPad quer/Mac: Inhalt kurz sichtbar, ohne ⓘ
-          pk.className = 'peek';
-          pk.textContent = nn.now[3];
-          text.appendChild(pk);
-          a.appendChild(infoBtn(text, nn.now));
-        }
+        if (nn && nn.now[3]) a.appendChild(infoBtn(text, nn.now));
       }
       if (IPTV.myCanEdit()) a.appendChild(addListBtn(e));
       box.appendChild(a);

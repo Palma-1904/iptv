@@ -60,7 +60,7 @@ final class Remote {
     // Handy-Fernbedienung (fernbedienung.html): eigener geheimer Schlüssel je Gerät (QR-Code in der Einrichtung),
     // gleiche Ablage wie die Fernwartung: <schlüssel>/status/<gerät>, /inbox/<gerät>, /sender/<gerät>
     private static volatile String handyKey;
-    private static volatile JSONArray nowEpg = new JSONArray();   // laufende und nächste Sendung
+    private static volatile JSONArray nowEpg = new JSONArray();   // laufende und die nächsten zwei Sendungen
     private static volatile String nowNorm = "";
     private static String lastChannels = "";
     private static long channelsSent;

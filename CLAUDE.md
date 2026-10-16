@@ -16,8 +16,11 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
     🗓 Im Programm = passende Sendungen der nächsten 36 h, gleiche Sendung/Zeit nur einmal, je Sender ≤ 2, max. 40).
     „▶ Weiterschauen“ oben bei Filmen/Serien (`continueStrip`, aus `iptv-recent`: Serie → nächste Folge gleicher
     Sprache, auch nachgeladene Folgen aus `byUrl`; Filme → nochmal öffnen; die Stelle merkt sich der Player selbst).
-    „Aa“ neben der Uhr (`#fontbtn`, `iptv-font`: zoom 1 / 1,15 / 1,3; iPhone: Kopfzeile darf umbrechen). iPad quer/Mac
-    (≥ 1024 px quer): Inhalt der laufenden Sendung zwei Zeilen in der Live-Zeile (`.peek`), ⓘ zeigt alles.
+    „Aa“ neben der Uhr (`#fontbtn`, `iptv-font`: zoom 1 / 1,15 / 1,3; iPhone: Kopfzeile darf umbrechen).
+  - **Programm-Anzeige (Thomas 16.10.)**: überall laufende Sendung + die nächsten ZWEI mit Startzeit, kein langer
+    Inhaltstext mehr (Webseite: Live-Zeile, `.peek` entfernt, Text nur noch hinter ⓘ; Stick ab App 89: Info-Leiste
+    `infoNext` zweizeilig, `infoDesc` aus, Listen-Vorschau jetzt + 2; Status-`epg` = 3 Sendungen ohne Text →
+    Handy „Was läuft“ zeigt zwei nächste, ältere Sticks liefern nur eine).
   - Einrichtungs-Link `#liste=BENUTZER/GIST/name` bzw. `#m3u=…` + `&ansicht=komplett|senioren`, wird im localStorage gespeichert.
   - Reiter Live/Filme/Serien/Programm (EPG aus `<liste>.epg.json`), Sprachfassungen über `x-work`/`x-lang`,
     HEVC → automatisch HD-Fassung im Browser-Player.

@@ -600,8 +600,8 @@
       var pc = Math.max(0, Math.min(100, (t - epg[0][0]) / (epg[0][1] - epg[0][0]) * 100));
       h += '<div class="prog">' + hhmm(epg[0][0]) + '–' + hhmm(epg[0][1]) + '  ' + esc(epg[0][2]) + '</div>' +
         '<div class="bar"><i style="width:' + pc.toFixed(0) + '%"></i></div>';
-      if (epg[0][3]) h += '<div class="desc">' + esc(epg[0][3]) + '</div>';
-      if (epg[1]) h += '<div class="muted">danach ' + hhmm(epg[1][0]) + '  ' + esc(epg[1][2]) + '</div>';
+      // die nächsten zwei mit Startzeit (ältere Sticks schicken nur eine; Inhaltstext lässt Thomas weg)
+      epg.slice(1, 3).forEach(function (p) { h += '<div class="muted">' + hhmm(p[0]) + '  ' + esc(p[2]) + '</div>'; });
     }
     if (d.note && d.noteT && t - d.noteT < 120) h += '<div class="muted">↩ ' + esc(d.note) + '</div>';
     if (d.cfg && d.ver) {   // Admin: App-Stand des Sticks und neueste Version

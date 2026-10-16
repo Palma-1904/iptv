@@ -909,10 +909,8 @@ public class PlayerActivity extends Activity implements Remote.Target {
         // Für die Handy-Fernbedienung: was läuft und Programm jetzt/danach
         org.json.JSONArray epg = new org.json.JSONArray();
         int i = it.now();
-        for (int k = Math.max(i, 0); i >= 0 && k < Math.min(i + 2, it.start.length); k++) {
-            org.json.JSONArray p = new org.json.JSONArray().put(it.start[k]).put(it.end[k]).put(it.title[k]);
-            if (k == i && !it.descAt(k).isEmpty()) p.put(it.descAt(k));   // Inhalt der laufenden Sendung
-            epg.put(p);
+        for (int k = Math.max(i, 0); i >= 0 && k < Math.min(i + 3, it.start.length); k++) {   // jetzt + zwei danach
+            epg.put(new org.json.JSONArray().put(it.start[k]).put(it.end[k]).put(it.title[k]));
         }
         Remote.playing(Memory.norm(it.url), epg);
         Remote.status("playing", it.heading != null ? it.heading : it.name, it.type);
@@ -1631,7 +1629,7 @@ public class PlayerActivity extends Activity implements Remote.Target {
         plp.topMargin = dp(8);
         plp.bottomMargin = dp(8);
         mid.addView(infoProgress, plp);
-        infoNext = text(18, MUTED, false);
+        infoNext = lines(text(18, MUTED, false), 2);   // die nächsten zwei Sendungen
         mid.addView(infoNext);
         infoHint = text(15, MUTED, false);
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1670,12 +1668,16 @@ public class PlayerActivity extends Activity implements Remote.Target {
             int n = it.now();
             if (n >= 0) {
                 infoNow.setText(time(it.start[n]) + " – " + time(it.end[n]) + "   " + it.title[n]);
-                infoDesc.setText(it.descAt(n));
-                infoDesc.setVisibility(it.descAt(n).isEmpty() ? View.GONE : View.VISIBLE);
+                infoDesc.setVisibility(View.GONE);   // Thomas: kein langer Inhaltstext, dafür zwei nächste Sendungen
                 long t = System.currentTimeMillis() / 1000;
                 infoProgress.setProgress((int) (1000 * (t - it.start[n]) / Math.max(1, it.end[n] - it.start[n])));
                 infoProgress.setVisibility(View.VISIBLE);
-                infoNext.setText(n + 1 < it.start.length ? "Danach  " + time(it.start[n + 1]) + "   " + it.title[n + 1] : "");
+                StringBuilder nx = new StringBuilder();
+                for (int k = n + 1; k < Math.min(it.start.length, n + 3); k++) {
+                    if (nx.length() > 0) nx.append("\n");
+                    nx.append(time(it.start[k])).append("   ").append(it.title[k]);
+                }
+                infoNext.setText(nx);
             } else {
                 infoNow.setText(ctx.name == null ? "" : ctx.name);
                 infoDesc.setVisibility(View.GONE);
@@ -2076,11 +2078,10 @@ public class PlayerActivity extends Activity implements Remote.Target {
             return;
         }
         StringBuilder sb = new StringBuilder();
-        for (int k = now; k < Math.min(it.start.length, now + 5); k++) {
+        for (int k = now; k < Math.min(it.start.length, now + 3); k++) {   // jetzt + die nächsten zwei
             if (sb.length() > 0) sb.append("\n");
             boolean bell = k > now && Reminders.isSet(this, it.url, it.start[k]);
             sb.append(k == now ? "Jetzt  " : time(it.start[k]) + "   ").append(bell ? "🔔 " : "").append(it.title[k]);
-            if (k == now && !it.descAt(k).isEmpty()) sb.append("\n").append(it.descAt(k)).append("\n");
         }
         if (now + 1 < it.start.length) sb.append("\n\n⏯ = an „").append(it.title[now + 1]).append("“ erinnern");
         previewEpg.setText(sb);

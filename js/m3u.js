@@ -202,7 +202,7 @@
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
   function loadChunk(k) {
     if (!chunkCache[k]) {
-      var u = playlistUrl().replace(/\.m3u8?(?=\?|$)/i, '.s' + k + '.json');
+      var u = fullUrl().replace(/\.m3u8?(?=\?|$)/i, '.s' + k + '.json');
       chunkCache[k] = fetch(fresh(u), { cache: 'no-cache' }).then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status + ' beim Laden der Folgen');
         return r.json();
@@ -252,6 +252,8 @@
   // Browser (Mac, Fire TV/Silk) zeigen bei HEVC-Streams nur Ton. Gibt es denselben Sender in
   // normaler Qualität in der Liste (gleiche tvg-id oder gleicher Name ohne "HEVC"), wird der genommen.
   var HEVC = /\b(HEVC|H\.?265)\b/i;
+  // „Namen aufräumen“ im Editor nimmt „HEVC“ aus dem Anzeigenamen – der Originalname steht weiter in tvg-name
+  function isHevc(e) { return HEVC.test((e.tvgName || '') + ' ' + (e.name || '')); }
   var altMap = new Map();
   function channelKey(n) {
     return normalize(n).replace(/\b(hevc|h\.?265|uhd|fhd|hd|sd|4k|raw|50fps|60fps)\b/g, '').replace(/[^a-z0-9]+/g, '');
@@ -262,13 +264,13 @@
     var byId = new Map();
     var byName = new Map();
     entries.forEach(function (e) {
-      if (e.type !== 'live' || HEVC.test(e.name)) return;
+      if (e.type !== 'live' || isHevc(e)) return;
       if (e.tvgId && !byId.has(e.tvgId)) byId.set(e.tvgId, e);
       var k = channelKey(e.name);
       if (k && !byName.has(k)) byName.set(k, e);
     });
     entries.forEach(function (e) {
-      if (e.type !== 'live' || !HEVC.test(e.name)) return;
+      if (e.type !== 'live' || !isHevc(e)) return;
       var alt = (e.tvgId && byId.get(e.tvgId)) || byName.get(channelKey(e.name));
       if (alt) altMap.set(e, alt);
     });
@@ -277,6 +279,24 @@
   // Einrichtungs-Link vom Editor: "#liste=BENUTZER/GISTID/name" oder "#m3u=<adresse>".
   // Wird auf dem Gerät gespeichert und aus der Adresszeile entfernt. "#liste=" ohne Wert setzt zurück.
   var STORE = 'iptv-m3u';
+  // Fassung „kompakt“ (nur Fernsehsender, <liste>-kompakt.m3u) oder „komplett“: in der App stellt sie der Stick
+  // (Editor/Admin je Fernseher, ggf. selbst umschaltbar), im Browser der Link (&fassung=kompakt) bzw. der Umschalter
+  var FASSUNG_KEY = 'iptv-fassung';
+  var kompaktMissing = false;              // ältere Veröffentlichung ohne -kompakt.m3u: dann die volle Liste
+  function fassung() {
+    if (window.IPTVNative && typeof window.IPTVNative.fassung === 'function') {
+      try { return window.IPTVNative.fassung() === 'kompakt' ? 'kompakt' : 'komplett'; } catch (err) { /* ältere App */ }
+    }
+    try { return localStorage.getItem(FASSUNG_KEY) === 'kompakt' ? 'kompakt' : 'komplett'; } catch (err) { return 'komplett'; }
+  }
+  function setFassung(v) {
+    v = v === 'kompakt' ? 'kompakt' : 'komplett';
+    try { localStorage.setItem(FASSUNG_KEY, v); } catch (err) { /* egal */ }
+    var h = new URLSearchParams(location.hash.slice(1));     // sonst setzt der Link beim Neuladen die alte Fassung
+    if (v === 'kompakt') h.set('fassung', 'kompakt'); else h.delete('fassung');
+    history.replaceState(null, '', location.pathname + location.search + (h.toString() ? '#' + h.toString() : ''));
+    location.reload();
+  }
   (function readSetupLink() {
     var h = new URLSearchParams(location.hash.slice(1));
     if (!h.has('liste') && !h.has('m3u')) return;
@@ -297,6 +317,10 @@
       else localStorage.removeItem(STORE);
     } catch (err) { /* privat-Modus: gilt nur für diesen Aufruf */ }
     window.__setupUrl = url;
+    var fa = h.get('fassung');
+    if (fa === 'kompakt' || fa === 'komplett') {
+      try { localStorage.setItem(FASSUNG_KEY, fa); } catch (err) { /* privat-Modus */ }
+    }
   })();
 
   // Einrichtungs-Link in der Adresse stehen lassen: Ein Symbol auf dem iPhone-/iPad-Home-Bildschirm
@@ -310,21 +334,27 @@
     if (url) {
       var g = /^https:\/\/gist\.githubusercontent\.com\/([\w.-]+)\/([\w.-]+)\/raw\/([\w.-]+)\.m3u$/.exec(url);
       hash = g ? 'liste=' + g[1] + '/' + g[2] + '/' + g[3] : 'm3u=' + encodeURIComponent(url);
-      hash = '#' + hash + '&ansicht=' + (/senioren\.html$/.test(location.pathname) ? 'senioren' : 'komplett');
+      hash = '#' + hash + '&ansicht=' + (/senioren\.html$/.test(location.pathname) ? 'senioren' : 'komplett')
+        + (fassung() === 'kompakt' && !window.IPTVNative ? '&fassung=kompakt' : '');
     }
     if (location.hash !== hash) history.replaceState(null, '', location.pathname + location.search + hash);
   })();
 
-  function playlistUrl() {
+  function fullUrl() {
     var q = new URLSearchParams(location.search).get('m3u');
     var stored = null;
     try { stored = localStorage.getItem(STORE); } catch (err) { /* ignorieren */ }
     return q || window.__setupUrl || stored || CFG.m3uUrl || 'liste.m3u';
   }
+  function playlistUrl() {
+    var u = fullUrl();
+    if (fassung() !== 'kompakt' || kompaktMissing || u === (CFG.m3uUrl || 'liste.m3u')) return u;
+    return u.replace(/(-kompakt)?(\.m3u8?)(?=\?|$)/i, '-kompakt$2');
+  }
 
   // Hat dieses Gerät eine eigene Playlist (Einrichtungs-Link oder ?m3u=)?
   function hasDeviceList() {
-    return playlistUrl() !== (CFG.m3uUrl || 'liste.m3u');
+    return fullUrl() !== (CFG.m3uUrl || 'liste.m3u');
   }
 
   // ---------- EPG (vom Editor erzeugt: <liste>.epg.json neben <liste>.m3u) ----------
@@ -342,7 +372,7 @@
   }
 
   function loadEpg() {
-    var u = playlistUrl();
+    var u = fullUrl();                       // Programm gilt für beide Fassungen (<liste>.epg.json)
     // EPG gibt es nur zu Listen aus dem Editor (nicht zur Beispielliste im Repo).
     if (!hasDeviceList() || !/\.m3u8?(\?|$)/i.test(u)) return Promise.resolve(null);
     return fetch(fresh(u.replace(/\.m3u8?(?=\?|$)/i, '.epg.json')), { cache: 'no-cache' })
@@ -432,6 +462,10 @@
 
   function fetchText() {
     return fetch(fresh(playlistUrl()), { cache: 'no-cache' }).then(function (r) {
+      if (r.status === 404 && playlistUrl() !== fullUrl()) {   // noch keine kompakte Fassung veröffentlicht
+        kompaktMissing = true;
+        return fetchText();
+      }
       if (!r.ok) throw new Error('HTTP ' + r.status + ' beim Laden der Playlist');
       return r.text();
     }).then(function (text) {
@@ -789,7 +823,9 @@
     programmes: programmes,
     epgOrder: function () { return epgOrder; },
     epgGenerated: function () { return epgGenerated; },
-    isHevc: function (e) { return HEVC.test(e.name || ''); },
+    isHevc: isHevc,
+    fassung: fassung,
+    setFassung: setFassung,
     hhmm: hhmm,
     epgEl: epgEl,
     bindPlay: bindPlay,

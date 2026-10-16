@@ -232,6 +232,12 @@ public class MainActivity extends Activity implements Remote.Target {
 
     /** Schnittstelle für die Webapp: Wiedergabe im eingebauten Player. */
     private class Bridge {
+        /** Fassung der Liste: „kompakt“ (nur Fernsehsender, <liste>-kompakt.m3u) oder „komplett“ (Editor/Admin je Stick). */
+        @JavascriptInterface
+        public String fassung() {
+            return prefs.getBoolean("kompakt", false) ? "kompakt" : "komplett";
+        }
+
         /** Seniorenansicht: zuletzt gesehener Sender (Start beim Öffnen der App). */
         @JavascriptInterface
         public String lastSeniorUrl() {
@@ -457,6 +463,14 @@ public class MainActivity extends Activity implements Remote.Target {
                 .show();
     }
 
+    /** Fassung umstellen: Webapp lädt die andere Liste (der laufende Sender läuft weiter, der Player übernimmt den Baum). */
+    private void setKompakt(boolean on) {
+        if (prefs.getBoolean("kompakt", false) == on) return;
+        prefs.edit().putBoolean("kompakt", on).apply();
+        if (web != null) web.reload();
+        Remote.changed();
+    }
+
     private void showSettings() {
         final boolean auto = AutostartService.enabled(this);
         final boolean home = AutostartService.homeReturns(this);
@@ -466,6 +480,16 @@ public class MainActivity extends Activity implements Remote.Target {
         java.util.List<Runnable> actions = new java.util.ArrayList<>();
         labels.add("📱 Handy-Fernbedienung (QR-Code)");
         actions.add(this::showPhoneQr);
+        if (prefs.getBoolean("kompaktSelbst", false)) {   // nur wenn im Editor/in der Admin-App erlaubt
+            final boolean k = prefs.getBoolean("kompakt", false);
+            labels.add("Liste:  " + (k ? "KOMPAKT – nur Fernsehen" : "KOMPLETT – auch Filme und Serien") + "  (umschalten)");
+            actions.add(() -> {
+                setKompakt(!k);
+                Toast.makeText(this, !k ? "Kompakt: nur Fernsehsender – die Liste wird neu geladen."
+                        : "Komplett: Fernsehen, Filme und Serien – die Liste wird neu geladen.", Toast.LENGTH_LONG).show();
+                closeSetup();
+            });
+        }
         labels.add("Autostart beim Einschalten:  " + (auto ? "AN" : "AUS"));
         actions.add(() -> {
             prefs.edit().putBoolean("autostart", !auto).apply();
@@ -749,6 +773,12 @@ public class MainActivity extends Activity implements Remote.Target {
                 } else if ("normvol".equals(key)) {
                     prefs.edit().putBoolean("normvol", on).apply();
                     Remote.report("Gleichmäßige Lautstärke " + (on ? "an" : "aus") + " (ab dem nächsten Senderstart)");
+                } else if ("kompakt".equals(key)) {
+                    setKompakt(on);
+                    Remote.report("Fassung: " + (on ? "kompakt (nur Fernsehen)" : "komplett (auch Filme und Serien)"));
+                } else if ("kompaktSelbst".equals(key)) {
+                    prefs.edit().putBoolean("kompaktSelbst", on).apply();
+                    Remote.report("Kompakt/Komplett selbst umschalten " + (on ? "erlaubt" : "aus"));
                 } else if ("ownlists".equals(key)) {
                     prefs.edit().putBoolean("ownLists", on).apply();
                     Remote.report("Eigene Listen bearbeiten " + (on ? "erlaubt (OK lang in der Senderliste)" : "aus"));

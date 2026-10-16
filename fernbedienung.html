@@ -1030,6 +1030,11 @@
     sw('home', 'Home-Taste: App kommt zurück', c.home);
     if (c.normvol !== undefined) sw('normvol', 'Gleichmäßige Lautstärke', c.normvol);
     if (c.ownlists !== undefined) sw('ownlists', 'Darf eigene Listen bearbeiten (OK lang am Sender)', c.ownlists);
+    // Fassung je Fernseher (ab App 94): kompakt = nur Fernsehsender (für Senioren), komplett = auch Filme und Serien
+    if (c.kompakt !== undefined) {
+      sw('kompakt', 'Kompakt: nur Fernsehen (aus = komplett mit Filmen und Serien)', c.kompakt);
+      sw('kompaktSelbst', 'Darf selbst kompakt/komplett umschalten (☰ 3 s → Weitere Einstellungen)', c.kompaktSelbst);
+    }
     if (c.waechterOld) {
       chk(false, '', 'Wächter: auf diesem älteren Stick (Fire OS 6) nicht möglich – Updates brauchen einen Klick vor Ort');
     } else if (c.waechterSwitch) {
@@ -1146,7 +1151,8 @@
         var ids = tgt.value === 'all' ? others : tgt.value === 'list' ? sameList : [tgt.value];
         if (!confirm('Einstellungen von „' + label(sel) + '“ übertragen auf: ' + ids.map(label).join(', ') + '?')) return;
         ids.forEach(function (id) {
-          [['autostart', c.autostart], ['home', c.home], ['normvol', c.normvol], ['ownlists', c.ownlists]].forEach(function (s) {
+          [['autostart', c.autostart], ['home', c.home], ['normvol', c.normvol], ['ownlists', c.ownlists],
+            ['kompakt', c.kompakt], ['kompaktSelbst', c.kompaktSelbst]].forEach(function (s) {
             if (s[1] !== undefined) sendTo(id, 'setting', { key: s[0], on: !!s[1] });
           });
           if (c.sched) sendTo(id, 'schedule', { off: c.sched.off || '', on: c.sched.on || '', sleepH: +c.sched.sleepH });

@@ -37,6 +37,10 @@ public class SetupReceiver extends BroadcastReceiver {
         if (norm != null) e.putBoolean("normvol", "1".equals(norm));
         String own = intent.getStringExtra("ownlists");
         if (own != null) e.putBoolean("ownLists", "1".equals(own));
+        String kompakt = intent.getStringExtra("kompakt");            // Fassung: 1 = kompakt (nur Fernsehen)
+        if (kompakt != null) e.putBoolean("kompakt", "1".equals(kompakt));
+        String kself = intent.getStringExtra("kompaktSelbst");        // 1 = darf selbst umschalten
+        if (kself != null) e.putBoolean("kompaktSelbst", "1".equals(kself));
         e.apply();
         // Zeitplan und Schlaf-Timer wie aus der Admin-Fernbedienung
         if (intent.hasExtra("schedOff") || intent.hasExtra("schedOn") || intent.hasExtra("sleepH")) {
@@ -71,6 +75,7 @@ public class SetupReceiver extends BroadcastReceiver {
                     .put("home", AutostartService.homeReturns(c))
                     .put("normvol", p.getBoolean("normvol", true))
                     .put("ownlists", p.getBoolean("ownLists", false))
+                    .put("kompakt", p.getBoolean("kompakt", false))
                     .put("sched", Schedule.json(c))
                     .put("phone", phone == null ? "" : phone)
                     .toString();

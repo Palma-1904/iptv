@@ -598,6 +598,16 @@
   if (SPLIT) {
     var hb = document.getElementById('help');
     if (hb) { hb.hidden = false; hb.addEventListener('click', showHelp); }
+    // Fassung: kompakt (nur Fernsehen) / komplett (auch Filme und Serien) – nur bei Listen aus dem Editor
+    var fbn = document.getElementById('fassungbtn');
+    if (fbn && IPTV.fassung && IPTV.hasDeviceList()) {
+      var kompakt = IPTV.fassung() === 'kompakt';
+      fbn.textContent = kompakt ? 'Nur TV' : 'Alles';
+      fbn.title = kompakt ? 'Kompakt: nur Fernsehsender – tippen für alles (Filme und Serien)'
+        : 'Komplett: Fernsehen, Filme und Serien – tippen für nur Fernsehen';
+      fbn.hidden = false;
+      fbn.addEventListener('click', function () { IPTV.setFassung(kompakt ? 'komplett' : 'kompakt'); });
+    }
     // „Aa“: Schrift und Tipp-Flächen größer (normal → groß → sehr groß), gemerkt je Gerät
     var FONT = [1, 1.15, 1.3], fontIdx = 0, fb = document.getElementById('fontbtn');
     try { fontIdx = Math.max(0, FONT.indexOf(parseFloat(localStorage.getItem('iptv-font') || '1'))); } catch (err) { /* egal */ }
@@ -1433,9 +1443,11 @@
     tabCounts = counts;
     tabs.forEach(function (b) {
       b.querySelector('.count').textContent = counts[b.dataset.type];
-      b.hidden = b.dataset.type === 'epg' && !counts.epg; // ohne EPG-Daten kein Programm-Reiter
+      // ohne EPG-Daten kein Programm-Reiter; Fassung „kompakt“ (nur Fernsehen): keine leeren Film-/Serien-Reiter
+      b.hidden = (b.dataset.type === 'epg' || (counts.live && IPTV.fassung && IPTV.fassung() === 'kompakt'))
+        && b.dataset.type !== 'live' && !counts[b.dataset.type];
     });
-    if (activeType === 'epg' && !counts.epg) activeType = 'live';
+    if (activeType !== 'live' && !counts[activeType]) activeType = 'live';
   }
 
   // Neue Playlist im Hintergrund: Ansicht neu zeichnen, offene Gruppen bleiben offen.

@@ -39,7 +39,7 @@ LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per 
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
 ALT_MAX = 3   # Ersatz-Fassungen je Live-Sender (x-alt)
-VERSION = 35  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 36  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html', '/stick.html': 'stick.html'}
 
@@ -1396,6 +1396,82 @@ def series_chunks(data):
     return {k: json.dumps(v, ensure_ascii=False, separators=(',', ':')) for k, v in out.items()}, n
 
 
+# ---------- Namen aufräumen (Schalter je Playlist „Namen aufräumen“, Standard an) ----------
+# Am Fernseher „ZDF“ statt „DE| ZDF HD“, Gruppe „WOW Sport“ statt „DE| WOW SPORT ᴴᴰ ᴰᴼᴸᴮʸ ᴬᵁᴰᴵᴼ“. Nur die Anzeige:
+# tvg-name (EPG anderer Apps, HEVC-Erkennung der Webapp) und eigene Namen aus dem Editor bleiben unverändert.
+NAME_PREFIX = re.compile(r'^\s*\|?\s*[A-Z0-9+]{2,8}\s*\|\s*')
+NAME_TAGS = re.compile(r'[\u02b0-\u02ff\u1d00-\u1dbf\u2070-\u209f◉]+|\b(F?HD|SD|HEVC|H\.?265|RAW|50\s?FPS|60\s?FPS)\b', re.I)
+NAME_KEEP = {'DMAX', 'DAZN', 'IMDB', 'MAXX', 'RTLZWEI', 'NDR', 'WDR', 'MDR', 'SWR', 'RBB', 'ORF', 'SRF', 'ARD', 'ZDF',
+             'RTL', 'VOX', 'MTV', 'TLC', 'ONE', 'DYN', 'HBO', 'WOW', 'PPV', 'TV', 'UHD', 'BR', 'HR', 'SR', 'N24', 'NBA', 'NFL',
+             'NHL', 'UFC', 'WWE', 'ATP', 'WTA', 'BBC', 'CNN', 'DC', 'NRJ', 'MLB', 'FC', 'II', 'III', 'IV', 'USA', 'UK',
+             'AMC', 'CNBC', 'ESPN', 'NBC', 'RTL+', 'NTV', 'TCR', 'FIA', 'DFB', 'DFL', 'UEFA', 'FIFA', 'NHK'}
+NAME_FIX = [(re.compile(r'(?<![\w])' + a + r'(?![\w])', re.I), b) for a, b in (
+    ('prosieben', 'ProSieben'), ('pro ?7', 'Pro7'), ('kabel eins', 'kabel eins'), ('kabel 1', 'kabel eins'),
+    ('n-tv', 'n-tv'), ('ntv', 'n-tv'), ('zdfneo', 'ZDFneo'), ('zdfinfo', 'ZDFinfo'), ('zdf info', 'ZDFinfo'),
+    ('zdf neo', 'ZDFneo'), ('3sat', '3sat'), ('arte', 'arte'), ('phoenix', 'phoenix'), ('sixx', 'sixx'),
+    ('kika', 'KiKA'), ('sat\.?1', 'SAT.1'), ('servus ?tv', 'ServusTV'), ('super ?rtl', 'Super RTL'),
+    ('ardmediathek', 'ARD Mediathek'), ('tagesschau ?24', 'tagesschau24'), ('das erste', 'Das Erste'),
+    ('rtl ?up', 'RTLup'), ('nitro', 'NITRO'), ('(?<!sky )sport ?1', 'SPORT1'), ('eurosport', 'Eurosport'),
+    ('apple ?tv\+?', 'Apple TV+'), ('disney\+', 'Disney+'), ('paramount\+', 'Paramount+'), ('rtl\+', 'RTL+'),
+    ('joyn', 'Joyn'), ('netflix', 'Netflix'), ('sky', 'Sky'), ('bluray', 'Blu-ray'))]
+
+
+def _case(word):
+    """Wort in GROSSBUCHSTABEN lesbar schreiben (Abkürzungen bleiben groß)."""
+    core = re.sub(r'[^A-Za-zÄÖÜäöüß]', '', word)
+    if not core or not core.isupper() or core in NAME_KEEP or re.sub(r'[^\w+]', '', word) in NAME_KEEP:
+        return word
+    if re.search(r'\d', word):                          # 13TH → 13th, sonst (4K, F1, PPV 3) unverändert
+        return re.sub(r'(?<=\d)(ST|ND|RD|TH)$', lambda m: m.group(1).lower(), word)
+    if len(core) <= 2:                                  # SC, HC, JR …
+        return word
+    return re.sub(r'[A-Za-zÄÖÜäöüß]+', lambda m: m.group(0)[0].upper() + m.group(0)[1:].lower(), word)
+
+
+def tidy_name(name, group=False):
+    n = name or ''
+    if group:
+        n = re.sub(r'^\s*\|?\s*(DE|AT|CH|MULTI|EN|UK|US)\s*\|\s*', '', n)
+    else:
+        n = NAME_PREFIX.sub('', n)
+    n = re.sub(r'\(\s*NUR W[ÄA]HREND DER LIVE[ -]?SPIELE\s*\)', '(nur bei Live-Spielen)', n, flags=re.I)
+    n = NAME_TAGS.sub(' ', n)
+    n = re.sub(r'\s*/\s*$', '', re.sub(r'\s{2,}', ' ', n)).strip(' -|/')
+    n = ' '.join(_case(w) for w in n.split(' '))
+    for rx, good in NAME_FIX:
+        n = rx.sub(good, n)
+    return n.strip() or (name or '').strip()
+
+
+def idle_event(fresh_name, now):
+    """Event-Sender (DAZN/DYN/RTL+ PPV) ohne angekündigtes Event in den nächsten 36 h → True (ausblenden).
+    Nur bei Namen im Event-Format („… | … | …“) oder „NO EVENT“ – normale Sender mit „(nur während der Live-Spiele)“
+    bleiben immer."""
+    n = fresh_name or ''
+    if re.search(r'NO EVENT', n, re.I):
+        return True
+    if n.count('|') < 2:
+        return False
+    p = event_programme(n, now)
+    if not p:
+        return False
+    return p[1] < now - 3600 or p[0] > now + 36 * 3600   # alle 12 h veröffentlicht → 36 h voraus reicht
+
+
+def event_label(fresh_name, now):
+    """Anzeigename für einen Event-Sender mit angekündigtem Event: „Sa 15:30 · SC Magdeburg - HC Erlangen“."""
+    p = event_programme(fresh_name, now)
+    if not p:
+        parts = [x.strip() for x in (fresh_name or '').split('|') if x.strip()]
+        if len(parts) >= 3 and parts[0].lower() == 'live':       # „Live | A - B | Liga | …“ ohne Uhrzeit
+            return 'jetzt · ' + ' '.join(_case(w) for w in parts[1].split(' '))
+        return None
+    d = datetime.fromtimestamp(p[0])
+    days = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+    when = 'jetzt' if p[0] <= now < p[1] else f'{days[d.weekday()]} {d:%H:%M}'
+    return f'{when} · ' + ' '.join(_case(w) for w in p[2].split(' '))
+
+
 def build_playlist(pl, state, warnings):
     """Erzeugt M3U-Text; liefert außerdem benötigte EPG-IDs je Quelle."""
     catalogs, index = {}, {}
@@ -1471,8 +1547,11 @@ def build_playlist(pl, state, warnings):
         fav = [by_key[k] for k in mine if k in by_key]
         if fav:
             groups = [{'name': '★ Meine Sender', 'items': fav}] + groups
+    tidy = pl.get('cleanNames', True)
     for g in groups:
         gname = g.get('name') or 'Sonstige'
+        if tidy and gname != '★ Meine Sender':
+            gname = tidy_name(gname, group=True)
         for item in g.get('items', []):
             ch = lookup(item['key'])
             if not ch:
@@ -1533,7 +1612,7 @@ def build_playlist(pl, state, warnings):
             parts = ['#EXTINF:-1']
             if ch['type'] == 'live':
                 live.append({'line': len(lines), 'tvgId': ch.get('tvgId') or '', 'names': [ch['name'], name],
-                             'key': item['key']})
+                             'key': item['key'], 'custom': bool(item.get('name'))})
             if ch.get('tvgId'):
                 parts.append(f'tvg-id="{attr(ch["tvgId"])}"')
                 epg_ids.setdefault(sid, set()).add(ch['tvgId'])
@@ -1546,7 +1625,8 @@ def build_playlist(pl, state, warnings):
                 if alts:
                     parts.append(f'x-alt="{attr(" ".join(alts))}"')
             parts.append(f'group-title="{attr(gname)}"')
-            lines.append(' '.join(parts) + ',' + name.replace('\n', ' '))
+            shown = tidy_name(name) if tidy and ch['type'] == 'live' and not item.get('name') else name
+            lines.append(' '.join(parts) + ',' + shown.replace('\n', ' '))
             lines.append(ch['url'])
             count += 1
     return lines, epg_ids, catalogs, count, live, series_data
@@ -1821,6 +1901,43 @@ def fill_from_events(lines, live, epg, state, warnings):
     return filled
 
 
+def tidy_events(pl, lines, live, state, warnings):
+    """Event-Sender: ohne angekündigtes Event ausblenden (Schalter „Event-Sender ohne Event ausblenden“, Standard an),
+    mit Event den Namen „Sa 15:30 · A - B“ zeigen (bei „Namen aufräumen“). Braucht die aktuellen Namen vom Anbieter –
+    antwortet er nicht, bleibt alles wie es ist. Liefert die zu entfernenden Zeilen (EXTINF + Adresse)."""
+    hide, tidy = pl.get('hideIdleEvents', True), pl.get('cleanNames', True)
+    if not (hide or tidy):
+        return set()
+    cands = [c for c in live if c.get('key', '').count(':') == 2 and EVENT_NAME.search(
+        (c['names'][0] or '') + ' ' + (re.search(r'group-title="([^"]*)"', lines[c['line']]) or [None, ''])[1])]
+    if not cands:
+        return set()
+    fresh = {}
+    for sid in {c['key'].split(':', 1)[0] for c in cands}:
+        src = next((x for x in state['sources'] if x['id'] == sid and x.get('type') == 'xtream'), None)
+        fresh[sid] = live_names(src) if src else {}
+    now, drop, hidden, named = time.time(), set(), 0, 0
+    for c in cands:
+        sid, _, stream_id = c['key'].split(':')
+        name = fresh.get(sid, {}).get(stream_id)
+        # Ohne aktuellen Namen (Abfrage fehlgeschlagen) nur den Katalognamen fürs Ausblenden nehmen: alte, längst
+        # vorbei gegangene Events („End | … | 2026-10-04 …“) und „NO EVENT“ fallen so trotzdem weg
+        if hide and idle_event(name or c['names'][0], now):
+            drop.update((c['line'], c['line'] + 1))
+            hidden += 1
+            continue
+        label = event_label(name, now) if name and tidy and not c.get('custom') else None
+        if label:
+            ln = lines[c['line']]
+            cut = ln.find(',', ln.rfind('"'))
+            if cut > 0:
+                lines[c['line']] = ln[:cut + 1] + label.replace('\n', ' ')
+                named += 1
+    if hidden:
+        warnings.append(f'{hidden} Event-Sender ohne angekündigtes Event ausgeblendet (kommen mit dem nächsten Event wieder).')
+    return drop
+
+
 def gist_upload(files, settings):
     token = settings.get('token')
     if not token:
@@ -1884,6 +2001,7 @@ def publish(ids):
         job_progress('Programm aus Zusatzquellen …')
         fill_from_extra_epg(lines, live, epg, warnings)
         fill_from_events(lines, live, epg, state, warnings)
+        drop = tidy_events(pl, lines, live, state, warnings)
         # Andere IPTV-Apps (z. B. Smarters): Adresse des XMLTV-Programms in die Kopfzeile
         if settings.get('gistId') and settings.get('login'):
             xml_url = f'https://gist.githubusercontent.com/{settings["login"]}/{settings["gistId"]}/raw/{slug}.xml'
@@ -1894,7 +2012,14 @@ def publish(ids):
         # Große Listen: Serienfolgen liegen in <slug>.s<k>.json (Geräte laden sie beim Öffnen einer Serie)
         if n_chunks:
             lines[0] += f' x-series-chunks="{n_chunks}"'
+        lines = [l for i, l in enumerate(lines) if i not in drop]
         m3u = '\n'.join(lines) + '\n'
+        # Kompakt (für Senioren-Sticks, je Fernseher wählbar): nur Fernsehsender, ohne Filme/Serien – klein und schnell
+        k_lines = [re.sub(r' x-series-chunks="\d+"', '', lines[0])]
+        for i in range(1, len(lines) - 1):
+            if lines[i].startswith('#EXTINF') and 'tvg-type="live"' in lines[i]:
+                k_lines += [lines[i], lines[i + 1]]
+        m3u_k = '\n'.join(k_lines) + '\n'
         # Eigene Reihenfolge für den Reiter „Programm“ (sonst wie in der Playlist)
         order = [i for i in pl.get('epgOrder') or [] if i in epg]
         epg_json = json.dumps({'v': 1, 'generated': int(time.time()), 'channels': epg, 'order': order},
@@ -1902,12 +2027,15 @@ def publish(ids):
         for folder in (OUT, LOCAL_OUT):
             with open(os.path.join(folder, slug + '.m3u'), 'w', encoding='utf-8') as f:
                 f.write(m3u)
+            with open(os.path.join(folder, slug + '-kompakt.m3u'), 'w', encoding='utf-8') as f:
+                f.write(m3u_k)
             with open(os.path.join(folder, slug + '.epg.json'), 'w', encoding='utf-8') as f:
                 f.write(epg_json)
         xmltv = build_xmltv(epg, live)
         with open(os.path.join(OUT, slug + '.xml'), 'w', encoding='utf-8') as f:
             f.write(xmltv)
         files[slug + '.m3u'] = m3u
+        files[slug + '-kompakt.m3u'] = m3u_k
         files[slug + '.epg.json'] = epg_json
         files[slug + '.xml'] = xmltv
         # Folgen-Dateien schreiben; nicht mehr gebrauchte (weniger Teile / kleine Liste) im Gist und lokal löschen
@@ -1930,7 +2058,8 @@ def publish(ids):
         if n_chunks:
             warnings.append(f'Große Liste: Serien als eine Zeile je Serie, Folgen in {n_chunks} Zusatzdateien '
                             f'({round(sum(len(c.encode()) for c in chunks.values()) / 1048576, 1)} MB, werden beim Öffnen geladen).')
-        results.append({'id': pl['id'], 'name': pl.get('name'), 'slug': slug, 'entries': count,
+        results.append({'id': pl['id'], 'name': pl.get('name'), 'slug': slug, 'entries': count - len(drop) // 2,
+                        'kompakt': (len(k_lines) - 1) // 2,
                         'epgChannels': len(epg), 'sizeKb': round(len(m3u.encode()) / 1024),
                         'warnings': warnings})
     uploaded = None

@@ -453,6 +453,8 @@ final class Remote {
                         .put("normvol", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("normvol", true))
                         .put("sched", Schedule.json(app))
                         .put("ownlists", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("ownLists", false))
+                        .put("kompakt", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("kompakt", false))
+                        .put("kompaktSelbst", app.getSharedPreferences("iptv", Context.MODE_PRIVATE).getBoolean("kompaktSelbst", false))
                         .put("phone", phoneLink() == null ? "" : phoneLink()))   // nur Haupt-Kanal (Admin)
                 .put("diag", Diag.json(app))
                 .put("norm", nowNorm).put("epg", nowEpg).put("rem", Reminders.upcoming(app))

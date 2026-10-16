@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 35; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 36; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -142,6 +142,8 @@ function renderPlSource() {
   const src = pl && state.sources.find((x) => x.id === pl.source);
   chip.textContent = 'Zugang: ' + (src ? src.name : '–') + (pl && pl.germanOnly ? ' · nur DE' : '');
   $('#pl-german').textContent = '🇩🇪 Nur deutsche Fassungen: ' + (pl && pl.germanOnly ? 'AN' : 'AUS');
+  $('#pl-tidy').textContent = '✨ Namen aufräumen: ' + (pl && pl.cleanNames !== false ? 'AN' : 'AUS');
+  $('#pl-events').textContent = '🎟 Event-Sender ohne Event ausblenden: ' + (pl && pl.hideIdleEvents !== false ? 'AN' : 'AUS');
   $('#pl-myweb').textContent = '📋 Eigene Listen in der Webapp bearbeiten: ' + (pl && pl.myListsWeb ? 'AN' : 'AUS');
   const allClosed = pl && pl.groups.length && pl.groups.every((g) => ui.collapsed.has(g.id));
   $('#collapse-all').textContent = allClosed ? '▾ Alle auf' : '▸ Alle zu';
@@ -1682,6 +1684,11 @@ async function renderRemote() {
       if (d.cfg.normvol !== undefined) toggle('normvol', 'Gleichmäßige Lautstärke', d.cfg.normvol);
       // Eigene Listen (z. B. „Fussball“) am Stick bearbeiten: OK lang auf einem Sender (ab App 71)
       if (d.cfg.ownlists !== undefined) toggle('ownlists', 'Eigene Listen bearbeiten', d.cfg.ownlists);
+      // Fassung je Fernseher (ab App 94): kompakt = nur Fernsehsender, komplett = auch Filme und Serien
+      if (d.cfg.kompakt !== undefined) {
+        toggle('kompakt', 'Kompakt (nur Fernsehen)', d.cfg.kompakt);
+        toggle('kompaktSelbst', 'Darf selbst umschalten', d.cfg.kompaktSelbst);
+      }
       cfg.appendChild(el('span', d.cfg.overlay ? 'ok' : 'warn', d.cfg.overlay ? '✓ Autostart erlaubt' : '✕ Autostart nicht erlaubt (vor Ort: ☰ 3 s → „Autostart erlauben“)'));
       cfg.appendChild(el('span', d.cfg.install ? 'ok' : 'warn', d.cfg.install ? '✓ Updates erlaubt' : '✕ Updates nicht erlaubt (vor Ort: ☰ 3 s → „Updates erlauben“)'));
       box.appendChild(cfg);
@@ -2718,6 +2725,24 @@ function bind() {
   };
   $('#pl-add').onclick = () => newPlaylist();
   $('#backups').onclick = openBackups;
+  $('#pl-tidy').onclick = () => {
+    const pl = playlist();
+    if (!pl) return;
+    pl.cleanNames = pl.cleanNames === false;
+    save();
+    renderPlSource();
+    toast(pl.cleanNames ? 'Ab dem nächsten Veröffentlichen: „ZDF“ statt „DE| ZDF HD“ (im Editor bleiben die Originalnamen).'
+      : 'Ab dem nächsten Veröffentlichen wieder die Originalnamen des Anbieters.');
+  };
+  $('#pl-events').onclick = () => {
+    const pl = playlist();
+    if (!pl) return;
+    pl.hideIdleEvents = pl.hideIdleEvents === false;
+    save();
+    renderPlSource();
+    toast(pl.hideIdleEvents ? 'Ab dem nächsten Veröffentlichen: Event-Sender nur mit angekündigtem Spiel (alle 12 Stunden neu).'
+      : 'Ab dem nächsten Veröffentlichen wieder alle Event-Sender.');
+  };
   $('#pl-german').onclick = () => {
     const pl = playlist();
     if (!pl) return;

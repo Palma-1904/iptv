@@ -381,6 +381,25 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 - Gemessen 15.10. (Wohnzimmer, große TKH, App 87): Suche „chic“ ≈ 2 s, Ebenen/Übersicht < 0,01 s; Speicher: App 167 MB
   + WebView 75 MB, frei nur ~240 MB von 1,3 GB. Küche/Schlafzimmer (AFTSSS) haben nur 1 GB → Listen dort ≤ 🟡 halten.
 
+## Kompakt/Komplett, Namen aufräumen, Event-Sender (16.10., Editor 36, App 94)
+- **Namen aufräumen** (`pl.cleanNames`, Standard an, ⋯-Menü „✨ Namen aufräumen“): beim Veröffentlichen
+  `tidy_name` – Live-Anzeigename ohne Kürzel „DE|/AT|/PRIME| …“, ohne HD/FHD/HEVC/RAW/Hochzeichen/◉, lesbare
+  Groß-/Kleinschreibung (`NAME_KEEP` Abkürzungen, `NAME_FIX` z. B. ProSieben, kabel eins, n-tv, ZDFneo, 3sat);
+  Gruppennamen ohne „DE| “/„|MULTI| “. tvg-name und eigene Namen bleiben → Webapp erkennt HEVC über tvg-name (`isHevc`).
+- **Event-Sender ohne Event ausblenden** (`pl.hideIdleEvents`, Standard an, ⋯ „🎟 …“, `tidy_events`): aktuelle Namen
+  per `live_names`; ausgeblendet bei „NO EVENT“ oder Event-Format „… | … | …“ mit Zeit, die > 1 h vorbei bzw. > 36 h
+  voraus ist; mit Event heißt der Sender „Sa 15:30 · A - B“ bzw. „jetzt · A - B“. Ohne aktuellen Namen nur Katalogname
+  fürs Ausblenden. **DYN PPV und RTL+ PPV melden keine Event-Namen** („DE| DYN PPV 1 HD“) → bleiben immer sichtbar.
+  Test ASW/TKH: 67 Event-Sender ausgeblendet, 32 DAZN PPV mit Spiel bleiben.
+- **Kompakt**: Editor schreibt zusätzlich `<slug>-kompakt.m3u` (nur tvg-type live; TKH 6,3 MB → 99 KB), Gist/OUT/lokal.
+  Webapp (`m3u.js` `fassung()`/`setFassung`, `fullUrl()` vs. `playlistUrl()`): App fragt `IPTVNative.fassung()`
+  (Prefs `kompakt`), Browser `iptv-fassung` aus Link `&fassung=kompakt` oder Knopf „Nur TV / Alles“ neben der Uhr
+  (`#fassungbtn`); fehlt die Datei (404) → volle Liste; EPG/Folgen immer von der vollen Liste; leere Film-/Serien-
+  Reiter versteckt. Stick: Fernwartung `setting kompakt/kompaktSelbst` (Status `cfg.kompakt/kompaktSelbst`), Wechsel lädt
+  die Webapp neu (`setKompakt`, Sender läuft weiter); mit „kompaktSelbst“ in ☰ 3 s → Weitere Einstellungen „Liste:
+  KOMPAKT/KOMPLETT“. Schalter in Admin ⚙️ (+ „Einstellungen übertragen“) und Editor-Fernwartung; SetupReceiver-Extras
+  `kompakt`/`kompaktSelbst`. Standard bei allen Sticks: komplett (bis Thomas umstellt). Am Stick ungetestet.
+
 ## Offene Aufgaben (Reihenfolge nach Thomas, Stand 15.10.)
 - **📋 Senderauswahl übernehmen** (gebaut 15.10., Editor ⋯-Menü, `copySelection`): Gruppen/Reihenfolge/eigene Namen/
   „★ Meine Sender“ einer anderen Playlist für Fernsehsender/Filme/Serien (ankreuzbar) – Schlüssel über

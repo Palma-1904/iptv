@@ -402,7 +402,7 @@ main { max-width: 1100px; margin: 16px auto 0; }
   background: var(--surface); color: var(--text); font: inherit; font-size: 16px; cursor: pointer;
 }
 /* Kopfzeile kompakter: Uhr, Reiter und Suche in einer Zeile (breite Bildschirme) */
-@media (min-width: 900px) {
+@media (min-width: 1100px) {   /* mit Knöpfen neben der Uhr (IINA, Fassung, Aa, ?) erst ab 1100 px in einer Zeile */
   .split .top { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(220px, 340px); align-items: center; gap: 16px; }
   .split .tabs, .split .searchwrap { margin-top: 0; }
 }

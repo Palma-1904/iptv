@@ -607,7 +607,9 @@ def check_playlist(pl_id, keys=None, force=False):
         try:
             info = source_info(srcs[acc])
         except Exception:
-            return False
+            # Anbieter-Abfrage (player_api) antwortet bei manchen Zugängen zeitweise mit HTTP 404, die Streams
+            # laufen trotzdem → unbekannt = mitprüfen lassen; ist er doch belegt, merkt es die Prüfung am „belegt“
+            return True
         return (info.get('activeConnections') or 0) < (info.get('maxConnections') or 1)
 
     # Wer schaut gerade? Sticks melden über die Fernwartung sofort, wenn sie abspielen (Liste → Zugang der Playlist).

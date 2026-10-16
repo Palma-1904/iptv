@@ -4,7 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const MAX_ROWS = 1500; // mehr Zeilen auf einmal machen die Liste träge
-const SERVER_VERSION = 34; // muss zu VERSION in server.py passen
+const SERVER_VERSION = 35; // muss zu VERSION in server.py passen
 
 let state = { sources: [], playlists: [] };
 let settings = {};
@@ -1869,7 +1869,15 @@ async function checkPlaylist() {
   const res = last.results || {};
   // Schnell: nur Sender, die noch nie geprüft wurden (neu/ersetzt), zuletzt belegt waren oder kein Bild hatten
   const todo = keys.filter((k) => !res[k] || res[k].busy || (!res[k].ok && !res[k].event));
-  const mins = (n) => Math.max(1, Math.round(n * 1.2 / 60));
+  // Zugänge zum Prüfen: automatisch (nur freie, Fernsehen bleibt ungestört) oder selbst gewählt (laufende Streams
+  // darauf werden beendet, danach laufen die Sticks weiter) – gemerkt im Browser
+  const xsrc = state.sources.filter((x) => x.type === 'xtream');
+  let pick = { mode: 'auto', ids: xsrc.map((x) => x.id) };
+  try { pick = Object.assign(pick, JSON.parse(localStorage.getItem('editor-check-use') || '{}')); } catch (e) { /* egal */ }
+  const savePick = () => { try { localStorage.setItem('editor-check-use', JSON.stringify(pick)); } catch (e) { /* egal */ } };
+  const useIds = () => (pick.mode === 'pick' ? pick.ids.filter((id) => xsrc.some((x) => x.id === id)) : null);
+  const nAcc = () => Math.max(1, useIds() ? useIds().length : xsrc.length);
+  const mins = (n) => Math.max(1, Math.round(n * 1.2 / 60 / nAcc()));
   const dlg = $('#dlg-publish');
   const body = $('#publish-body');
   $('#publish-title').textContent = `Sender prüfen „${pl.name}“`;
@@ -1882,19 +1890,61 @@ async function checkPlaylist() {
     : 'Nichts Neues zu prüfen');
   quick.type = 'button';
   quick.disabled = !todo.length || !last.t;
-  quick.onclick = () => runCheck(pl, todo, null);
-  const full = el('button', '', `Alle prüfen (${keys.length} Sender, ca. ${mins(keys.length)} Min.)`);
+  quick.onclick = () => runCheck(pl, todo, null, false, useIds());
+  const full = el('button', '');
   full.type = 'button';
-  full.onclick = () => runCheck(pl, null, null);
+  full.onclick = () => runCheck(pl, null, null, false, useIds());
+  const label = () => {
+    if (todo.length && last.t) quick.textContent = `Nur neue und gestörte prüfen (${todo.length} Sender, ca. ${mins(todo.length)} Min.)`;
+    full.textContent = `Alle prüfen (${keys.length} Sender, ca. ${mins(keys.length)} Min.)`;
+    const none = pick.mode === 'pick' && !useIds().length;
+    quick.disabled = none || !todo.length || !last.t;
+    full.disabled = none;
+  };
+  // Auswahl der Zugänge
+  const box = el('div', 'checkuse');
+  const auto = el('label', 'radio');
+  const ra = el('input');
+  ra.type = 'radio';
+  ra.name = 'checkuse';
+  ra.checked = pick.mode !== 'pick';
+  auto.append(ra, el('span', '', ' Automatisch: alle gerade freien Zugänge – wer fernsieht, wird nicht gestört'));
+  const own = el('label', 'radio');
+  const rp = el('input');
+  rp.type = 'radio';
+  rp.name = 'checkuse';
+  rp.checked = pick.mode === 'pick';
+  own.append(rp, el('span', '', ' Diese Zugänge nutzen – laufende Streams darauf werden beendet:'));
+  const chips = el('div', 'checkaccs');
+  xsrc.forEach((x) => {
+    const l = el('label', 'chk');
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = pick.ids.includes(x.id);
+    cb.onchange = () => {
+      pick.ids = cb.checked ? [...new Set([...pick.ids, x.id])] : pick.ids.filter((id) => id !== x.id);
+      pick.mode = 'pick';
+      rp.checked = true;
+      savePick();
+      label();
+    };
+    l.append(cb, el('span', '', ' ' + x.name + (x.id === pl.source ? ' (eigener)' : '')));
+    chips.appendChild(l);
+  });
+  ra.onchange = () => { pick.mode = 'auto'; savePick(); label(); };
+  rp.onchange = () => { pick.mode = 'pick'; savePick(); label(); };
+  box.append(el('p', '', 'Prüfen über:'), auto, own, chips);
+  body.appendChild(box);
+  label();
   const row = el('div', 'actions');
   row.append(quick, full);
   body.appendChild(row);
-  body.appendChild(el('p', 'hint', 'Geprüft wird über den Zugang dieser Playlist (nur 1 Verbindung): währenddessen bitte nicht mit diesem Zugang fernsehen. „Nur neue und gestörte“ behält die übrigen Ergebnisse der letzten Prüfung.'));
+  body.appendChild(el('p', 'hint', 'Andere Zugänge helfen nur beim Prüfen mit – die Playlists bleiben getrennt. Bei „Diese Zugänge nutzen“ halten Sticks, die darauf gerade spielen, kurz an und laufen danach weiter (Senioren: letzter Sender); über die Webseite laufende Streams merkt der Anbieter als „belegt“. „Nur neue und gestörte“ behält die übrigen Ergebnisse der letzten Prüfung.'));
   if (!dlg.open) dlg.showModal();
 }
 
 // Prüfen (ganze Playlist oder nur keys), danach Ergebnis zeigen bzw. then() aufrufen
-async function runCheck(pl, keys, then, force) {
+async function runCheck(pl, keys, then, force, use) {
   const dlg = $('#dlg-publish');
   const body = $('#publish-body');
   $('#publish-title').textContent = `Sender prüfen „${pl.name}“`;
@@ -1903,6 +1953,7 @@ async function runCheck(pl, keys, then, force) {
   try {
     const req = { id: pl.id, force: !!force };
     if (keys) req.keys = keys;
+    if (use && use.length) req.accounts = use;
     await api('/api/check', req);
     res = await followJob(body, true);
   } catch (e) {
@@ -1912,7 +1963,7 @@ async function runCheck(pl, keys, then, force) {
       body.appendChild(el('p', 'hint', '„Trotzdem prüfen“ hält die Geräte mit dieser Liste per Fernwartung an, prüft und lässt sie danach weiterlaufen (Senioren: wieder der letzte Sender). Die Prüfung dauert einige Minuten.'));
       const b = el('button', 'primary', 'Trotzdem prüfen (Fernsehen wird unterbrochen)');
       b.type = 'button';
-      b.onclick = () => runCheck(pl, keys, then, true);
+      b.onclick = () => runCheck(pl, keys, then, true, use);
       body.appendChild(b);
     } else {
       body.appendChild(el('p', 'warn', e.message));
@@ -1955,6 +2006,7 @@ function showCheckResult(pl, res, body) {
   if (res.accounts > 1) body.appendChild(el('p', 'hint', `Geprüft über ${res.accounts} Zugänge gleichzeitig (freie Zugänge helfen nur beim Prüfen mit, die Playlists bleiben getrennt).`
     + (res.released && res.released.length ? ` Freigegeben, weil dort jemand eingeschaltet hat: ${res.released.join(', ')}.` : '')));
   else if (res.released && res.released.length) body.appendChild(el('p', 'hint', `Freigegeben, weil dort jemand eingeschaltet hat: ${res.released.join(', ')}.`));
+  if (res.paused) body.appendChild(el('p', 'hint', `${res.paused} Stick(s) wurden für die Prüfung angehalten und laufen jetzt weiter.`));
   if (res.checked < res.total && !res.cancelled) body.appendChild(el('p', 'hint', 'Nicht alle Sender konnten geprüft werden (Zugang belegt) – später „Sender prüfen → Nur neue und gestörte“.'));
   body.appendChild(el('p', '', `${res.checked} von ${res.total} Sendern geprüft${res.cancelled ? ' (abgebrochen)' : ''}: `
     + (dead.length ? `${dead.length} ohne Bild` + (res.withAlt ? `, für ${res.withAlt} gibt es eine funktionierende andere Fassung.` : '.') : 'alle laufen.')

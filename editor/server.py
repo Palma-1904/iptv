@@ -39,7 +39,7 @@ LOCAL_OUT = os.path.join(WEBAPP, 'lokal')      # Listen zum Testen im WLAN (per 
 WEBAPP_PORT = 8765                             # Port von Start-Webapp.command
 PORT = int(os.environ.get('EDITOR_PORT', '8790'))
 ALT_MAX = 3   # Ersatz-Fassungen je Live-Sender (x-alt)
-VERSION = 34  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
+VERSION = 35  # bei Änderungen an Server UND Oberfläche erhöhen (editor.js: SERVER_VERSION)
 STATIC = {'/': 'index.html', '/index.html': 'index.html', '/editor.js': 'editor.js', '/editor.css': 'editor.css',
           '/watch.html': 'watch.html', '/stick.html': 'stick.html'}
 
@@ -568,11 +568,13 @@ def catalog_index(sid):
     return {'keys': {it['key']: it for it in items}, 'by_name': by_name, 'by_tvg': by_tvg}
 
 
-def check_playlist(pl_id, keys=None, force=False):
+def check_playlist(pl_id, keys=None, force=False, use=None):
     """Live-Sender einer Playlist kurz anspielen; für Sender ohne Bild andere Fassungen desselben Senders suchen
     und anspielen (Ersatz). keys: nur diese Einträge (z. B. aus „Doppelte“), Ergebnis wird zusammengeführt.
     Schnell: nur prüfen, ob Daten kommen (16 KB), und parallel über alle gerade freien Zugänge desselben Anbieters
     (gleiche Stream-Nummer und gleicher Sender im anderen Katalog) – je Zugang eine Verbindung.
+    use: fest gewählte Zugänge (Editor „Diese Zugänge nutzen“) – laufende Sticks darauf werden angehalten und danach
+    wieder gestartet, kein automatisches Freigeben.
     Ergebnis in data/check_<id>.json; Event-/PPV-Kanäle werden gesondert markiert."""
     state = load_state()
     pl = find(state['playlists'], pl_id, 'Playlist')
@@ -635,6 +637,24 @@ def check_playlist(pl_id, keys=None, force=False):
 
     accounts = [acc for acc in sorted(srcs, key=lambda a: a not in own) if not watched(acc) and is_free(acc)]
     stopped = False
+    chosen = [a for a in sorted(srcs, key=lambda a: a not in own) if use and a in use]
+    paused_devs = []                           # Sticks, die für die Prüfung angehalten wurden
+    if chosen:
+        # Thomas wählt die Zugänge selbst: laufende Sticks darauf anhalten (Verbindung frei), danach weiter
+        topic = load_settings().get('remoteTopic')
+        try:
+            now = time.time()
+            for did, d in (fb_devices(topic) if topic else {}).items():
+                if (list_src.get(d.get('list')) in chosen and d.get('state') in ('playing', 'paused')
+                        and d.get('screen') is not False and now - (d.get('t') or 0) < 900):
+                    remote_cmd(did, 'stop', {})
+                    paused_devs.append(did)
+        except Exception:
+            pass
+        if paused_devs:
+            job_progress(f'{len(paused_devs)} laufende Streams werden beendet …')
+            time.sleep(4)
+        accounts = chosen
     if not any(a in own for a in accounts) and force:
         # Erzwungen: Geräte mit dieser Liste per Fernwartung anhalten, bis der Zugang frei ist (max. 40 s)
         slug = slugify(pl.get('slug') or pl.get('name') or pl['id'])
@@ -700,13 +720,13 @@ def check_playlist(pl_id, keys=None, force=False):
             released.append(names[acc])
 
     def worker(acc):
-        foreign = acc not in own
+        foreign = acc not in own and not chosen   # fest gewählt: wie der eigene Zugang (warten statt freigeben)
         while not JOB.get('cancel'):
             x = take(acc)
             if x is None:
                 return
             key, name, ch, sid = x
-            if watched(acc):                   # dort hat gerade jemand eingeschaltet → sofort freigeben
+            if not chosen and watched(acc):    # dort hat gerade jemand eingeschaltet → sofort freigeben
                 release(acc, x)
                 return
             with lock:
@@ -730,7 +750,7 @@ def check_playlist(pl_id, keys=None, force=False):
                     u = url_on(acc, alt)
                     if not u:                  # gibt es auf diesem Zugang nicht (nie über einen anderen ausweichen)
                         continue
-                    if watched(acc):
+                    if not chosen and watched(acc):
                         break
                     tried += 1
                     ra = test(u, alt['name'], foreign)
@@ -749,6 +769,11 @@ def check_playlist(pl_id, keys=None, force=False):
     for t in threads:
         t.join()
     # Fremde Zugänge wurden freigegeben und der eigene ist belegt: Rest bleibt ungeprüft (nächstes Mal „nur neue“)
+    for did in paused_devs:                    # angehaltene Sticks weiterlaufen lassen (Senioren: letzter Sender)
+        try:
+            remote_cmd(did, 'reload', {})
+        except Exception:
+            pass
 
     path = os.path.join(DATA, f'check_{pl_id}.json')
     if keys is not None:                       # Teilprüfung: bisherige Ergebnisse behalten
@@ -768,6 +793,7 @@ def check_playlist(pl_id, keys=None, force=False):
     bad = [v for v in results.values() if not v['ok'] and not v['event'] and not v.get('busy')]
     return {'checked': len(results), 'total': len(items), 'bad': len(bad), 'cancelled': out['cancelled'],
             'withAlt': sum(1 for v in bad if v.get('alt')), 'accounts': len(threads), 'released': released,
+            'paused': len(paused_devs),
             'events': sum(1 for v in results.values() if not v['ok'] and v['event'])}
 
 
@@ -2281,9 +2307,10 @@ class Handler(SimpleHTTPRequestHandler):
                 b = self.body()
                 pid, keys, force = b.get('id'), b.get('keys'), bool(b.get('force'))
                 keys = set(keys) if isinstance(keys, list) else None
+                use = set(b['accounts']) if isinstance(b.get('accounts'), list) and b['accounts'] else None
                 name = find(load_state()['playlists'], pid, 'Playlist').get('name')
                 return self.send_json(start_job('check', f'Sender prüfen „{name}“',
-                                                lambda: check_playlist(pid, keys, force)))
+                                                lambda: check_playlist(pid, keys, force, use)))
             if method == 'POST' and path == '/api/backup':   # Sicherung jetzt (z. B. vor „Alles leeren“)
                 why = re.sub(r'[^\w-]+', '-', str(self.body().get('why') or 'jetzt'))[:40].strip('-') or 'jetzt'
                 backup_state(datetime.now().strftime('%Y-%m-%d-%H%M') + '-' + why)

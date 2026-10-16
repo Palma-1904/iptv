@@ -75,7 +75,12 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   geht an einen anderen Zugang. Test 16.10. mit gespielten Antworten: 80 Sender → je 20 auf TKH/ASW/KMH/ERO.
   Antwortet die Anbieter-Abfrage (player_api) mit HTTP 404 (16.10.: KMH, ASW, ERO), gilt der Zugang als frei (sonst
   prüfte nur TKH, auch für die Playlist ERO); belegt merkt die Prüfung dann am Stream. Fortschritt zeigt
-  „(n Zugänge parallel: …)“, sobald mehr als einer mitprüft. Nachts (Einstellung
+  „(n Zugänge parallel: …)“, sobald mehr als einer mitprüft.
+  **Zugänge selbst wählen (Editor 35)**: Dialog „Sender prüfen“ → „Prüfen über: Automatisch (nur freie) / Diese
+  Zugänge nutzen“ mit Häkchen je Zugang (gemerkt `editor-check-use`). Gewählt = `/api/check {accounts}` →
+  `check_playlist(use=…)`: Sticks, die auf diesen Zugängen spielen, bekommen `stop` (danach `reload`, Ergebnis
+  `paused`), kein automatisches Freigeben, „belegt“ wird wie beim eigenen Zugang abgewartet. Getestet 16.10. im
+  Test-Editor (gespielte Streams): 3 Zugänge, Test-Stick angehalten und wieder gestartet, 329/329. Nachts (Einstellung
   „automatisch“): erst alle Playlists prüfen, dann veröffentlichen.
 - **Player-Umschalten** (`PlayerActivity`): libVLC `stop()` blockiert, wenn der Anbieter die Verbindung nicht sauber
   schließt → früher ANR. Jetzt: jeder Start bekommt einen frischen `MediaPlayer` (`newPlayer`), der alte wird im

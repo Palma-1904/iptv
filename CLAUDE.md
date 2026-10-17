@@ -202,7 +202,7 @@ Nutzer: Thomas (GitHub: **Palma-1904**). Sprache: Deutsch, einfache Erklärungen
   aus `<liste>.s<k>.json`, `loadEps`), Sprachleiste. Quelle: Admin `<kanal>/lists`, Geräte-Link: Stick meldet im
   Handy-Status `m3u` (Adresse der Liste, ab App 80) – vorher nur die eine Gruppe vom Stick (`sender/<gerät>`).
   Der alte Aufklapp-Baum (drawTree/dirButton) ist entfernt.
-  **Jeder Bereich auf-/zuklappbar (ab 15.10. abends, Admin + Geräte-Link)**: Hülle `.sec` (JS `SECS`, `secSet/secSum/
+  **Seit 17.10. ersetzt durch Reiter** (siehe „Admin-Fernbedienung mit Reitern“ unten) – alt: **Jeder Bereich auf-/zuklappbar (ab 15.10. abends, Admin + Geräte-Link)**: Hülle `.sec` (JS `SECS`, `secSet/secSum/
   secTitle`, MutationObserver: Hülle verschwindet, wenn der Inhalt versteckt/leer ist) um Wer schaut · Was läuft ·
   Fernbedienung · Erinnerungen · Senderliste · Alles auf diesem Fernseher; zugeklappt zeigt der Kopf eine Kurzinfo
   (laufender Sender, Anzahl …). Anfangs offen: Was läuft, Fernbedienung, Senderliste; gemerkt je Handy
@@ -399,6 +399,30 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   die Webapp neu (`setKompakt`, Sender läuft weiter); mit „kompaktSelbst“ in ☰ 3 s → Weitere Einstellungen „Liste:
   KOMPAKT/KOMPLETT“. Schalter in Admin ⚙️ (+ „Einstellungen übertragen“) und Editor-Fernwartung; SetupReceiver-Extras
   `kompakt`/`kompaktSelbst`. Standard bei allen Sticks: komplett (bis Thomas umstellt). Am Stick ungetestet.
+
+## Admin-Fernbedienung mit Reitern (17.10., nur `fernbedienung.html`, kein App-Update nötig)
+- Thomas hat zwei Entwürfe abgenommen (Steuerkreuz mit Pfeilen bleibt, keine Wischfläche). Die Klapp-Hüllen (`SECS`/`.sec`),
+  „Alle zu/aufklappen“, die Kurzleiste `#qbar` und die Karte „Wer schaut gerade“ (`#conn`) sind weg.
+- **Haupt-Link** (`body.adminv`, Status mit `cfg`): Reiterleiste unten (`#tabbar`, `setTab`, gemerkt `iptv-fernbedienung-reiter`):
+  **Übersicht** (`#t-ov`): Hinweise mit Knopf (`renderWarn`: „Was tun?“, „Jetzt“ = Update, „Setzen“ = grant, „X stoppen“ bei
+  Doppelbelegung, „Veröffentlichen“ bei altem Programm, „Alle“ bei mehreren alten Apps; „offline“ erst nach 24 h, max. 3 + „weitere“),
+  Zahl am Reiter (`#ovbadge`); Karte je Stick (`renderOv`, sortiert: schaut → an → aus → lange weg) mit Pille „läuft · TKH“,
+  Sender, Fortschritt, ⏹/⏾ bzw. „⏻ Einschalten“/„▶ Weiter“ direkt an der Karte; Karte antippen = wählen + Reiter Steuern;
+  darunter „Gerade frei: …“. **Steuern** (`#t-ctl`): Was läuft, ⏻/📷 Livebild (nur in diesem Reiter aktiv), Steuerkreuz,
+  ☰ ↩ ⏯ ⏹, ⏪ ⏩ 💬 ↻, „Zurück zu“ = letzte 4 Sender (`renderRecent`, Status `rec`, Namen aus der geladenen Liste `loaded`).
+  **Sender** (`#t-snd`): „Alles auf diesem Fernseher“ (Meine/Live/Filme/Serien, Suche). **Verwaltung** (`#t-adm`): Dieser
+  Fernseher (⚙️, 🔔 Erinnerungen als Klappkarte `#remsc`) · Familie (🔗 Links, 📋 Eigene Listen) · Mac-Editor · Dieses Handy (🔔 Push).
+  Kopfzeile: Übersicht „Alle Fernseher“, sonst Auswahlliste `#devsel`.
+- **Belegt-Rückfrage** (`playOn`/`ask`, nur Haupt-Link): Einschalten eines Senders, während ein anderer Stick derselben Liste
+  spielt/pausiert (Meldung < 15 min, nicht Standby) → „X stoppen, hier Y“ (stop, nach 3 s play) / „Trotzdem einschalten“ / Abbrechen.
+  iPhone/iPad/Mac sieht die Seite nicht (Outplayer meldet sich nirgends).
+- **Familien-Link** (`body.fam`): ohne Reiter – Was läuft (`#famnow`), ▲ Sender hoch / ▼ runter, große Senderknöpfe (`renderFam`:
+  `sender/<gerät>`, sonst aus der Liste „★ Meine Sender“ → Lieblingssender → Gruppe des laufenden Senders), „Mehr“ zeigt
+  Fernbedienung + alle Sender. Ein/Aus fehlt dort (wake/sleep nicht in `PHONE_ACTIONS` → bräuchte App-Update).
+- Getestet 17.10. im Vorschau-Browser mit echten Firebase-Daten (nur angesehen, keine Befehle geschickt): Übersicht, Steuern,
+  Sender, Verwaltung, Rückfrage (Ansicht), Familien-Link. Aufgefallen: Programm (EPG) aller Listen lief am 17.10. um ~10:40 aus –
+  Automatik hatte nicht veröffentlicht → Hinweis „Veröffentlichen“.
+- **Noch offen (Thomas: „erstmal nur das Admin-App“)**: Stick wartet selbst, bis der Zugang frei ist (App), `.ts` fürs iPhone (Schalter).
 
 ## Stand 16.10. nachmittags – hier weitermachen
 - **Online App 94, alles gepusht**, Editor 36 läuft. Thomas hat um ~14:15 „Veröffentlichen → Alle“ gemacht: Webseite

@@ -916,6 +916,27 @@ public class PlayerActivity extends Activity implements Remote.Target {
         Remote.status("playing", it.heading != null ? it.heading : it.name, it.type);
     }
 
+    /**
+     * Eintrag vom Handy starten. s = Serien-Nummern (große Liste): die Folgen sind erst nach dem Öffnen der Serie im
+     * Baum – also zuerst bei der Webapp anfordern und danach noch einmal suchen (wie MainActivity.remotePlay).
+     */
+    private void remotePlay(String norm, String s, int attempt) {
+        Node leaf = rootNode == null ? null : findLeaf(rootNode, norm);
+        if (leaf == null && s != null && !s.isEmpty() && attempt < 4) {
+            requestSeries(findLazy(rootNode, s));
+            handler.postDelayed(() -> { if (!isFinishing()) remotePlay(norm, s, attempt + 1); }, 2500);
+            return;
+        }
+        if (leaf == null) {
+            Remote.report("Eintrag nicht gefunden");
+            return;
+        }
+        sleeping = false;
+        status.setVisibility(View.GONE);
+        if (listOpen()) closeList();
+        jumpTo(leaf);
+    }
+
     // ---------- Fernwartung (Befehle aus dem Editor) ----------
 
     @Override
@@ -949,18 +970,9 @@ public class PlayerActivity extends Activity implements Remote.Target {
                 if ("zap".equals(action)) step(arg.optInt("d", 1) < 0 ? -1 : 1);
                 else if (player != null) togglePause();
                 break;
-            case "play": {
-                Node leaf = rootNode == null ? null : findLeaf(rootNode, arg.optString("norm"));
-                if (leaf == null) {
-                    Remote.report("Eintrag nicht gefunden");
-                    return;
-                }
-                sleeping = false;
-                status.setVisibility(View.GONE);
-                if (listOpen()) closeList();
-                jumpTo(leaf);
+            case "play":
+                remotePlay(arg.optString("norm"), arg.optString("s"), 0);
                 break;
-            }
             default:
                 break;
         }

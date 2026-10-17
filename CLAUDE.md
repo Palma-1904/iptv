@@ -422,6 +422,9 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
 - Getestet 17.10. im Vorschau-Browser mit echten Firebase-Daten (nur angesehen, keine Befehle geschickt): Übersicht, Steuern,
   Sender, Verwaltung, Rückfrage (Ansicht), Familien-Link. Aufgefallen: Programm (EPG) aller Listen lief am 17.10. um ~10:40 aus –
   Automatik hatte nicht veröffentlicht → Hinweis „Veröffentlichen“.
+- **Serienfolge vom Handy bei offenem Player (17.10., App 96)**: `PlayerActivity.remote("play")` suchte die Folge sofort und
+  meldete „Eintrag nicht gefunden“, weil die Folgen großer Listen erst beim Öffnen der Serie kommen. Jetzt `remotePlay(norm, s)`:
+  Serie per `requestSeries(findLazy(rootNode, s))` anfordern, bis 4× alle 2,5 s neu suchen (wie `MainActivity.remotePlay`).
 - **Noch offen (Thomas: „erstmal nur das Admin-App“)**: Stick wartet selbst, bis der Zugang frei ist (App), `.ts` fürs iPhone (Schalter).
 
 ## Stand 16.10. nachmittags – hier weitermachen

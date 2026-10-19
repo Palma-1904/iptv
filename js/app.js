@@ -472,22 +472,59 @@
   function setAppOk(app) {
     try { localStorage.setItem(app.ok, '1'); } catch (err) { /* egal */ }
   }
+  // Bei JEDEM Start prüfen, ob die Abspiel-App wirklich aufgeht (Seite geht in den Hintergrund bzw. verliert
+  // auf dem Mac den Fokus an IINA). Ob die App danach noch offen ist, kann eine Webseite nicht sehen.
+  // - App noch nie geöffnet: nach 4 s Dialog „Startet nichts?“ (App Store)
+  // - App bekannt, aber nichts passiert (kommt nach dem Zurückkehren aus Outplayer vor): Knopf „Nochmal starten“ –
+  //   ein Fingertipp ist nötig, iOS öffnet Apps nicht von selbst.
   function checkPlayerApp(href) {
     var app = [IOS_APPS.outplayer, IOS_APPS.vlc].filter(function (x) { return x.scheme.test(href || ''); })[0];
-    if (!app || appOk(app)) return;
+    var iina = /^iina:/i.test(href || '');
+    if (!app && !iina) return;
+    var known = app ? appOk(app) : true;
     var left = false;
     function gone() {
       if (document.visibilityState !== 'hidden') return;
       left = true;
-      setAppOk(app);
+      if (app) setAppOk(app);
     }
+    function blurred() { left = true; }   // Mac: IINA nimmt Safari den Fokus
     document.addEventListener('visibilitychange', gone);
     window.addEventListener('pagehide', gone);
+    window.addEventListener('blur', blurred);
+    var oldBar = document.querySelector('.retrybar');
+    if (oldBar) oldBar.remove();
     setTimeout(function () {
       document.removeEventListener('visibilitychange', gone);
       window.removeEventListener('pagehide', gone);
-      if (!left && document.visibilityState === 'visible') playerDialog(true);
-    }, 4000);
+      window.removeEventListener('blur', blurred);
+      if (left || document.visibilityState !== 'visible') return;
+      if (!known) playerDialog(true);
+      else retryBar(href, app ? app.name : 'IINA');
+    }, known ? 2500 : 4000);
+  }
+  function retryBar(href, name) {
+    var bar = document.createElement('div');
+    bar.className = 'retrybar';
+    bar.setAttribute('role', 'alert');
+    var t = document.createElement('span');
+    t.textContent = name + ' ist nicht aufgegangen.';
+    var again = document.createElement('a');
+    again.className = 'lang-btn';
+    again.href = href;
+    again.textContent = '▶ Nochmal starten';
+    again.addEventListener('click', function () { bar.remove(); checkPlayerApp(href); });
+    var x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'lang-cancel';
+    x.textContent = '✕';
+    x.setAttribute('aria-label', 'Schließen');
+    x.addEventListener('click', function () { bar.remove(); });
+    bar.appendChild(t);
+    bar.appendChild(again);
+    bar.appendChild(x);
+    document.body.appendChild(bar);
+    setTimeout(function () { if (bar.parentNode) bar.remove(); }, 15000);
   }
   // „Startet nichts?“ (missing) bzw. „Abspielen mit …“ (aus der Schnell-Leiste): App laden, bestätigen, wechseln
   function playerDialog(missing) {

@@ -427,6 +427,26 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   Serie per `requestSeries(findLazy(rootNode, s))` anfordern, bis 4× alle 2,5 s neu suchen (wie `MainActivity.remotePlay`).
 - **Noch offen (Thomas: „erstmal nur das Admin-App“)**: Stick wartet selbst, bis der Zugang frei ist (App), `.ts` fürs iPhone (Schalter).
 
+## Stand 19.10. – hier weitermachen
+- Arbeit am **Mac mini**. Programm (EPG) war seit 17.10. abgelaufen: Automatik lief nur auf dem MacBook, SSD steckt am
+  Mac mini. **Automatik jetzt auch am Mac mini eingerichtet**, Festplattenvollzugriff für Python (CLT 3.9) erteilt,
+  getestet (Protokoll: Zugriff ok, „Läuft schon – nächstes Mal“, Push „KMH wieder aktuell“). Claude hat alle Listen
+  per `auto_publish.py --force` neu veröffentlicht.
+- **Editor-Absturz behoben** (Python 3.13 am Mac mini, alle 10 s „Python wurde unerwartet beendet“): `subprocess`
+  mit fork in einem Thread nach Netzwerkzugriff stürzt auf macOS ab (Network-Framework, „crashed on child side of
+  fork pre-exec“; Auslöser: git rev-list im Editor-Status alle 10 s). Neu `editor/safeproc.py` (voller Programmpfad +
+  `close_fds=False` → CPython nimmt posix_spawn); server/stick_setup/webpush nutzen `safeproc.run/popen`.
+  Stresstest 45/45. **Editor danach neu starten.**
+- Webapp: Hinweis bei altem Programm beruhigend („Fernsehen funktioniert ganz normal. Nur die Programmzeitschrift …“),
+  graue statt gelbe Farbe (`.stale`).
+- Webapp iPhone/iPad/Mac: „Nach dem Schließen von Outplayer passiert beim nächsten Antippen nichts“ → jetzt prüft
+  `checkPlayerApp` bei JEDEM Start (Seite geht in den Hintergrund bzw. `blur` am Mac für IINA); passiert in 2,5 s
+  nichts → Leiste „▶ Nochmal starten“ (`.retrybar`, Fingertipp nötig – iOS öffnet Apps nicht per Timer).
+  Ob Outplayer/IINA noch offen ist, kann eine Webseite nicht erkennen. **Am echten iPhone/iPad/Mac ungetestet.**
+- Sticks 19.10.: Wohnzimmer/Max/Schlafzimmer App 96; Küche (86) und ERO (84) seit 15.10. still; Anita (65) seit 10.10.
+- Liste „deutsch“ (04.10.) wird mitveröffentlicht – Zweck bei Thomas klären.
+- Lokal committet, **noch nicht gepusht**: Hinweistext, Nochmal-starten, Editor-Absturz-Fix.
+
 ## Stand 16.10. nachmittags – hier weitermachen
 - **Online App 94, alles gepusht**, Editor 36 läuft. Thomas hat um ~14:15 „Veröffentlichen → Alle“ gemacht: Webseite
   zeigt aufgeräumte Namen, Live TV 329 → 261 (68 Event-Sender ohne Spiel weg, DAZN PPV 99 → 32), „Nur TV“ = nur Live.

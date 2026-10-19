@@ -17,6 +17,7 @@ import shutil
 import socket
 import ssl
 import sys
+import glob
 import threading
 import time
 import unicodedata
@@ -230,17 +231,52 @@ def xtream_catalog(src):
         out.append({
             'key': f'{sid}:series:{s.get("series_id")}', 'type': 'series', 'name': s.get('name') or '',
             'group': ser_cats.get(str(s.get('category_id')), 'Sonstige'),
-            'logo': s.get('cover') or '', 'tvgId': '', 'url': '',
+            'logo': s.get('cover') or '', 'tvgId': '', 'url': '', 'mod': str(s.get('last_modified') or ''),
         })
     epg = (src.get('epgUrl') or '').strip() or \
         f'{base}/xmltv.php?' + urllib.parse.urlencode({'username': u, 'password': p})
     return out, epg
 
 
+# Änderungsstand je Serie (Anbieter-Feld last_modified): {Quelle: {Serie: Stand}} – eine Abfrage get_series je
+# Veröffentlichen statt tausender get_series_info. Merker, mit welchem Stand die Folgen geholt wurden: series/_mod_<quelle>.json
+SERIES_MOD = {}
+SERIES_MOD_TIME = {}
+SERIES_KEEP = 30 * 24 * 3600   # unveränderte Serien bis 30 Tage aus dem Zwischenspeicher
+_SERIES_IDX_LOCK = threading.Lock()
+
+
+def series_mod_index(sid):
+    return read_json(os.path.join(CACHE, 'series', f'_mod_{sid}.json'), {})
+
+
+def load_series_mods(src):
+    """Aktuellen Änderungsstand aller Serien eines Xtream-Zugangs holen (höchstens alle 30 min)."""
+    sid = src['id']
+    if time.time() - SERIES_MOD_TIME.get(sid, 0) < 1800:
+        return SERIES_MOD.get(sid, {})
+    try:
+        mods = {str(x.get('series_id')): str(x.get('last_modified') or '') for x in (xtream_api(src, 'get_series') or [])}
+    except Exception:
+        mods = {}
+    SERIES_MOD[sid], SERIES_MOD_TIME[sid] = mods, time.time()
+    return mods
+
+
+def episodes_fresh(sid, series_id, path):
+    """Folgenliste noch gültig? Jünger als 24 h – oder bis 30 Tage, wenn der Anbieter die Serie seitdem nicht geändert hat."""
+    if fresh(path, SERIES_TTL):
+        return True
+    if not fresh(path, SERIES_KEEP):
+        return False
+    cur = SERIES_MOD.get(sid, {}).get(str(series_id))
+    return bool(cur) and series_mod_index(sid).get(str(series_id)) == cur
+
+
 def xtream_episodes(src, series_id):
     """Episoden einer Serie (zwischengespeichert)."""
     path = os.path.join(CACHE, 'series', f'{src["id"]}_{series_id}.json')
-    if fresh(path, SERIES_TTL):
+    if episodes_fresh(src['id'], series_id, path):
         return read_json(path, [])
     info = xtream_api(src, 'get_series_info', series_id=series_id)
     base, u, p = xtream_base(src), src['username'], src['password']
@@ -272,6 +308,12 @@ def xtream_episodes(src, series_id):
                     'url': f'{base}/series/{u}/{p}/{e.get("id")}.{ext}'})
     eps.sort(key=lambda x: (x['season'], x['episode']))
     write_json(path, eps)
+    cur = SERIES_MOD.get(src['id'], {}).get(str(series_id))
+    if cur:   # merken, mit welchem Stand geholt
+        with _SERIES_IDX_LOCK:
+            idx = series_mod_index(src['id'])
+            idx[str(series_id)] = cur
+            write_json(os.path.join(CACHE, 'series', f'_mod_{src["id"]}.json'), idx)
     return eps
 
 
@@ -1347,6 +1389,20 @@ def prefetch_episodes(pl, state, lookup):
     from concurrent.futures import ThreadPoolExecutor
     sources = {s['id']: s for s in state['sources']}
     todo = set()
+    # Einmal je Zugang den Änderungsstand holen; bereits geholte Folgen bekommen beim ersten Mal den aktuellen
+    # Stand als Merker (sie sind ja erst wenige Tage alt) – danach zählen nur echte Änderungen
+    for sid in {k['key'].split(':', 1)[0] for g in pl.get('groups', []) for k in g.get('items', [])}:
+        src = sources.get(sid)
+        if src and src.get('type') == 'xtream':
+            mods = load_series_mods(src)
+            with _SERIES_IDX_LOCK:
+                idx = series_mod_index(sid)
+                if mods and not idx:
+                    for f in glob.glob(os.path.join(CACHE, 'series', f'{sid}_*.json')):
+                        ser = os.path.basename(f)[len(sid) + 1:-5]
+                        if ser in mods and fresh(f, 7 * 24 * 3600):
+                            idx[ser] = mods[ser]
+                    write_json(os.path.join(CACHE, 'series', f'_mod_{sid}.json'), idx)
     for g in pl.get('groups', []):
         for item in g.get('items', []):
             for key in [v['key'] for v in item.get('variants') or []] or [item['key']]:
@@ -1356,7 +1412,7 @@ def prefetch_episodes(pl, state, lookup):
                 sid, sser = key.split(':', 1)[0], key.rsplit(':', 1)[1]
                 src = sources.get(sid)
                 if src and src.get('type') == 'xtream' and \
-                        not fresh(os.path.join(CACHE, 'series', f'{sid}_{sser}.json'), SERIES_TTL):
+                        not episodes_fresh(sid, sser, os.path.join(CACHE, 'series', f'{sid}_{sser}.json')):
                     todo.add((sid, sser))
     if not todo:
         return
@@ -1963,6 +2019,34 @@ def gist_upload(files, settings):
     return settings
 
 
+GIST_BATCH = 8 * 1024 * 1024   # GitHub lehnt sehr große Gist-Änderungen ab (19.10.: ~30 MB auf einmal scheiterte)
+
+
+def gist_upload_batched(files, settings):
+    """Wie gist_upload, aber in Paketen bis GIST_BATCH; eine einzelne große Datei geht allein.
+    Zuerst die Zusatzdateien (Folgen, Programm), zuletzt die Listen selbst – so passen sie zueinander,
+    sobald ein Gerät die neue Liste sieht. Ergebnis: Einstellungen mit der Revision des letzten Pakets."""
+    def order(name):
+        return (0 if '.s' in name and name.endswith('.json') else 1 if name.endswith(('.epg.json', '.xml')) else 2, name)
+    batches, cur, size = [], {}, 0
+    for name in sorted(files, key=order):
+        n = len((files[name] or '').encode())
+        if cur and size + n > GIST_BATCH:
+            batches.append(cur)
+            cur, size = {}, 0
+        cur[name] = files[name]
+        size += n
+    if cur:
+        batches.append(cur)
+    res = None
+    for i, b in enumerate(batches, 1):
+        job_progress(f'Hochladen zu GitHub … Paket {i} von {len(batches)}')
+        res = gist_upload(b, settings)
+        if res:
+            settings = {k: v for k, v in res.items() if k != 'rev'} | {'token': settings.get('token')}
+    return res
+
+
 def ensure_mylists_keys():
     """Eigene Listen: je Playlist ein geheimer Schlüssel (Firebase-Pfad <schlüssel>, ≥ 24 Zeichen wegen der Regeln).
     Alle Geräte der Playlist lesen dort ihre Listen; die Admin-Seite bearbeitet sie."""
@@ -2068,7 +2152,7 @@ def publish(ids):
         JOB['pl'] = None
         job_progress('Hochladen zu GitHub …')
         try:
-            uploaded = gist_upload(files, settings)
+            uploaded = gist_upload_batched(files, settings)
         except UserError as e:
             for r in results:
                 r['warnings'].append(f'Hochladen fehlgeschlagen: {e}')

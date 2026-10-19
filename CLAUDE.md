@@ -445,7 +445,13 @@ Fehlerhafte Adressen (`line.trx-ott.com`, `line.smart-ultra.cc`) existieren nich
   Ob Outplayer/IINA noch offen ist, kann eine Webseite nicht erkennen. **Am echten iPhone/iPad/Mac ungetestet.**
 - Sticks 19.10.: Wohnzimmer/Max/Schlafzimmer App 96; Küche (86) und ERO (84) seit 15.10. still; Anita (65) seit 10.10.
 - Liste „deutsch“ (04.10.) wird mitveröffentlicht – Zweck bei Thomas klären.
-- Lokal committet, **noch nicht gepusht**: Hinweistext, Nochmal-starten, Editor-Absturz-Fix.
+- **Veröffentlichen schneller**: 19.10. dauerte „Alle“ 30 min – fast nur `get_series_info` für ~17 000 Serien (Cache
+  nur 24 h). Jetzt: je Zugang einmal `get_series` (Feld `last_modified`, `load_series_mods`, ≤ alle 30 min), Merker
+  `cache/series/_mod_<quelle>.json`; `episodes_fresh`: < 24 h oder bis 30 Tage, solange der Anbieter die Serie nicht
+  geändert hat. Test: Vorab-Laden je Playlist 5–6 s (TKH/ERO je ~8 200 Merker; ASW/KMH: player_api oft 404 → 24-h-Regel).
+- **Gist-Upload in Paketen** (`gist_upload_batched`, ≤ 8 MB, erst Folgen/Programm, zuletzt Listen): ein PATCH mit
+  ~40 MB scheiterte („NICHT hochgeladen“). Nachgeholt per Hand: 28 Dateien/39 MB in 80 s, Revision c421922d7f.
+- Lokal committet, **noch nicht gepusht**: Hinweistext, Nochmal-starten, Editor-Absturz-Fix, schnelleres Veröffentlichen.
 
 ## Stand 16.10. nachmittags – hier weitermachen
 - **Online App 94, alles gepusht**, Editor 36 läuft. Thomas hat um ~14:15 „Veröffentlichen → Alle“ gemacht: Webseite

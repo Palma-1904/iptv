@@ -8,6 +8,7 @@ Nur Python-Standardbibliothek, nichts zu installieren.
 Daten (inkl. Zugangsdaten und GitHub-Token) liegen in editor/data/ – nicht ins Git einchecken.
 """
 import gzip
+import safeproc  # Hilfsprogramme absturzsicher starten (macOS)
 import hashlib
 import json
 import os
@@ -883,7 +884,7 @@ def app_status():
         pass
     try:
         import subprocess
-        res = subprocess.run(['git', '-C', os.path.dirname(HERE), 'rev-list', '--count', '@{u}..HEAD'],
+        res = safeproc.run(['git', '-C', os.path.dirname(HERE), 'rev-list', '--count', '@{u}..HEAD'],
                              capture_output=True, text=True, timeout=10)
         if res.returncode == 0:
             out['ahead'] = int(res.stdout.strip() or 0)
@@ -901,7 +902,7 @@ APP_PUSH = {'state': '', 'msg': ''}
 
 def git(*args, timeout=60):
     import subprocess
-    return subprocess.run(['git', '-C', os.path.dirname(HERE), *args], capture_output=True, text=True, timeout=timeout)
+    return safeproc.run(['git', '-C', os.path.dirname(HERE), *args], capture_output=True, text=True, timeout=timeout)
 
 
 def git_push(update_devices):
@@ -1409,10 +1410,10 @@ NAME_FIX = [(re.compile(r'(?<![\w])' + a + r'(?![\w])', re.I), b) for a, b in (
     ('prosieben', 'ProSieben'), ('pro ?7', 'Pro7'), ('kabel eins', 'kabel eins'), ('kabel 1', 'kabel eins'),
     ('n-tv', 'n-tv'), ('ntv', 'n-tv'), ('zdfneo', 'ZDFneo'), ('zdfinfo', 'ZDFinfo'), ('zdf info', 'ZDFinfo'),
     ('zdf neo', 'ZDFneo'), ('3sat', '3sat'), ('arte', 'arte'), ('phoenix', 'phoenix'), ('sixx', 'sixx'),
-    ('kika', 'KiKA'), ('sat\.?1', 'SAT.1'), ('servus ?tv', 'ServusTV'), ('super ?rtl', 'Super RTL'),
+    ('kika', 'KiKA'), (r'sat\.?1', 'SAT.1'), ('servus ?tv', 'ServusTV'), ('super ?rtl', 'Super RTL'),
     ('ardmediathek', 'ARD Mediathek'), ('tagesschau ?24', 'tagesschau24'), ('das erste', 'Das Erste'),
     ('rtl ?up', 'RTLup'), ('nitro', 'NITRO'), ('(?<!sky )sport ?1', 'SPORT1'), ('eurosport', 'Eurosport'),
-    ('apple ?tv\+?', 'Apple TV+'), ('disney\+', 'Disney+'), ('paramount\+', 'Paramount+'), ('rtl\+', 'RTL+'),
+    (r'apple ?tv\+?', 'Apple TV+'), (r'disney\+', 'Disney+'), (r'paramount\+', 'Paramount+'), (r'rtl\+', 'RTL+'),
     ('joyn', 'Joyn'), ('netflix', 'Netflix'), ('sky', 'Sky'), ('bluray', 'Blu-ray'))]
 
 
@@ -2170,9 +2171,9 @@ def stop_all_streams():
     import subprocess
     STOP_GEN[0] += 1
     STOP_UNTIL[0] = time.time() + 8
-    vlc = subprocess.run(['pgrep', '-x', 'VLC'], capture_output=True).returncode == 0
+    vlc = safeproc.run(['pgrep', '-x', 'VLC'], capture_output=True).returncode == 0
     if vlc:
-        subprocess.run(['osascript', '-e', 'tell application "VLC" to quit'], capture_output=True, timeout=10)
+        safeproc.run(['osascript', '-e', 'tell application "VLC" to quit'], capture_output=True, timeout=10)
     return {'proxies': ACTIVE_STREAMS[0], 'vlc': vlc}
 
 
@@ -2180,7 +2181,7 @@ def open_in_vlc(url):
     import subprocess
     if not os.path.isdir('/Applications/VLC.app'):
         raise UserError('VLC ist nicht installiert (videolan.org).')
-    subprocess.Popen(['open', '-a', 'VLC', url])
+    safeproc.popen(['open', '-a', 'VLC', url])
 
 
 # ---------- HTTP-Server ----------

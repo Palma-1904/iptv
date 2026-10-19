@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import socket
+import safeproc  # Hilfsprogramme absturzsicher starten (macOS)
 import subprocess
 import time
 import urllib.request
@@ -34,7 +35,7 @@ def _adb(*args, timeout=30):
     os.makedirs(ADB_HOME, exist_ok=True)
     env = dict(os.environ, HOME=ADB_HOME)
     try:
-        r = subprocess.run([ADB, *args], capture_output=True, text=True, timeout=timeout, env=env)
+        r = safeproc.run([ADB, *args], capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         raise StickError('Der Stick antwortet nicht (Zeitüberschreitung).')
     return (r.stdout + r.stderr).replace('\r', '').strip()

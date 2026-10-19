@@ -8,6 +8,7 @@ Firebase: <kanal>/push/vapid = öffentlicher Schlüssel, <kanal>/push/subs/<id> 
 import base64
 import json
 import os
+import safeproc  # Hilfsprogramme absturzsicher starten (macOS)
 import subprocess
 import time
 import urllib.error
@@ -30,17 +31,17 @@ def public_key(s):
     """Öffentlicher Schlüssel (65 Byte, base64url); legt das Schlüsselpaar beim ersten Mal an."""
     kf = _key_file(s)
     if not os.path.exists(kf):
-        subprocess.run([OPENSSL, 'ecparam', '-name', 'prime256v1', '-genkey', '-noout', '-out', kf],
+        safeproc.run([OPENSSL, 'ecparam', '-name', 'prime256v1', '-genkey', '-noout', '-out', kf],
                        check=True, capture_output=True, timeout=20)
         os.chmod(kf, 0o600)
-    der = subprocess.run([OPENSSL, 'ec', '-in', kf, '-pubout', '-outform', 'DER'],
+    der = safeproc.run([OPENSSL, 'ec', '-in', kf, '-pubout', '-outform', 'DER'],
                          check=True, capture_output=True, timeout=20).stdout
     return b64u(der[-65:])
 
 
 def _sign(s, data):
     """ES256: openssl liefert DER (SEQUENCE r, s) → 64 Byte r‖s."""
-    der = subprocess.run([OPENSSL, 'dgst', '-sha256', '-sign', _key_file(s)], input=data,
+    der = safeproc.run([OPENSSL, 'dgst', '-sha256', '-sign', _key_file(s)], input=data,
                          check=True, capture_output=True, timeout=20).stdout
     i = 2 if der[1] < 0x80 else 3
     out = b''

@@ -982,7 +982,9 @@
     var d = new Date(g * 1000);
     var p = document.createElement('p');
     p.className = 'stale';
-    p.textContent = 'Hinweis: Das Programm ist vom ' + d.getDate() + '.' + (d.getMonth() + 1) + '. und daher teils veraltet.';
+    // Bewusst beruhigend formuliert: Es geht nur um die Programmzeitschrift, Fernsehen läuft normal.
+    p.textContent = 'ℹ️ Fernsehen funktioniert ganz normal. Nur die Programmzeitschrift (welche Sendung gerade läuft) ' +
+      'ist vom ' + d.getDate() + '.' + (d.getMonth() + 1) + '. und deshalb nicht ganz aktuell.';
     return p;
   }
 
